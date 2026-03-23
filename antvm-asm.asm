@@ -17,23 +17,30 @@
 ;;;   BIT 0 - control bit
 
 
-;;;   P ABC FX CM commands with no arguments
+;;;   PW CMND CM commands with no arguments
 ;;;   ======================================
-;;;   . ... .. 00 - command byte
+;;;   .. .... 00 - command byte
 ;;; 
-;;;   00 0000  00 - RETURN from stackewd CALL
+;;;   00 .... 00 - USER commands
+;;;   01 .... 00 - WAIT commands below
+
+;;;   00 0000 00 - RETURN from stackewd CALL
 ;;; 
-;;;   00 xxxx  00 - USER 1-15 command (no parameter?)
-;;;   ----------- 
-;;;   00 0010  00 - ENTER SPEECH: 0 LL+phonem seq till 0 0
+;;;   00 0001 00 - ENTER SPEECH: 0 LL+phonem seq till 0 0
 ;;;    (using langauge LL "speak" phonems till 0 0)
 ;;;    (0 LL can switch language)
 ;;;    (similar to CALL, current LL is saved and restored
 ;;;     after return)
-;;;   00 0011  00 - 
+;;;   00 0010 00 - reserved 2
+;;;   00 0011 00 - reserved 3
+;;;   00 01.. 00 - reserved 4-7
+;;;   ----------
+;;;   00 uuuu 00 - USER -15 command (use from 15 down)
 
-;;;   01 0000  00 - WAIT 1 second
-;;;   01 xxxx  00 - WAIT 1-15 cycles (20-300ms)
+
+;;;   01 0000 00 - WAIT 1 second
+;;;   01 xxxx 00 - WAIT 1-15 cycles (20-300ms)
+
 
 ;;;   Following commands take 2 byte parmaters
 ;;;   ========================================
