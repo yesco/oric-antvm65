@@ -35,7 +35,7 @@
 ;;;   00 0011 00 - reserved 3
 ;;;   00 01.. 00 - reserved 4-7
 ;;;   ----------
-;;;   00 uuuu 00 - USER -15 command (use from 15 down)
+;;;   00 uuuu 00 - USER 8-15 command (use from 15 down)
 
 
 ;;;   01 0000 00 - WAIT 1 second
@@ -53,8 +53,7 @@
 ;;;     ll= is an index into different langauges
 ;;;     pp= is a phonenem number
 
-;;;   1x xxxx  00 - USER command (2 byte Parameter)
-;;;   -----------
+
 ;;;   10 0001  00 - CHORD fixed first
 ;;;   10 0010  00 - CHORD fixed second
 
@@ -86,13 +85,31 @@
 ;;;   10 1110  00 - B SLIDE           - " - 
 ;;;   10 1111  00 - C SLIDE           - " - 
 
-;;;   11 0000  00 - reserved
-;;;   11 xxxx  00 - USER defined 2 byte parametsr
-;;;      
+;;;   11 0000  00 - SETBEATS a/b (a,b two bytes)
+;;;   11 0001  00 - SETCYCLE 2 bytes cyc: 1M/cyc= Hz
+
+;;;   11 0010  00 - reserved 2
+;;;   11 00xx  00 - ...
+;;;   11 0111  00 - reserved 7
+
+;;;   11 1xxx  00 - USER command (2 byte Parameter)
+;;;   -----------
+;;;   11 1xxx  00 - USER command 0-7
+
+
+;;;   HAS-HEADER
+;;;   ========================================
+;;;   A "has-header" as identified by xx!=0.
+;;;   Each "has" bit more or less determines if a 
+;;;   it "has" a feature-byte following.
+;;;   
+;;;   The FX byte is different
 
 ;;;   V ABC FX MX
 ;;;   -----------
 ;;;   . ... .. xx - xx!=0 means tone data
+;;;   h hhh .. .. - HAS bit!
+
 ;;;   1 ... .. .. - has A+B volume byte
 ;;;   . ... .. .1 - has noise (speech/drum in FX)
 ;;;   . 100 .. .. - has A     1 byte note data
@@ -112,8 +129,11 @@
 ;;;   . ... 10 11 -   hihat closed
 ;;;   . ... 11 11 -   hihat open
 ;;; 
-;;;   . ... .. 10 - tone only
-;;;   . ... ..
+;;;   . ... 00 10 - tone only
+;;;   . ... 01 10 - tone + other effect?
+;;;   . ... 10 10 - tone + other effect?
+;;;   . ... 11 10 - tone + other effect?
+
 
 ;;;   Channel Data byte (tone)
 ;;;   ========================
