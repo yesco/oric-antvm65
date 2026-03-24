@@ -2,16 +2,15 @@ import struct
 
 def get_sparkbox(v):
     chars = " ▂▃▄▅▆▇█"
-    v = max(0, min(int(v), 15)) # Safety clamp
     return chars[int((v/15)*7)] if v > 0 else "."
 
 def get_sparkline(p):
     chars = "  ▂▃▄▅▆▇█"
-    p = max(-128, min(int(p), 127))
     return chars[int(((p+128)/256)*8)]
 
-def parse_asc_complete(file_path):
+def parse_asc_unlocked(file_path):
     note_names = ["C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"]
+    
     with open(file_path, 'rb') as f:
         data = f.read()
 
@@ -24,27 +23,40 @@ def parse_asc_complete(file_path):
     song_loop = data[orn_ptr - 1]
     
     print("=== HEADER ===")
-    print(f"0000:  Speed:{data[0]}  PosPtr:0x{pos_ptr:04X}  OrnPtr:0x{orn_ptr:04X}  LoopIdx:{song_loop}")
+    print(f"0000:  Speed:{data[0]}  PosPtr:0x{pos_ptr:04X}  OrnPtr:0x{orn_ptr:04X}  SongLoopIdx:{song_loop}")
     title = data[32:96].decode('ascii', errors='ignore').strip()
     print(f"0020:  Title: \"{title}\"\n")
 
-    # --- 2. SAMPLE DEFINITIONS ---
+    # --- 2. SAMPLE DEFINITIONS (Unlocked 64-byte Scan) ---
     print("=== SAMPLE / INSTRUMENT DEFINITIONS ===")
     sample_map = data[10:32]
     for idx, mult in enumerate(sample_map):
         if mult == 0: continue
         addr = 0x60 + (mult * 64)
         if addr >= len(data): continue
+        
         print(f"\n{addr:04X}:  === SAM INDEX: {idx:X} ===")
         v_s, p_s = "", ""
+        
+        # Parse all 21 possible triplets in the 64-byte block (63 bytes total)
         for t in range(21):
             off = addr + (t * 3)
             if off + 2 >= len(data): break
+            
             v, n = data[off] & 0x0F, data[off+1] & 0x1F
             p = struct.unpack('b', data[off+2:off+3])[0]
+            
             print(f"{off:04X}:  Tick {t:02d}: Vol:{v:X}  Nois:{n:02X}  Pit:{p:+04d}")
-            v_s += get_sparkbox(v); p_s += get_sparkline(p)
-        print(f"        Visual: {v_s} (Vol)\n        Visual: {p_s} (Pit)")
+            v_s += get_sparkbox(v)
+            p_s += get_sparkline(p)
+
+        print(f"        Visual: {v_s} (Vol)")
+        print(f"        Visual: {p_s} (Pit)")
+        
+        # Show the 64th byte (often the loop-to-tick pointer)
+        loop_byte_off = addr + 63
+        if loop_byte_off < len(data):
+            print(f"{loop_byte_off:04X}:  --- End of Block Byte: 0x{data[loop_byte_off]:02X} ---")
 
     # --- 3. ORNAMENT DEFINITIONS ---
     print("\n=== ORNAMENT DEFINITIONS (1 byte/tick) ===")
@@ -82,10 +94,12 @@ def parse_asc_complete(file_path):
             for idx in addr_to_indices[i]:
                 print(f"\n{i:04X}:  === START PATTERN INDEX: {idx} ===")
             line_start = i
+
         b = data[i]
         if b == 0xFF:
-            line.append("0xFF"); print_row(line_start, line)
-            print(f"{i:04X}:  --- END PATTERN ---\n"); line = []; i += 1; line_start = i; continue
+            line.append("0xFF")
+            print_row(line_start, line); print(f"{i:04X}:  --- END PATTERN ---\n")
+            line = []; i += 1; line_start = i; continue
         elif b == 0xFE: line.append("[REST]")
         elif 0x01 <= b <= 0x03: line.append(f"CHAN:{b}")
         elif b <= 0x5F: line.append(f"{note_names[b%12]}{b//12+1}")
@@ -97,7 +111,7 @@ def parse_asc_complete(file_path):
         elif 0xE1 <= b <= 0xEF:
             p = data[i+1] if i+1 < len(data) else 0
             line.append(f"JMP:0x{p:02X}"); i += 1
-        elif 0xF0 <= b <= 0xFD: line.append(f"WAIT:0x{b&0xF:X}")
+        elif 0xF0 <= b <= 0xFD: line.append(f"WAIT:{b&0xF:X}")
         else: line.append(f"0x{b:02X}")
         if len(line) >= 8:
             print_row(line_start, line); line = []; line_start = i + 1
@@ -109,7 +123,7 @@ def parse_asc_complete(file_path):
         "0xFF       End of pattern marker",
         "0xXX       Raw hex byte (unknown)",
         "[REST]     Silence / Note stop",
-        "BRK        Pattern Break (Yield to next voice)",
+        "BRK        Pattern Break (move to next index)",
         "CHAN:N     Select Tone Generator (Channel) 1, 2, or 3",
         "JMP:XX     Jump to Song Position Index XX",
         "NOTE       Musical pitch (e.g., C-4, D#5)",
@@ -121,36 +135,5 @@ def parse_asc_complete(file_path):
     ]
     for item in sorted(legend_items): print(item)
     print("="*45)
-    return data, addr_to_indices, note_names
 
-# --- 7. TRACE ---
-def trace(data, addr_to_indices, note_names):
-    print("\n" + "="*70 + "\n---- TRACE ----\n" + "="*70)
-    for p_addr in sorted(addr_to_indices.keys()):
-        print(f"\nPATTERN 0x{p_addr:04X} (Song Pos: {addr_to_indices[p_addr]})")
-        print("Tick | Voice A (1)     | Voice B (2)     | Voice C (3)")
-        print("-" * 70)
-        
-        v_ptr = [p_addr, p_addr, p_addr]
-        v_active = [True, True, True]
-        tick = 0
-        
-        while any(v_active) and tick < 64:
-            notes, vols = ["---", "---", "---"], [" ", " ", " "]
-            for v_idx in range(3):
-                if not v_active[v_idx]: continue
-                while v_ptr[v_idx] < len(data):
-                    b = data[v_ptr[v_idx]]; v_ptr[v_idx] += 1
-                    if b == 0xFF: v_active[v_idx] = False; break
-                    if b == 0xE0: break # Yield
-                    if b <= 0x5F: notes[v_idx] = f"{note_names[b%12]}{b//12+1}"
-                    elif 0x80 <= b <= 0x8F: vols[v_idx] = get_sparkbox(b & 0x0F)
-                    elif 0x90 <= b <= 0xDF: vols[v_idx] = get_sparkbox((b-0x90) >> 2)
-                    elif (0xE1 <= b <= 0xFD): v_ptr[v_idx] += 1 
-            
-            print(f"{tick:02d}   | {notes[v_idx].ljust(4)} {vols[0]}        | {notes[1].ljust(4)} {vols[1]}        | {notes[2].ljust(4)} {vols[2]}        ")
-            tick += 1
-            if not any(v_active): break
-
-file_data, indices, names = parse_asc_complete('Over The Top (last part).asc')
-trace(file_data, indices, names)
+parse_asc_unlocked('Over The Top (last part).asc')
