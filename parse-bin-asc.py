@@ -1,43 +1,36 @@
 import struct
 import math
 
+def get_sparkbox(v):
+    chars = " ▂▃▄▅▆▇█"
+    v = max(0, min(int(v), 15))
+    return chars[int((v/15)*7)] if v > 0 else "."
+
+def get_sparkline(p):
+    chars = "  ▂▃▄▅▆▇█"
+    p = max(-128, min(int(p), 127))
+    return chars[int(((p+128)/256)*8)]
+
 def get_spark_up(v, max_val=15):
-    """Standard growth: bottom to top."""
+    """Vertical growth from bottom=0 using a sqrt-scale for better visibility."""
     chars = " .▂▃▄▅▆▇█"
     v = max(0, min(int(v), max_val))
     if v == 0: return "."
-    # Sqrt scale for better visibility of low values
     idx = int(math.sqrt(v / max_val) * 8)
     return chars[max(1, min(idx, 8))]
 
 def get_bipolar_sparks(p, scale=128):
-    """
-    Returns (up_str, down_str).
-    For negative values, we invert the index selection so 'small' 
-    negative values use 'small' blocks even when inverted.
-    """
+    """Returns (up_str, down_str) using sqrt-mapping and ANSI inversion for negative swing."""
     chars = " .▂▃▄▅▆▇█"
+    inv_map = [" ", "▇", "▆", "▅", "▄", "▃", "▂", " ", " "]
     val = max(-scale, min(int(p), scale))
     if val == 0: return ".", " "
-    
-    # Calculate magnitude 1-8
     mag = int(math.sqrt(abs(val) / scale) * 8)
     mag = max(1, min(mag, 8))
-    
     if val > 0:
         return chars[mag], " "
     else:
-        # We use a special 'reversed' set for inverted blocks
-        # so that a small mag (1) results in a small sliver at the top.
-        # Characters: sliver at top -> full block
-        # In ANSI Invert: ' ' is full, '█' is empty.
-        # We need the opposite: '▆' inverted becomes '▂' at top.
-        inv_chars = "  ▆▅▄▃▂  " # Approximate inverse heights
-        # Actually, simpler: pick the block that is the "remainder" of the cell
-        # 8 - mag gives us the sliver we want to 'keep' dark.
-        inv_map = [" ", "▇", "▆", "▅", "▄", "▃", "▂", " ", " "]
-        char_to_invert = inv_map[mag]
-        return " ", f"\x1b[7m{char_to_invert}\x1b[0m"
+        return " ", f"\x1b[7m{inv_map[mag]}\x1b[0m"
 
 def parse_asc_complete(file_path):
     note_names = ["C-", "C#", "D-", "D#", "E-", "F-", "F#", "G-", "G#", "A-", "A#", "B-"]
@@ -55,7 +48,7 @@ def parse_asc_complete(file_path):
     title = data[32:96].decode('ascii', errors='ignore').strip()
     print(f"0020: Title: \"{title}\"\n")
 
-    # --- 2. SAMPLE / OSCILLATOR ---
+    # --- 2. SAMPLE / OSCILLATOR DEFINITIONS ---
     print("=== SAMPLE / INSTRUMENT DEFINITIONS (OSC) ===")
     sample_map = data[10:32]
     for idx, mult in enumerate(sample_map):
@@ -76,7 +69,7 @@ def parse_asc_complete(file_path):
             pu_s += u; pd_s += d
         print(f"Visual Vol:  {v_s}\nVisual Nois: {n_s}\nVisual Pit+: {pu_s}\nVisual Pit-: {pd_s}")
 
-    # --- 3. ORNAMENT ---
+    # --- 3. ORNAMENT DEFINITIONS (ARPEGGIO) ---
     print("\n=== ORNAMENT DEFINITIONS (ARPEGGIO) ===")
     for o_idx in range(16):
         o_addr = orn_ptr + (o_idx * 32)
@@ -111,6 +104,7 @@ def parse_asc_complete(file_path):
         if i in addr_to_indices:
             if line: print_row(line); line = []
             for idx in addr_to_indices[i]: print(f"\n{i:04X}: === START i{idx} ===")
+        
         ad, b = f"{i:04X}:", data[i]
         if b == 0xFF:
             line.append(f"{ad} 0xFF"); print_row(line); line = []
@@ -131,9 +125,10 @@ def parse_asc_complete(file_path):
         else: line.append(f"{ad} 0x{b:02X}")
         if len(line) >= 4: print_row(line); line = []
         i += 1
-    return data, addr_to_indices, note_names
+
+    return data, addr_to_indices, note_names, orn_ptr
 
 # --- EXECUTION ---
 from trace_bin_asc import trace
-file_data, indices, names = parse_asc_complete('Over The Top (last part).asc')
-trace(file_data, indices, names)
+file_data, indices, names, ornaments_address = parse_asc_complete('Over The Top (last part).asc')
+trace(file_data, indices, names, ornaments_address)

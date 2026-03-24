@@ -1,6 +1,8 @@
 import math
 import random
 
+
+
 def get_ansi_mix(v_bits):
     """
     Mixes A(1:Green), B(2:Blue), C(4:Red).
@@ -10,15 +12,19 @@ def get_ansi_mix(v_bits):
     colors = {0:"0", 1:"92", 2:"94", 3:"96", 4:"91", 5: "93", 6:"95", 7:"97"}
     return f"\x1b[{colors.get(v_bits, '0')}m"
 
+
+
 def get_piano_ruler():
     """
     A 64-character ruler marking C positions (every 6 chars/12 notes).
     Useful as a 'header' every 16 or 32 ticks.
     """
     ruler = "C     .     " * 6 # 12 notes per octave = 6 chars
-    return f"\x1b[90m{ruler[:64]}\x1b[0m"
+    return "    " + f"\x1b[90m{ruler[:64]}\x1b[0m"
 
-def draw_pianola_row(pitches, volumes, noise_val=0):
+
+
+def draw_pianola_row(global_tick, pitches, volumes, noise_val=0):
     """
     Renders a single rising row of the pianola.
     pitches: [p0, p1, p2] (0-127)
@@ -56,4 +62,6 @@ def draw_pianola_row(pitches, volumes, noise_val=0):
             # Silence
             row_output += " "
             
-    return row_output + "\x1b[0m"
+    stick= "\x1b[90m" + f"{global_tick:04d}" + "\x1b[0m"
+
+    return stick + row_output + "\x1b[0m"
