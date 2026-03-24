@@ -167,3 +167,47 @@
 ;;;   ---------
 ;;;   11 000000   UNECHO
 ;;;   11 000wai   DELAY wait 1-7
+
+
+This is a remarkably dense and professional stream format. You've essentially built a RISC-style bytecode for the AY-3-8912. The way you’ve balanced bit-level "has" flags with multi-byte global commands is very "Ant-like"—small, but carrying a massive amount of functionality.
+Here are my observations and a few 6502-specific optimizations for your AntVM65 implementation:
+1. The "Has-Header" Efficiency
+Your bitmask (V ABC FX MX) is brilliant because it allows a single frame to be anywhere from 1 to 7 bytes.
+
+* The 6502 Win: By putting V (Volume) at Bit 7 and A/B/C at Bits 6-4, you can use ASL and BCS to "peel" the header. It makes your decoder loop very tight.
+* The Volume Byte: Having one byte for A+B volume is smart. Since C is often "slaved" to A for speech or B for echo, its volume can usually be derived or set via your DURATION/DECAY global commands.
+
+2. The 16-bit Micro-Envelope (Brilliant!)
+Your 10 0011 00 command is one of the coolest features here.
+
+* The "Vibrato/Tremolo" Machine: Using 16 bits as a "bit-stream" where 0 = -1 and 1 = +1 allows for hardware-level vibrato or complex "texture" shifts.
+* Optimization: On the 6502, you can store this in two bytes in Zero-Page. Every 50Hz, you ASL the word ; if the Carry is set, you INC the PSG register; if clear, you DEC. This creates a perfect cycle with zero "math."
+
+3. Speech & Language (The 0 LL Concept)
+The ENTER SPEECH command with a "language" prefix is a great way to handle the Thai vs. English phonetic differences we discussed.
+
+* Context Switching: Since you're saving and restoring the LL (Language), you can have an "English Voice" and a "Thai Voice" multiplexed in the same stream.
+* Phoneme Seq: Ending with 0 0 is very MIDI-like. It allows for variable-length "words" in your stream.
+
+4. Channel-Specific Logic (192-255)
+
+* A-Link: Your LINK: C=A+tunduo is exactly what we discussed for the "R" and "L" sounds.
+* B-Echo: Using 3 bits for wai (Wait 1-7) for the echo delay is perfect. It fits that 16-byte Zero-Page circular buffer we talked about.
+* C-Chord: I assume the 192-255 range for C handles the Relative Deltas?
+
+5. A Small Potential Conflict to Watch:
+In your Channel Data Byte (the tone byte):
+
+* You use oct 11xxx for Fine Tune.
+* In the 192-255 range (11 xxxxxx), you have your Link/Echo/Chord commands.
+* Note: Ensure your decoder checks for oct 11xxx before it processes the byte as a standard note. Since 8 octaves $\times$ 24 notes = 192, anything $\geq 192$ is technically a "command" or "fine-tune." Your 11xxx logic actually occupies the same "space" as your channel commands ($192$-$255$).
+
+6. The "MX" Tone/FX bits
+Using 01 for Speech and 11 for Drums is a great "Mode" switch.
+
+* MX=01 (Speech): Does this automatically enable the Link A+C logic? If so, you save even more bytes.
+* MX=11 (Drums): Does this route the Channel C tone data to the Noise Generator instead?
+
+This format is ready for a GitHub README. Would you like me to help you draft the decoder logic in 6502 assembly for that "has-header" bit-peeling section?
+Proactive follow-up: For the 10 0011 00 Micro-Envelope, do you want it to affect Pitch (vibrato) or Volume (tremolo), or should we have a bit to toggle between them?
+
