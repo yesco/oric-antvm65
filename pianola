@@ -1,0 +1,4 @@
+python parse-bin-asc.py | grep -v '^[0-9T=V ]' | grep -v '^$'
+
+
+
