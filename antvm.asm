@@ -1,93 +1,92 @@
 .zeropage
-; --- Deltasequence (ds) State ---
-ds_mask:    .res 2    ; 16-bit pattern (orbits itself)
-ds_config:  .res 1    ; [7:Repeat][4-6:Speed][0-3:Step]
+; --- Deltas (ds) Volume State ---
+ds_mask:    .res 2    ; 16-bit pattern (Circular)
+ds_config:  .res 1    ; [7:Repeat][3-6:Delay][0-2:Step]
 ds_current: .res 1    ; 4-bit Volume (0-15)
-ds_delay:   .res 1    ; -1 = Off, 0-7 = Active/Delay
-ds_count:   .res 1    ; 16-bit counter (only for one-shot)
+ds_delay:   .res 1    ; -1 = Off, 0-15 = Active
+ds_count:   .res 1    ; Bit counter (0-16)
 
 .code
 
 ; ---------------------------------------------------------
-; DS_INIT: Initialize the delta sequence
-; Input: A/X = Mask Lo/Hi, Y = Config
+; DS_INIT: A/X = Mask, Y = Config [R][D][D][D][D][S][S][S]
 ; ---------------------------------------------------------
 ds_init:
     sta ds_mask
     stx ds_mask+1
     sty ds_config
-    lda #16
-    sta ds_count
     
-    lda ds_config      ; Extract Speed (bits 4-6)
+    lda #0             ; Force immediate reload on first tick
+    sta ds_count
+    tya                ; Pass config to restart logic
+
+ds_restart:
+    ldx #16            ; Reset bit counter
+    stx ds_count
+    and #$78           ; Mask Delay bits
+    lsr a              ; Align 0-15
     lsr a
     lsr a
-    lsr a
-    lsr a
-    and #$07           ; Reset delay to speed
     sta ds_delay
     rts
 
 ; ---------------------------------------------------------
-; DS_TICK: The 50Hz Update
+; DS_TICK: 50Hz Update
 ; ---------------------------------------------------------
 ds_tick:
     lda ds_delay
-    bmi @done           ; If $FF, sequence is finished
-    beq @do_bit         ; If 0, process next bit
+    bmi @done           ; $FF = Off
+    beq @do_bit
     dec ds_delay
     rts
 
 @do_bit:
-    ; 1. Fully Cyclic 16-bit Shift (Destructive but Circular)
+    ; 1. Cyclic 16-bit Shift
     lda ds_mask
-    asl a               ; Shift Lo-Byte Bit 7 into Carry
-    rol ds_mask+1       ; Rotate Carry into Hi-Byte, Hi-Byte Bit 7 into Carry
-    php                 ; Save the Bit for ADC and Logic
-    adc #0              ; Add Carry back to A (Lo-Byte)
+    asl a
+    rol ds_mask+1
+    php                 ; Save Bit
+    adc #0              ; Loop it
     sta ds_mask
-    plp                 ; Restore Bit into Carry for Delta Logic
+    
+    ; 2. Unified Delta Math
+    lda ds_config
+    and #$07            ; Step
+    plp                 ; Restore Bit
+    bcs @calc           
+    eor #$FF            ; Negate
 
-    ; 2. Update Volume (Optimized: No CLC/SEC)
-    bcs @vol_up         ; Carry=1: ADC Vol + Step + 1
+@calc:
+    adc ds_current      ; Accumulate
 
-@vol_down:              ; Carry=0: SBC Vol - Step - 1
-    lda ds_current
-    sbc ds_config       ; Sub step (bits 0-3)
-    bcs @save_vol       ; If result >= 0, save
-    lda #0              ; Clamp Min
-    beq @save_vol
+    ; 3. Triple-Check Clamp
+    bpl @ok             
+    lda #0              
+@ok:
+    cmp #16             
+    bcc @save           
+    lda #15             
 
-@vol_up:                ; Carry=1: ADC Vol + Step + 1
-    lda ds_current
-    adc ds_config       ; Add step (bits 0-3)
-    and #$0F            ; 4-bit limit
-    cmp #16             ; Overflow 15?
-    bcc @save_vol
-    lda #15             ; Clamp Max
-
-@save_vol:
+@save:
     sta ds_current
-    ldy #8              ; Target AY Reg (Ch A Vol)
+    ldy #8              ; AY Ch A Vol
     jsr SETAYR
 
-    ; 3. Reset Speed Delay
-    lda ds_config
-    lsr a
-    lsr a
-    lsr a
-    lsr a
-    and #$07
-    sta ds_delay
+    ; 4. Logic & Flow
+    dec ds_count        ; One bit done
+    bne @reload_delay   ; Still in the 16-bit window?
 
-    ; 4. Check Sequence Length (Only matters for One-Shot)
-    bit ds_config       ; Check Repeat bit (7)
-    bmi @done           ; If repeating, just exit (mask cycles forever)
-    
-    dec ds_count
-    bne @done           ; If not 16 bits yet, exit
-    
-    lda #$FF            ; Otherwise, disable sequence
+    ; --- 16-bit Cycle Over ---
+    lda ds_config       ; Check Repeat bit
+    bpl @stop_seq       ; If not Repeat, kill it
+    ; Fall through to reload counter/delay
+
+@reload_delay:
+    lda ds_config
+    jmp ds_restart
+
+@stop_seq:
+    lda #$FF
     sta ds_delay
 
 @done:
