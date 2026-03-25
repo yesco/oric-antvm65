@@ -22,8 +22,7 @@ ds_p_restart:
     ldx #16            ; Reset bit counter
     stx ds_p_count
     
-    ; --- Calculate Relative Step: Step16 = Current >> (8 - Config_Step) ---
-    ; (Simplified for prototype: assume Step 3 = >> 5 = Quarter Tone)
+    ; --- Calculate Relative Step ---
     lda ds_p_current+1 ; High byte
     sta ds_p_step+1
     lda ds_p_current   ; Low byte
@@ -55,55 +54,50 @@ ds_p_tick:
     bpl @rts
 
 @do_bit:
-    ; 1. Shift & Loop Mask
+    ; 1. Shift & Loop Mask (Cyclic)
     lda ds_p_mask
     asl a
     rol ds_p_mask+1
-    php
-    adc #0
-    sta ds_p_mask
+    adc #0             ; Loop the carry bit back into the low byte
+    sta ds_p_mask      ; Carry = 1 (Pitch Up), 0 (Pitch Down)
+
+    ; 2. Branchless Symmetrical Math (Speed+1)
+    ; Create an EOR mask in X: $00 if C=0, $FF if C=1
+    lda #0
+    sbc #0             ; If C=0, A=0. If C=1, A=$FF.
+    tax                ; X is now our bitwise "inverter"
+
+    ; --- Low Byte ---
+    eor ds_p_step      ; Invert step bits if C=1
+    ; Carry is still set if we are subtracting, providing the +1 for SBC
+    adc ds_p_current
+    sta ds_p_current
     
-    ; 2. 16-bit Delta Math (Carry: 0=Down, 1=Up)
-    plp                ; Restore Data Bit
-    bcs @p_up
-
-@p_down:               ; Period - Step - 1
-    ; (AY Period is inverse: Adding to register LOWERS pitch)
-    lda ds_p_current
-    adc ds_p_step      ; Carry is 0, so result is P + Step + 0
-    sta ds_p_current
-    lda ds_p_current+1
-    adc ds_p_step+1
-    sta ds_p_current+1
-    jmp @p_save
-
-@p_up:                 ; Period + Step + 1
-    lda ds_p_current
-    sbc ds_p_step      ; Carry is 1, so result is P - Step - 0
-    sta ds_p_current
-    lda ds_p_current+1
-    sbc ds_p_step+1
+    ; --- High Byte ---
+    txa                ; Restore inverter mask
+    eor ds_p_step+1
+    adc ds_p_current+1 ; Propagate carry from low byte
     sta ds_p_current+1
 
 @p_save:
     ; 12-bit Clamp: 0x0001 to 0x0FFF
     lda ds_p_current+1
-    and #$0F           ; Force 12-bit
+    and #$0F           
     sta ds_p_current+1
     
-    ldy #0             ; AY Reg 0 (Ch A Fine)
+    ldy #0             ; AY Reg 0
     lda ds_p_current
     jsr SETAYR
-    iny                ; AY Reg 1 (Ch A Coarse)
+    iny                ; AY Reg 1
     lda ds_p_current+1
     jsr SETAYR
 
-    ; 3. Sequence Logic (The "Zen" Version)
+    ; 3. Sequence Logic
     dec ds_p_count
     bne @rts
 
     lda ds_p_config
-    bpl ds_p_restart   ; Repeat? Reset everything.
+    bpl ds_p_restart   ; Repeat?
     
-    sta ds_p_delay     ; One-Shot? Kill it.
+    sta ds_p_delay     ; One-Shot? Kill it ($FF).
     rts
