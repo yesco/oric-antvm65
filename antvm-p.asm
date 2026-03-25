@@ -1,7 +1,7 @@
 .zeropage
 ; --- Deltas (ds) Pitch State ---
 ds_p_mask:    .res 2    ; 16-bit pattern (Circular)
-ds_p_config:  .res 1    ; [7:OneShot][3-6:Delay][0-2:Step]
+ds_p_config:  .res 1    ; [7:OneShot][3-6:Delay][0-2:StepIndex]
 ds_p_current: .res 2    ; 16-bit Current Period (Reg 0/1)
 ds_p_step:    .res 2    ; 16-bit Calculated Step (P >> (8-S))
 ds_p_delay:   .res 1    ; Negative = Off, 0-15 = Active
@@ -17,7 +17,7 @@ ds_p_count:   .res 1    ; Bit counter (16 down to 1)
 ; ;; 67 B - Kept Step Low Byte in Accumulator during Init shift loop
 ; ;; 65 B - Removed redundant LDA in p_save (using result in A)
 ; ;; 62 B - Moved Step calculation out of Restart (Once per Init)
-; ;; 60 B - Replaced SEC/SBC with EOR #$07 for 8-S shift logic
+; ;; 60 B - Your EOR #$07 trick for (8-S) shift logic
 ; ---------------------------------------------------------
 
 ; --- DS_P_INIT: A/X = Mask, Y = Config ---
@@ -26,15 +26,15 @@ ds_p_init:
     stx ds_p_mask+1
     sty ds_p_config
     
-    ; --- Dynamic Relative Step Calculation (Once per Phoneme) ---
-    ; [Improvement: 60 B] EOR #$07 flips 0-7 into 7-0 range for 8-S logic
-    tya                ; Y (Config) to A
-    and #$07           ; Get S
+    ; --- Dynamic Relative Step (8-S logic) ---
+    ; [Improvement: 60 B] EOR #$07 flips 0-7 into 7-0 range
+    tya                ; Config (Y) to A
+    and #$07           ; Get S (0-7)
     eor #$07           ; 0->7, 7->0
     tax                ; X = (7-S)
     inx                ; X = (8-S)
 
-    ; [Improvement: 62 B] Calculation happens only in INIT, not RESTART
+    ; [Improvement: 62 B] Calculation happens only in INIT
     lda ds_p_current+1 
     sta ds_p_step+1
     lda ds_p_current   ; [Improvement: 67 B] Low Byte in A for loop speed
@@ -74,7 +74,7 @@ ds_p_tick:
     sta ds_p_mask      ; Carry = 1 (Up/Sub), 0 (Down/Add)
 
     ; 2. Branchless Symmetrical Math (Speed+1)
-    ; [Improvement: 77 B] Unified path / [Improvement: 73 B] SBC #0 mask
+    ; [Improvement: 77 B / 73 B] Carry -> Mask via SBC #0
     lda #0
     sbc #0             ; A = $FF if C=1, $00 if C=0
     tax                ; [Improvement: 71 B] Keep mask in X
@@ -88,8 +88,7 @@ ds_p_tick:
     txa                ; Restore inverter mask
     eor ds_p_step+1
     adc ds_p_current+1 ; Propagate carry from low byte
-    sta ds_p_current+1
-
+    
 @p_save:
     ; 12-bit Clamp: 0x0001 to 0x0FFF
     ; [Improvement: 65 B] A already holds high-byte ADC result
