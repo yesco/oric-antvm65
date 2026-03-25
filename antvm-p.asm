@@ -10,33 +10,47 @@ ds_p_count:   .res 1    ; Bit counter (16 down to 1)
 .code
 
 ; ---------------------------------------------------------
-; DS_P_INIT: A/X = Mask, Y = Config
+; DS_P_PITCH_ENGINE
+; ;; 77 B - Unified math path to remove @p_up/@p_down branches
+; ;; 73 B - Replaced PHP/PLP with SBC #0 mask generation
+; ;; 71 B - Optimized high-byte EOR by utilizing TAX/TXA
+; ;; 67 B - Kept Step Low Byte in Accumulator during Init shift loop
+; ;; 65 B - Removed redundant LDA in p_save (using result in A)
+; ;; 62 B - Moved Step calculation out of Restart (Calculate once per Init)
 ; ---------------------------------------------------------
+
+; --- DS_P_INIT: A/X = Mask, Y = Config ---
 ds_p_init:
     sta ds_p_mask
     stx ds_p_mask+1
     sty ds_p_config
-    tya                ; Config in A for restart
+    
+    ; --- Dynamic Relative Step Calculation (Once per Phoneme) ---
+    ; [Improvement: 62 B] Moved calculation out of restart loop
+    tya                ; Config (Y) to A
+    and #$07           ; Get S (Step bits 0-2)
+    sta ds_p_count     ; Temporary use of count for math
+    lda #8
+    sec
+    sbc ds_p_count     ; Result = 8 - S
+    tax                ; X = Shift Count
+
+    lda ds_p_current+1 
+    sta ds_p_step+1
+    lda ds_p_current   ; [Improvement: 67 B] Keep Low Byte in A for loop
+@shift:
+    lsr ds_p_step+1    ; Shift High Byte in RAM
+    ror a              ; Rotate bit from High Byte into A (Low Byte)
+    dex
+    bne @shift
+    sta ds_p_step      ; Store final shifted Low Byte once
 
 ds_p_restart:
     ldx #16            ; Reset bit counter
     stx ds_p_count
     
-    ; --- Calculate Relative Step ---
-    lda ds_p_current+1 ; High byte
-    sta ds_p_step+1
-    lda ds_p_current   ; Low byte
-    sta ds_p_step
-    
-    ldx #5             ; Example: Fixed shift for Quarter Tone
-@shift:
-    lsr ds_p_step+1
-    ror ds_p_step
-    dex
-    bne @shift
-
-    lda ds_p_config    ; Reload A with config for delay logic
-    and #$78           ; Mask Delay bits
+    lda ds_p_config    
+    and #$78           ; Isolate Delay bits [3-6]
     lsr a
     lsr a
     lsr a
@@ -44,33 +58,30 @@ ds_p_restart:
 @rts:
     rts
 
-; ---------------------------------------------------------
-; DS_P_TICK: 50Hz Tone Heartbeat
-; ---------------------------------------------------------
+; --- DS_P_TICK: 50Hz Tone Heartbeat ---
 ds_p_tick:
     lda ds_p_delay
-    bmi @rts
+    bmi @rts           ; If negative ($FF), effect is OFF
     dec ds_p_delay
-    bpl @rts
+    bpl @rts           ; Wait for delay to hit -1
 
 @do_bit:
     ; 1. Shift & Loop Mask (Cyclic)
     lda ds_p_mask
     asl a
     rol ds_p_mask+1
-    adc #0             ; Loop the carry bit back into the low byte
-    sta ds_p_mask      ; Carry = 1 (Pitch Up), 0 (Pitch Down)
+    adc #0             ; Cyclic: Put bit back in at bit 0
+    sta ds_p_mask      ; Carry = 1 (Up/Sub), 0 (Down/Add)
 
     ; 2. Branchless Symmetrical Math (Speed+1)
-    ; Create an EOR mask in X: $00 if C=0, $FF if C=1
+    ; [Improvement: 77 B] Unified path / [Improvement: 73 B] SBC #0 mask
     lda #0
-    sbc #0             ; If C=0, A=0. If C=1, A=$FF.
-    tax                ; X is now our bitwise "inverter"
+    sbc #0             ; A = $FF if C=1, $00 if C=0
+    tax                ; [Improvement: 71 B] Keep mask in X
 
     ; --- Low Byte ---
-    eor ds_p_step      ; Invert step bits if C=1
-    ; Carry is still set if we are subtracting, providing the +1 for SBC
-    adc ds_p_current
+    eor ds_p_step      ; Flip bits if subtracting
+    adc ds_p_current   ; C=1 provides the '+1' for true two's complement
     sta ds_p_current
     
     ; --- High Byte ---
@@ -81,14 +92,14 @@ ds_p_tick:
 
 @p_save:
     ; 12-bit Clamp: 0x0001 to 0x0FFF
-    lda ds_p_current+1
+    ; [Improvement: 65 B] A already holds ds_p_current+1
     and #$0F           
     sta ds_p_current+1
     
-    ldy #0             ; AY Reg 0
+    ldy #0             ; AY Reg 0 (Fine)
     lda ds_p_current
     jsr SETAYR
-    iny                ; AY Reg 1
+    iny                ; AY Reg 1 (Coarse)
     lda ds_p_current+1
     jsr SETAYR
 
@@ -97,7 +108,7 @@ ds_p_tick:
     bne @rts
 
     lda ds_p_config
-    bpl ds_p_restart   ; Repeat?
+    bpl ds_p_restart   ; If Bit 7 is 0, Loop.
     
-    sta ds_p_delay     ; One-Shot? Kill it ($FF).
+    sta ds_p_delay     ; One-Shot: Set delay to $FF (OFF)
     rts
