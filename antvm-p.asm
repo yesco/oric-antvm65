@@ -16,7 +16,8 @@ ds_p_count:   .res 1    ; Bit counter (16 down to 1)
 ; ;; 71 B - Optimized high-byte EOR by utilizing TAX/TXA
 ; ;; 67 B - Kept Step Low Byte in Accumulator during Init shift loop
 ; ;; 65 B - Removed redundant LDA in p_save (using result in A)
-; ;; 62 B - Moved Step calculation out of Restart (Calculate once per Init)
+; ;; 62 B - Moved Step calculation out of Restart (Once per Init)
+; ;; 60 B - Replaced SEC/SBC with EOR #$07 for 8-S shift logic
 ; ---------------------------------------------------------
 
 ; --- DS_P_INIT: A/X = Mask, Y = Config ---
@@ -26,31 +27,30 @@ ds_p_init:
     sty ds_p_config
     
     ; --- Dynamic Relative Step Calculation (Once per Phoneme) ---
-    ; [Improvement: 62 B] Moved calculation out of restart loop
-    tya                ; Config (Y) to A
-    and #$07           ; Get S (Step bits 0-2)
-    sta ds_p_count     ; Temporary use of count for math
-    lda #8
-    sec
-    sbc ds_p_count     ; Result = 8 - S
-    tax                ; X = Shift Count
+    ; [Improvement: 60 B] EOR #$07 flips 0-7 into 7-0 range for 8-S logic
+    tya                ; Y (Config) to A
+    and #$07           ; Get S
+    eor #$07           ; 0->7, 7->0
+    tax                ; X = (7-S)
+    inx                ; X = (8-S)
 
+    ; [Improvement: 62 B] Calculation happens only in INIT, not RESTART
     lda ds_p_current+1 
     sta ds_p_step+1
-    lda ds_p_current   ; [Improvement: 67 B] Keep Low Byte in A for loop
+    lda ds_p_current   ; [Improvement: 67 B] Low Byte in A for loop speed
 @shift:
     lsr ds_p_step+1    ; Shift High Byte in RAM
-    ror a              ; Rotate bit from High Byte into A (Low Byte)
+    ror a              ; Rotate bit from High into A (Low Byte)
     dex
     bne @shift
-    sta ds_p_step      ; Store final shifted Low Byte once
+    sta ds_p_step      ; Store final Low Byte once
 
 ds_p_restart:
     ldx #16            ; Reset bit counter
     stx ds_p_count
     
     lda ds_p_config    
-    and #$78           ; Isolate Delay bits [3-6]
+    and #$78           ; Extract 4-bit Delay (bits 3-6)
     lsr a
     lsr a
     lsr a
@@ -92,7 +92,7 @@ ds_p_tick:
 
 @p_save:
     ; 12-bit Clamp: 0x0001 to 0x0FFF
-    ; [Improvement: 65 B] A already holds ds_p_current+1
+    ; [Improvement: 65 B] A already holds high-byte ADC result
     and #$0F           
     sta ds_p_current+1
     
