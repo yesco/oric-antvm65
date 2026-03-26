@@ -516,8 +516,46 @@
 ;; C+B+A == all same
 
 
+antvm:  
+        ;; Channel A
+        ldx #0
+        jsr runchannel
+
+        ;; Channel B
+        ldx #1
+        jsr runchannel
+
+        ;; Channel C
+        ldx #2
+        jsr runchannel
+
+        ;; Channel N
+        ldx #3
+        jsr run
+
+        ;; Tick A
+        ldax #0
+        jsr tick
+
+        rts
+
+        
+;;; X= channel 0..3 (A,B,C,N)
+runchannel:
+        ;;  ...
+        rts
+
+
 note:   
         sty ipy
+        ;; "play"
+        PUTC 10
+        jsr _print2h
+
+        ;; Yield
+        rts
+
+
 
 interpret:
         ;; Get command byte
@@ -578,26 +616,175 @@ groupjmps:
 
 ;;; --------------------------------------------------
 ;;; Command implementations
+;;; 
+;;; (only comamnds that "yield" should do "rts")
+;;; (others "take no time" and should continue interpreting)
+
+cmdWAIT:        
+        ;; TODO: set delay
+
+        ;; yield
+        rts
+
+
+cmdCTRL:        
+        ;; ...
+        jmp interpret
+
+
+cmdSETAY:       
+        ;; regs[Y] = A;
+        jsr SETAYR
+
+        jmp interpret
+
 
         ;; Group 3 (Rhythm Grid)
 cmdVALUE:       
+        ;; TODO: ...?
         sty nextvalueshift
-        RTS
+
+        jmp interpret
+
+
+cmdLocalCALL:   
+        
+
+        jmp interpret
+
+
+cmdLangCALL:    
+
+        jmp interpret
 
 
 cmdFlowDrums:   
-        tya
-        ;; ? dum (4-7)
-        CMP #4
-        BCS cmdDRUM
+;;; 19 B (saves (- 26 19) 7 bytes cmp JMP ()
+;;; (17 B doing table BRA jmp for 8 items)
+        ;; ? 0
+        cpy #0
+        beq cmdTAILCALL
+        ;; ? 1
+        dey
+        beq cmdGOTO
+        ;; ? 2
+        dey
+        beq cmdBEQ
+        ;; ? 3
+        dey
+        beq cmdBNE
 
-        ;; No: It's a flow command (Return/Branch)
-        ASL
-        TAX
-        JMP (flowjmps, x)
+;;; TODO: Do these take a parameter?
+;;;   otherwise need to "put it back"
+;;;   OR: move them to single OP codes
+;;; TODO: are drum sounds effected by VALUE+REST?
+;;;   OR they could use a parameter?
 
-        .dw ...
 
-cmdDRUM:        
+;;; - Skip into middles
+;;; - Volume
+;;; - Pitch
+;;; - Note/freq
+
+;;; - retrigger every interval "ticks"
+;;; - volume slides
+;;; - arpeggio only for "chiptunes" for percussions effects
+
+;;; - sample lengths are "fixed" and bleed over,
+;;;   or play accumulated (or are cut-short w new one)
+;;; - drums don't have rest
+;;; - "empty" lines - just don't play trigger
+
+        ;; ? 4
+        dey
+        beq cmdKickS
+        ;; ? 5
+        dey
+        beq cmdSnareSH
+        ;; ? 6
+        dey
+        beq cmdHiHatClosedCH
+        ;; = 7 !
+
+;; Hardware Envelope Generator (Registers 11, 12, and 13) to handle the volume decay automatically.
+
+;; For all these sounds, you must first enable the Mixer (Register 7). In the AY-3-8910, a 0 bit enables the feature, and a 1 bit disables it.
+
+;; Envelope Shape (R13): Set to 9.
+
+;; Summary Register Table (Channel A)
+
+;; Sound  Tone  Noise    Mixer    Ampl  Env Spd  Shape
+;; Sound  (R0/R1) (R6)    (R7)    (R8) (R11/R12) (R13)
+
+;; Kick	Low	N/A	$FE	$10	Mid	$09
+;; Snare	Mid	Mid	$F6	$10	Mid	$09
+;; CH	N/A	High	$F7	$10	Fast	$09
+;; OH	N/A	High	$F7	$10	Slow	$09
+;;; 
+;; Note: In your tracker code, remember that writing to Register 13 resets the envelope. You should write to R13 last to trigger the "one-shot" sound immediately.
+;; Do you want a code snippet in C or 6502 assembly to see how these register writes look in practice?
+
+
+;; 4. Open Hi-hat ("ts" - Sizzle)
+;;; 
+;; Similar to the closed hat, but with a longer decay.
+;; Mixer (R7): Enable Noise A only (Value: $F7).
+;; Noise Period (R6): High frequency (Value: $02).
+;; Amplitude (R8): Set to 16 ($10).
+;; Envelope Period (R11, R12): Set to a larger value than the closed hat (e.g.,).
+cmdHiHatOpenTS:
+        ;; TODO:
+
+;; 3. Closed Hi-hat ("ch" - Tick)
+;;; 
+;; This is pure high-frequency noise with an extremely short decay.
+;;; 
+;; Mixer (R7): Enable Noise A only (Bit 3 = 0). Disable Tone (Value: %11110111 or $F7).
+;; Noise Period (R6): Set to a very high frequency (Value: $01 or $02).
+;; Amplitude (R8): Set to 16 ($10).
+;; Envelope Period (R11, R12): Set to a very small value for a "tick" (e.g., ).
+;; Envelope Shape (R13): Set to 9.
+cmdHiHatClosedCH
+        ;; TODO:
+
+;; 2. Snare Drum ("sh" - Snap)
+;;; 
+;; A snare needs a mix of tone and noise.
+;;; 
+;; Mixer (R7): Enable Tone A and Noise A (Bits 0 & 3 = 0). (Value: %11110110 or $F6).
+;; Noise Period (R6): Set to a mid-range "crunch" (e.g., Value: $0F).
+;; Tone Pitch (R0, R1): Set to a mid-range note for "body."
+;; Amplitude (R8): Set to 16 ($10) for envelope control.
+;; Envelope Shape (R13): Set to 9 for a quick decay.
+cmdSnareSH:     
+        ;; TODO:
+
+;; 1. Kick Drum ("s" - Thump)
+;;; 
+;; A kick is essentially a low-pitched tone with a fast decay.
+;;; 
+;; Mixer (R7): Enable Tone on Channel A (Bit 0 = 0). Disable everything else (Value: %11111110 or $FE).
+;; Tone Pitch (R0, R1): Set a low frequency (e.g., ).
+;; Amplitude (R8): Set to 16 (Value: $10) to tell the chip to use the hardware envelope instead of a fixed volume.
+;; Envelope Period (R11, R12): Set for a fast decay (e.g., ).
+;; Envelope Shape (R13): Set to 9 (\ attack \) for a single downward fade.
+
+cmdKickS:       
+        ;; TODO:
+
+        ;; Yield
         rts
 
+
+
+cmdBNE:
+cmdBEQ: 
+cmdGOTO:
+cmdTAILCALL:
+        ;; ...
+        jmp interpret
+
+
+cmdModSet:
+        
