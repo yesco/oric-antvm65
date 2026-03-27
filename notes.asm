@@ -1,16 +1,20 @@
 ;;; 35 B 12c - rol sequence is more compact than 4 lsr
 ;;; 33 B 22c - dey/bmi saves 2 bytes and cycles per loop
 ;;; 32 B 20c - Keeping hi in A during shifts saves 1 byte and 6c per loop
-;;; 42 B 35c - Added 16-bit signed detune/pitch-bend (A = detune_lo, Y = detune_hi)
-;;; 90 B 74-149c - Total Size (42 B code, 48 B table)
+;;; 38 B 32c - keeping lo in A makes addition faster and saves 4 bytes
+;;; 37 B 35c - Output in AX: A=Lo, X=Hi
+;;; 35 B 30c - Using Y for temp storage instead of PHA/PLA saves 2 bytes
+;;; 83 B 63-138c - Total Size (35 B code, 48 B table)
 
 ; Input: 
 ;   A = %OOONNNNN (Octave 0-7, Note 0-23)
-;   detune_lo/hi = 16-bit signed offset to add to the period
-; Output: tmp_low/high (12-bit AY period)
+;   detune_lo/hi = 16-bit signed offset
+; Output: 
+;   A = Pitch Low Byte
+;   X = Pitch High Byte
 calc_pitch:
-    asl                 ; 2B | A = %OONNNNN0, Octave bit 7 -> Carry
-    tay                 ; 1B | Save for later
+    asl                 ; 2B | Note * 2, Bit 7 -> Carry
+    tay                 ; 1B | Save Note*2
     and #%00111110      ; 2B | Mask Note index (0-46)
     tax                 ; 1B | X = table offset
     
@@ -19,33 +23,31 @@ calc_pitch:
     rol                 ; 1B 
     rol                 ; 1B 
     and #%00000111      ; 2B | A = Octave (0-7)
-    tay                 ; 1B | Y = loop counter
+    tay                 ; 1B | Y = loop counter (0-7)
 
-    lda period_table, x   ; 3B
-    sta tmp_low           ; 3B
-    lda period_table+1, x ; 3B | Load High byte into A for loop
+    lda period_table+1, x ; 3B | Load High byte first
+    sta tmp_high          ; 3B | Store high byte to shift in memory
+    lda period_table, x   ; 3B | Load Low byte into A for loop
     
 octave_loop:
-    dey                 ; 1B | Decrement counter
-    bmi done            ; 2B | If Y was 0, it's now $FF, so exit
-    lsr                 ; 1B | Shift A (hi byte)
-    ror tmp_low         ; 3B | Rotate into low byte
-    jmp octave_loop     ; 3B | Repeat
+    dey                 ; 1B
+    bmi pitch_done      ; 2B | If Y was 0, skip shifts
+    lsr tmp_high        ; 5B | Shift high byte in memory
+    ror                 ; 1B | Rotate Carry into A (low byte)
+    jmp octave_loop     ; 3B
 
-done:
-    ; --- Detune / Pitch Bend Section ---
+pitch_done:
+    ; --- Optimized Detune Addition ---
     clc                 ; 1B
-    adc detune_hi       ; 3B | Add signed high byte
-    sta tmp_high        ; 3B
-    lda tmp_low         ; 3B
-    adc detune_lo       ; 3B | Add signed low byte
-    sta tmp_low         ; 3B
-    bcc skip_inc        ; 2B | Handle carry to high byte
-    inc tmp_high        ; 3B
-skip_inc:
+    adc detune_lo       ; 3B | A = Final Low Byte
+    tay                 ; 1B | Use Y as temp for Low Byte
+    lda tmp_high        ; 3B
+    adc detune_hi       ; 3B | A = Final High Byte
+    tax                 ; 1B | Move High Byte to X
+    tya                 ; 1B | Move Low Byte back to A
     rts                 ; 1B
 
-; 24-TET Period Table (Octave 0) - Oric Atmos 1MHz (62.5kHz AY clock)
+; 24-TET Period Table (Octave 0) - Oric Atmos 1MHz
 period_table:
     .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
     .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
