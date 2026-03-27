@@ -746,6 +746,10 @@ cmdFlowDrums:
 ;;; - "empty" lines - just don't play trigger
 
 
+
+;;; In the AY chip, the Hardware Envelope (R13) is a "fire and forget" analog-style decay, while your ticker manager likely handles "Software Envelopes" by writing to R8/R9/R10 every frame.
+;;; Note on Vol Envelopes: If your ticker manager is active, ensure it doesn't overwrite Register 10 with a volume value of 0–15 immediately after these routines set it to 16 (Hardware mode), or the drum will go silent or lose its hardware 
+
 .include "drum.asm"        
 
 

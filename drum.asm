@@ -5,7 +5,7 @@
         pha             ; Save Variation A
         
         ;; Set Channel C to Hardware Envelope Mode
-        lda #$10        ; Value 16 = Use Envelope
+        lda #$10        ; Value 16 = Hardware Envelope Control
         ldy #10         ; R10 = Amplitude C
         jsr SETAY
 
@@ -21,11 +21,11 @@
 cmdHiHatOpenTS:
         lda #$24        ; Mixer: Noise C ON, Tone C OFF
         jsr setMixerC
-        lda #$00
-        sta drum_slide_val ; No slide for hats
+        lda #$00        ; Reset/Disable software slide for hats
+        sta vol_env_C   ; (Assuming your ticker needs a reset here)
         pla             ; Get Variation
         clc
-        adc #$02        ; Base Noise
+        adc #$02        ; Base Noise Pitch
         ldy #6
         jsr SETAY
         ldx #$00        ; Env Period Low
@@ -37,7 +37,7 @@ cmdHiHatClosedCH:
         lda #$24        ; Mixer: Noise C ON, Tone C OFF
         jsr setMixerC
         lda #$00
-        sta drum_slide_val
+        sta vol_env_C
         pla             ; Get Variation
         clc
         adc #$01
@@ -51,28 +51,29 @@ cmdHiHatClosedCH:
 cmdSnareSH:     
         lda #$00        ; Mixer: Noise C ON, Tone C ON
         jsr setMixerC
-        lda #$10
-        sta drum_slide_val ; Set a snappy downward slide speed
-        lda #$0F        ; Mid-range crunch
+        lda #$0F        ; Mid-range noise crunch
         ldy #6
         jsr SETAY
-        pla             ; Variation
+        pla             ; Get Variation for Tone pitch
         ldy #4          ; Fine Tone C
         jsr SETAY
         lda #$01        ; Coarse Tone C
         ldy #5
         jsr SETAY
+        
+        ;; Initialize ticker manager slide
+        lda #$08        ; Speed of pitch drop
+        sta freq_slide_C 
+        
         ldx #$00
-        lda #$08
+        lda #$08        ; Hardware Env Period
         jmp trigger
 
 ;;; 1. Kick Drum ("s" - Thump)
 cmdKickS:       
         lda #$20        ; Mixer: Noise C OFF, Tone C ON
         jsr setMixerC
-        lda #$20
-        sta drum_slide_val ; Heavy slide for "booom"
-        pla             ; Variation
+        pla             ; Get Variation
         clc
         adc #$05
         ldy #5          ; Coarse Tone C
@@ -80,8 +81,13 @@ cmdKickS:
         lda #$00        ; Fine Tone C
         ldy #4
         jsr SETAY
+        
+        ;; Initialize ticker manager slide
+        lda #$15        ; Fast/Deep pitch drop
+        sta freq_slide_C
+
         ldx #$00
-        lda #$0A
+        lda #$0A        ; Hardware Env Period
         ;; fall through to trigger
 
 ;;; --- COMMON TRIGGER ---
@@ -92,7 +98,7 @@ trigger:
         ldy #11         ; R11 = Env Period Fine
         jsr SETAY
         lda #$09        ; Shape: Single Decay (\)
-        ldy #13         ; R13 starts the one-shot
+        ldy #13         ; R13 starts the hardware cycle
         jsr SETAY
         rts
 
@@ -100,7 +106,7 @@ trigger:
 setMixerC:
         pha
         lda mixer_cache 
-        and #%11011011  ; Clear Channel C bits
+        and #%11011011  ; Clear Channel C bits (2 and 5)
         sta mixer_cache
         pla
         and #%00100100  ; Keep only relevant bits
@@ -112,4 +118,5 @@ setMixerC:
         rts
 
 mixer_cache:    .byte $FF
-drum_slide_val: .byte $00 ; Global for the Interrupt to read
+freq_slide_C:   .byte $00 ; Linked to your ticker manager
+vol_env_C:      .byte $00 ; Linked to your ticker manager
