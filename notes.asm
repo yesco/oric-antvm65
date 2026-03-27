@@ -1,83 +1,106 @@
-;;; 35 B 12c - rol sequence is more compact than 4 lsr
+;;; AntVM: interpreter, command dispatch; note calculation
+
+;;; Summary:
+
+;;; (+ 36 38) = 74 B old atnvm 36 "interpret+dispatch"+notes 38
+;;; (+ 42 28) = 70 B NEW 42 "interpret+dispatch"+ notes 28
+
+
+;;;===NOTES ONLY:
+;;; 40 B 32c - lo in A makes addition faster and saves 4 bytes
+;;; 37 B 12c - rol sequence is more compact than 4 lsr
+;;; 35 B 30c - Y instead of PHA/PLA saves 2 bytes
 ;;; 33 B 22c - dey/bmi saves 2 bytes and cycles per loop
-;;; 32 B 20c - Keeping hi in A during shifts saves 1 byte and 6c per loop
-;;; 38 B 32c - keeping lo in A makes addition faster and saves 4 bytes
-;;; 35 B 30c - Using Y for temp storage instead of PHA/PLA saves 2 bytes
-;;; 31 B 26c - %NNNNNOOO + register-only logic (no stack) saves 4 bytes
+;;; 32 B 20c - hi in A at shifts saves 1 byte,6c/loop
+;;; 31 B 26c - %NNNNNOOO + register-only logic -4 bytes
+;;; 
+;;;===INTERPRET+NOTES:
 ;;; 51 B 54c - Optimized Command Path: No X-store, direct A masking
 ;;; 64 B 66c - NMOS 6502 RTS-dispatch with specific named cmd groups
 ;;; 67 B 68c - Updated PCC bits to map 11PCCIII format correctly
 ;;; 146 B Total Size (98 B code, 48 B table)
 
-; Input: ipy (stream index), detune_lo/hi
-; Note Path: %NNNNNOOO (Note 0-23, Octave 0-7)
-; Cmd Path:  %11PCCIII (P=Param flag, CC=Group, III=Index)
+
+;;; Interpreter dispatch to commands/notes
+;;; 
+;;; Input: ipy (stream index), detune_lo/hi
+;;; 
+;;; Comamnnd structure:
+;;;   nnnnn ooo (Note 0-23, Octave 0-7)
+;;;   11pgg iii (P=Param flag, gg=Group, iii=instr/data)
+;;; 
 interpret:
-    ldy ipy             ; 3B | Load stream index
-    lda (stream),y      ; 5B | Get command byte
-    inc ipy             ; 3B | inc pointer
-    tax                 ; 1B | X = raw byte
-    
-    and #%00000111      ; 2B | Isolate III (Index or Octave)
-    tay                 ; 1B | Y = III
+        ldy ipy             ; 3B | Load stream index
+        lda (stream),y      ; 5B | Get command byte
+        inc ipy             ; 3B | inc pointer
+        tax                 ; 1B | X = raw byte
+        
+        and #%00000111      ; 2B | Isolate III (Index or Octave)
+        tay                 ; 1B | Y = III
 
-    txa                 ; 1B
-    lsr                 ; 1B | %011PCCII
-    lsr                 ; 1B | %0011PCCI
-    and #%00111110      ; 2B | Mask for Note*2 or CmdBits*2
-    tax                 ; 1B | X = index
+        txa                 ; 1B
+        lsr                 ; 1B | %011PCCII
+        lsr                 ; 1B | %0011PCCI
+        and #%00111110      ; 2B | Mask for Note*2 or CmdBits*2
+        tax                 ; 1B | X = index
 
-    cpx #48             ; 2B | Check if Note index >= 48
-    bcc note_path       ; 2B | If lower, it's a Note
+        cpx #48             ; 2B | Check if Note index >= 48
+        bcc cmdNOTE         ; 2B | If lower, it's a Note
 
-command_path:
-    ; A contains shifted value %0011PCCI. P=bit 3, CC=bits 1-2.
-    and #%00001000      ; 2B | Check shifted P bit (bit 3)
-    beq no_param        ; 2B
-    
-    ldy ipy             ; 3B
-    lda (stream),y      ; 5B | Fetch Parameter into A
-    inc ipy             ; 3B
-    
+command:
+                                ; A contains shifted value %0011PCCI. P=bit 3, CC=bits 1-2.
+        and #%00001000      ; 2B | Check shifted P bit (bit 3)
+        beq no_param        ; 2B
+        
+        ldy ipy             ; 3B
+        lda (stream),y      ; 5B | Fetch Parameter into A
+        inc ipy             ; 3B
+        
 no_param:
-    txa                 ; 1B
-    and #%00001110      ; 2B | Isolate PCC*2 (Bits 1,2,3)
-    tax                 ; 1B
-    
-    lda groupjmps+1, x  ; 3B | RTS dispatch trick
-    pha                 ; 1B
-    lda groupjmps, x    ; 3B
-    pha                 ; 1B
-    rts                 ; 1B
+        txa                 ; 1B
+        and #%00001110      ; 2B | Isolate PCC*2 (Bits 1,2,3)
+        tax                 ; 1B
+        
+        lda groupjmps+1, x  ; 3B | RTS dispatch trick
+        pha                 ; 1B
+        lda groupjmps, x    ; 3B
+        pha                 ; 1B
+        rts                 ; 1B
 
-; --- Data Tables ---
+                                ; --- Data Tables ---
 groupjmps:      
-    .word cmdWAIT-1, cmdCTRL-1, cmdSETAY-1, cmdVALUE-1
-    .word cmdLocalCALL-1, cmdLangCALL-1, cmdFlowDrums-1, cmdModSet-1
+        .word cmdWAIT-1, cmdCTRL-1, cmdSETAY-1, cmdVALUE-1
+        .word cmdLocalCALL-1, cmdLangCALL-1, cmdFlowDrums-1, cmdModSet-1
 
 period_table:
-    .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
-    .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
-    .word 2408, 2339, 2273, 2208, 2145, 2084, 2025, 1967
+        .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
+        .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
+        .word 2408, 2339, 2273, 2208, 2145, 2084, 2025, 1967
 
-note_path:
-    lda period_table+1, x ; 3B
-    sta tmp_high          ; 3B
-    lda period_table, x   ; 3B | A = Low Byte
-    
+;;; Input from dispatch: X=nnnnn0 Y=oct
+cmdNOTE:
+        lda period_table+1, x ; 3B
+        sta tmp_high          ; 3B
+        lda period_table, x   ; 3B | A = Low Byte
+        
 octave_loop:
-    dey                 ; 1B
-    bmi pitch_done      ; 2B
-    lsr tmp_high        ; 5B
-    ror                 ; 1B
-    jmp octave_loop     ; 3B
+        dey                 ; 1B
+        bmi pitch_done      ; 2B
+        lsr tmp_high        ; 5B
+        ror                 ; 1B
+        jmp octave_loop     ; 3B
 
+;;; TODO: hwoabout delta encoding stuff?
+;;;   maybe remove and do in "ticks"
+;;;   do ticks just manipulate values
 pitch_done:
-    clc                 ; 1B
-    adc detune_lo       ; 3B | A = Final Low
-    tay                 ; 1B | Temp save Low in Y
-    lda tmp_high        ; 3B
-    adc detune_hi       ; 3B | A = Final High
-    tax                 ; 1B | X = Final High
-    tya                 ; 1B | A = Final Low
-    rts                 ; 1B
+        clc                 ; 1B
+        adc detune_lo       ; 3B | A = Final Low
+        tay                 ; 1B | Temp save Low in Y
+        lda tmp_high        ; 3B
+        adc detune_hi       ; 3B | A = Final High
+        tax                 ; 1B | X = Final High
+        tya                 ; 1B | A = Final Low
+
+        ;;  Yield
+        rts                 ; 1B
