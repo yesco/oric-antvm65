@@ -1,9 +1,12 @@
 ;;; 35 B 12c - rol sequence is more compact than 4 lsr
 ;;; 33 B 22c - dey/bmi saves 2 bytes and cycles per loop
 ;;; 32 B 20c - Keeping hi in A during shifts saves 1 byte and 6c per loop
-;;; 80 B 39-114c - Total Size (32 B code, 48 B table)
+;;; 42 B 35c - Added 16-bit signed detune/pitch-bend (A = detune_lo, Y = detune_hi)
+;;; 90 B 74-149c - Total Size (42 B code, 48 B table)
 
-; Input: A = %OOONNNNN (Octave 0-7, Note 0-23)
+; Input: 
+;   A = %OOONNNNN (Octave 0-7, Note 0-23)
+;   detune_lo/hi = 16-bit signed offset to add to the period
 ; Output: tmp_low/high (12-bit AY period)
 calc_pitch:
     asl                 ; 2B | A = %OONNNNN0, Octave bit 7 -> Carry
@@ -30,10 +33,19 @@ octave_loop:
     jmp octave_loop     ; 3B | Repeat
 
 done:
-    sta tmp_high        ; 3B | Save final High byte from A
+    ; --- Detune / Pitch Bend Section ---
+    clc                 ; 1B
+    adc detune_hi       ; 3B | Add signed high byte
+    sta tmp_high        ; 3B
+    lda tmp_low         ; 3B
+    adc detune_lo       ; 3B | Add signed low byte
+    sta tmp_low         ; 3B
+    bcc skip_inc        ; 2B | Handle carry to high byte
+    inc tmp_high        ; 3B
+skip_inc:
     rts                 ; 1B
 
-; 24-TET Period Table (Octave 0) - Oric Atmos 1MHz
+; 24-TET Period Table (Octave 0) - Oric Atmos 1MHz (62.5kHz AY clock)
 period_table:
     .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
     .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
