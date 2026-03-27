@@ -5,7 +5,8 @@
 ;;; 35 B 30c - Using Y for temp storage instead of PHA/PLA saves 2 bytes
 ;;; 31 B 26c - %NNNNNOOO + register-only logic (no stack) saves 4 bytes
 ;;; 52 B 58c - NMOS 6502 Interpret: ipy pointer (no stack), RTS dispatch
-;;; 131 B Total Size (83 B code, 48 B table)
+;;; 55 B 62c - Swapped order: Command path first, then note path
+;;; 134 B Total Size (86 B code, 48 B table)
 
 ; Input: ipy (stream index), detune_lo/hi
 ; Note Path: %NNNNNOOO (Note 0-23, Octave 0-7)
@@ -23,33 +24,10 @@ interpret:
     lsr                 ; 1B | %011PCCII
     lsr                 ; 1B | %0011PCCI
     and #%00111110      ; 2B | Mask for Note*2 or Group*2
-    tax                 ; 1B | X = index (Note*2 or 11PCC*2)
+    tax                 ; 1B | X = index
 
-    cpx #48             ; 2B | If Note index >= 24*2 (48), it's a command
-    bcs command_path    ; 2B
-
-note_path:
-    ; X = Note * 2, Y = Octave
-    lda period_table+1, x ; 3B
-    sta tmp_high          ; 3B
-    lda period_table, x   ; 3B | A = Low Byte
-    
-octave_loop:
-    dey                 ; 1B | Decrement octave
-    bmi pitch_done      ; 2B | Exit if Y was 0
-    lsr tmp_high        ; 5B | 16-bit shift
-    ror                 ; 1B
-    jmp octave_loop     ; 3B
-
-pitch_done:
-    clc                 ; 1B
-    adc detune_lo       ; 3B
-    tay                 ; 1B | Use Y as temp for Low Byte
-    lda tmp_high        ; 3B
-    adc detune_hi       ; 3B
-    tax                 ; 1B | X = Final High
-    tya                 ; 1B | A = Final Low
-    rts                 ; 1B
+    cpx #48             ; 2B | Check if Note index >= 48
+    bcc note_path       ; 2B | If lower, it's a Note
 
 command_path:
     ; Handle P flag (bit 5 of original byte, which is bit 3 of shifted X)
@@ -66,11 +44,34 @@ no_param:
     lda tmp_group       ; 3B
     and #%00000110      ; 2B | Isolate PCC * 2 (Group index)
     tax                 ; 1B
-    ; RTS dispatch trick for NMOS 6502
+    ; RTS dispatch trick for NMOS 6502 (TargetAddr-1)
     lda groupjmps+1, x  ; 3B
     pha                 ; 1B
     lda groupjmps, x    ; 3B
     pha                 ; 1B
+    rts                 ; 1B
+
+note_path:
+    ; X = Note * 2, Y = Octave
+    lda period_table+1, x ; 3B
+    sta tmp_high          ; 3B
+    lda period_table, x   ; 3B | A = Low Byte
+    
+octave_loop:
+    dey                 ; 1B | Decrement octave
+    bmi pitch_done      ; 2B | Exit if Y was 0
+    lsr tmp_high        ; 5B | 16-bit shift
+    ror                 ; 1B
+    jmp octave_loop     ; 3B
+
+pitch_done:
+    clc                 ; 1B
+    adc detune_lo       ; 3B | A = Final Low
+    tay                 ; 1B | Temp save Low in Y
+    lda tmp_high        ; 3B
+    adc detune_hi       ; 3B | A = Final High
+    tax                 ; 1B | X = Final High
+    tya                 ; 1B | A = Final Low
     rts                 ; 1B
 
 ; 24-TET Period Table (Octave 0)
