@@ -2,7 +2,7 @@
         ;; (A is an optional parameter / Variation)
         ;; (dispatch on Y=4..7)
 
-        pha             ; Save Variation A for the routines
+        pha             ; Save Variation A
         
         ;; Set Channel C to Hardware Envelope Mode
         lda #$10        ; Value 16 = Use Envelope
@@ -19,52 +19,60 @@
 
 ;;; 4. Open Hi-hat ("ts" - Sizzle)
 cmdHiHatOpenTS:
-        lda #$24        ; Mixer: Noise C ON ($20), Tone C OFF ($04)
+        lda #$24        ; Mixer: Noise C ON, Tone C OFF
         jsr setMixerC
+        lda #$00
+        sta drum_slide_val ; No slide for hats
         pla             ; Get Variation
         clc
         adc #$02        ; Base Noise
         ldy #6
         jsr SETAY
         ldx #$00        ; Env Period Low
-        lda #$15        ; Env Period High (Longer)
+        lda #$15        ; Env Period High
         jmp trigger
 
 ;;; 3. Closed Hi-hat ("ch" - Tick)
 cmdHiHatClosedCH:
         lda #$24        ; Mixer: Noise C ON, Tone C OFF
         jsr setMixerC
+        lda #$00
+        sta drum_slide_val
         pla             ; Get Variation
         clc
         adc #$01
         ldy #6
         jsr SETAY
         ldx #$00
-        lda #$02        ; Env Period High (Short)
+        lda #$02        ; Env Period High
         jmp trigger
 
 ;;; 2. Snare Drum ("sh" - Snap)
 cmdSnareSH:     
         lda #$00        ; Mixer: Noise C ON, Tone C ON
         jsr setMixerC
+        lda #$10
+        sta drum_slide_val ; Set a snappy downward slide speed
         lda #$0F        ; Mid-range crunch
         ldy #6
         jsr SETAY
-        pla             ; Get Variation for Pitch
+        pla             ; Variation
         ldy #4          ; Fine Tone C
         jsr SETAY
         lda #$01        ; Coarse Tone C
         ldy #5
         jsr SETAY
         ldx #$00
-        lda #$08        ; Env Period High
+        lda #$08
         jmp trigger
 
 ;;; 1. Kick Drum ("s" - Thump)
 cmdKickS:       
-        lda #$20        ; Mixer: Noise C OFF, Tone C ON ($00)
+        lda #$20        ; Mixer: Noise C OFF, Tone C ON
         jsr setMixerC
-        pla             ; Get Variation for Pitch
+        lda #$20
+        sta drum_slide_val ; Heavy slide for "booom"
+        pla             ; Variation
         clc
         adc #$05
         ldy #5          ; Coarse Tone C
@@ -73,11 +81,10 @@ cmdKickS:
         ldy #4
         jsr SETAY
         ldx #$00
-        lda #$0A        ; Env Period High
+        lda #$0A
         ;; fall through to trigger
 
 ;;; --- COMMON TRIGGER ---
-;;; Input: A = Env Period High, X = Env Period Low
 trigger:
         ldy #12         ; R12 = Env Period Coarse
         jsr SETAY
@@ -90,7 +97,6 @@ trigger:
         rts
 
 ;;; --- MIXER SUBROUTINE ---
-;;; Input: A = Bits to set for Channel C (Bit 2=Tone, Bit 5=Noise)
 setMixerC:
         pha
         lda mixer_cache 
@@ -105,4 +111,5 @@ setMixerC:
         jsr SETAY
         rts
 
-mixer_cache: .byte $FF
+mixer_cache:    .byte $FF
+drum_slide_val: .byte $00 ; Global for the Interrupt to read
