@@ -1,27 +1,28 @@
 ;;; AntVM65 - "anthem65" - the actual virtual machine
-
+;;
 ;;         AntVM65 — The "Anthem65" Sound Virtual Machine
-
+;;
 ;; AntVM65 is a high-performance, 24-TET micro-synth designed for elite 8-bit music, organic speech synthesis, and custom FX. It’s a specialized VM that interprets "in-band" command streams alongside quarter-note data.
 
 ;; The Architecture:
-
+;;
 ;; Precision Tuning: Native 24-TET support across 8 octaves (0–7), bridging the gap between clinical Western scales and natural, microtonal speech.
-
+;;
 ;; Channel Routing: Independent cursors for Tone Channels A, B, C, plus a dedicated Virtual Noise (N) channel.
-
+;;
 ;; The Ticker Engine: A savage 1-bit delta engine with 16-bit patterns. It drives high-resolution, custom envelopes for volume, pitch, and noise.
-
+;;
 ;; Advanced FX:
 ;; - LINK: C mirrors A with relative detuning and volume attenuation.
 ;; - ECHO: A-to-B delay with a 1–16 step buffer (switching to a 2-tick "cheat" for deep rhythmic repeats).
-
+;;
 ;; The Logic & Control: Commands that trigger channel shifts, control flow, or raw AY-register overrides.
-
-;; The Language System: Install up to 8 independent "Languages." Each holds up to 255 Phonemes (subroutines) with a 4-level stack.
-
+;;
+;; The Language System: Install up to 8 independent "Languages." Zero is your main program. Each can hold up to 256 Phonemes (subroutines). There is a 4.-level stack for caLLs, which stores language+pos, which are restored at return.
+;;
 ;; Extensibility: Execute JSR calls to host code with AXY register passing. Use the AX return for zero-flag relative branching, enabling true algorithmic sound design.
-
+;;
+;;
 ;; Tag-line: "AntVM65 isn't just a player; it’s a Sound Language that treats speech and synthesis as one unified, programmable beast."
 
 
