@@ -1,37 +1,38 @@
-;;; Size: 67 bytes (Code: 19, Table: 48)
-;;; Cycles: ~50-130 (Highly dependent on Octave value)
+;;; Size: 65 bytes (Code: 17, Table: 48)
+;;; Cycles: ~45-120 (approx 9 cycles per octave shift)
 
 ; Input: A = %OOONNNNN (Octave 0-7, Note 0-23)
-; Output: tmp_low/high contain 12-bit AY period
+; Output: tmp_low/high (12-bit AY period)
 calc_pitch:
-    asl                 ; 2 cyc | A = %OONNNNN0, C = Octave bit 2
-    tay                 ; 2 cyc | Save for octave extraction
-    and #%00111110      ; 2 cyc | Mask Note index (0-46)
-    tax                 ; 2 cyc | X = table offset
+    asl                 ; A = %OONNNNN0, bit 7 -> C
+    tay                 ; Save to Y
+    and #%00111110      ; Mask note index (0-46)
+    tax                 ; X = table offset
     
-    tya                 ; 2 cyc | Restore
-    rol                 ; 2 cyc | C -> bit 0, Octave bit 1 -> C
-    rol                 ; 2 cyc | C -> bit 0, Octave bit 0 -> C
-    rol                 ; 2 cyc | C -> bit 0. A bits 0-2 = Octave
-    and #%00000111      ; 2 cyc | Clean A
-    tay                 ; 2 cyc | Y = shift counter (0-7)
+    tya                 ; Restore %OONNNNN0
+    rol                 ; Pull bit 7 into bit 0
+    rol                 ; Next octave bit into bit 0
+    rol                 ; Final octave bit into bit 0
+    and #%00000111      ; A = Octave (0-7)
+    tay                 ; Y = loop counter
 
-    lda period_table, x   ; 4 cyc
-    sta tmp_low           ; 3 cyc
-    lda period_table+1, x ; 4 cyc
-    sta tmp_high          ; 3 cyc
+    lda period_table, x
+    sta tmp_low
+    lda period_table+1, x
+    sta tmp_high
 
 octave_loop:
-    cpy #0              ; 2 cyc
-    beq done            ; 2/3 cyc
-    lsr tmp_high        ; 5 cyc | 16-bit shift right
-    ror tmp_low         ; 5 cyc
-    dey                 ; 2 cyc
-    jmp octave_loop     ; 3 cyc
-done:
-    rts                 ; 6 cyc
+    dey                 ; Decrement counter
+    bmi done            ; If Y was 0, it's now $FF (negative), so exit
+    lsr tmp_high        ; 16-bit shift right (Halve period)
+    ror tmp_low
+    jmp octave_loop     ; Note: BNE octave_loop would also work if Y starts 1-8
 
-; 24-TET Period Table for Oric (1MHz) - Octave 0
+done:
+    rts
+
+; 24-TET Period Table (Octave 0) - Oric Atmos 1MHz
+; F_ay = 1,000,000 / 16 = 62,500Hz
 period_table:
     .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
     .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
