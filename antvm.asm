@@ -530,6 +530,47 @@
 ;;; C+B+A == all same
 
 
+;;; === DRUM/SPEECH "Cheat Sheet/Sound Palette"
+
+;; We use the parameter to offset the pitch/frequency and the hardware envelope for the length, we can treat the A value as a "Character" or "Intensity" selector.
+
+;;; This is how to tune the parameter.
+
+;;; Sound Palette: Drum & Speech Variations
+;;; Using your existing BLOCK logic (where A is the Variation/Pitch):
+
+;;; | Command (Y) | Hex A | Name / Description | What's happening in the chip? |
+;;; |---|---|---|---|
+;;; | KICK (S) | $00 | Deep 808 Thump | Lowest possible base frequency. |
+;;; | KICK (S) | $10 | Techno "Punch" | Higher pitch, cuts through a busy mix. |
+;;; | KICK (S) | $30 | Pebble / Pop | High pitch, sounds like a "P" or "B" plosive. |
+;;; | SNARE (SH) | $05 | Power Ballad Snare | Deep "body" tone mixed with noise. |
+;;; | SNARE (SH) | $40 | Rimshot / Click | Very high tone pitch makes it "snap" harder. |
+;;; | SNARE (SH) | $7F | Whispering "SH" | Tone is so high it disappears, leaving just the "breath." |
+;;; | C-HAT (CH) | $00 | Classic 909 Tick | Purest, sharpest high-frequency noise. |
+;;; | C-HAT (CH) | $15 | Soft "T" / "Ch" | Slightly lower noise frequency, more "chunk." |
+;;; | C-HAT (CH) | $50 | Metallic Clink | Noise gets "grainy" and heavier. |
+;;; | O-HAT (TS) | $02 | Sizzling Ride | Smooth, long high-frequency decay. |
+;;; | O-HAT (TS) | $20 | Aggressive "S" | Lower noise pitch makes the "Sss" sound "hissier." |
+;;; | O-HAT (TS) | $60 | Strong German "CH" | Heavy, throaty friction sound. |
+
+;;; Speech Synthesis Guide
+;;; If you are using these routines to simulate speech (phonemes), here is how to map them to your tracker:
+
+;;; * "B", "P", "D" (Plosives): Use cmdKickS with a high A value ($20-$40).
+;;; * "T", "K" (Hard stops): Use cmdHiHatClosedCH with a low A value ($00-$05).
+;;; * "SH", "ZH" (Fricatives): Use cmdSnareSH with a high A value to minimize the "note" and emphasize the "air."
+;;; * "S", "Z" (Sibilants): Use cmdHiHatOpenTS with a low A value.
+
+;;; The "German CH" Example
+;;; To get that "Strong German CH" (like in Bach or Ich):
+
+;;;    1. Select Y = 7 (cmdHiHatOpenTS).
+;;;    2. Set A = $60.
+;;;    The result is a long, noisy decay but with a much "lower" noise frequency that sounds like back-of-the-throat friction rather than a high-pitched cymbal.
+
+
+
 ;;; --------------------------------------------
 ;;; Language Data Design
 ;;; ====================

@@ -1,11 +1,15 @@
-        ;; -- at this point we're entering DRUM sounds
-        ;; (A is an optional parameter / Variation)
-        ;; (dispatch on Y=4..7)
+;;; ================================================================
+;;; COMBO COMMANDS: DRUM & SPEECH EMULATION
+;;; ================================================================
+;;; Y=4 : DRUM S  (Kick / Plosive 'P/B') - Tone-heavy thump
+;;; Y=5 : DRUM SH (Snare / Sibilant 'SH') - Mid-noise + Tone
+;;; Y=6 : DRUM CH (Closed Hat / 'CH/T')   - High-noise, fast decay
+;;; Y=7 : DRUM TS (Open Hat / 'S/Z')      - High-noise, slow decay
+;;; ================================================================
 
-        pha             ; Save Variation A
+        pha             ; Save Variation A (The "Mouth" shape)
         
-        ;; Set Channel C to Hardware Envelope Mode
-        lda #$10        ; Value 16 = Hardware Envelope Control
+        lda #$10        ; Use Hardware Envelope
         ldy #10         ; R10 = Amplitude C
         jsr SETAY
 
@@ -17,80 +21,69 @@
         bmi cmdHiHatClosedCH
         ;; Fall through to 7 (cmdHiHatOpenTS)
 
-;;; 4. Open Hi-hat ("ts" - Sizzle)
+;;; COMBO "TS" (Open Hi-Hat / Long Sibilant 'S/Z/TS')
+;;; A = Sibilant Pitch (0=Sizzle, 15=Hiss)
 cmdHiHatOpenTS:
-        lda #$24        ; Mixer: Noise C ON, Tone C OFF
+        lda #$24        ; Noise C ON, Tone C OFF
         jsr setMixerC
-        lda #$00        ; Reset/Disable software slide for hats
-        sta vol_env_C   ; (Assuming your ticker needs a reset here)
         pla             ; Get Variation
         clc
-        adc #$02        ; Base Noise Pitch
-        ldy #6
+        adc #$02        ; Base "S" noise
+        ldy #6          ; R6 = Noise Period
         jsr SETAY
-        ldx #$00        ; Env Period Low
-        lda #$15        ; Env Period High
+        ldx #$00        ; Env Fine
+        lda #$25        ; Env Coarse (Long "Sssshh" fade)
         jmp trigger
 
-;;; 3. Closed Hi-hat ("ch" - Tick)
+;;; COMBO "CH" (Closed Hi-Hat / Hard Plosive 'CH/T/K')
+;;; A = Sharpness (0=Thick 'CH', 15=Thin 'T')
 cmdHiHatClosedCH:
-        lda #$24        ; Mixer: Noise C ON, Tone C OFF
+        lda #$24        ; Noise C ON, Tone C OFF
         jsr setMixerC
-        lda #$00
-        sta vol_env_C
         pla             ; Get Variation
         clc
-        adc #$01
+        adc #$01        ; Very high noise
         ldy #6
         jsr SETAY
         ldx #$00
-        lda #$02        ; Env Period High
+        lda #$03        ; Env Coarse (Extremely short "Tick")
         jmp trigger
 
-;;; 2. Snare Drum ("sh" - Snap)
+;;; COMBO "SH" (Snare / Fricative 'SH/ZH')
+;;; A = Vowel Body (Changes the "mouth" tone)
 cmdSnareSH:     
-        lda #$00        ; Mixer: Noise C ON, Tone C ON
+        lda #$00        ; Noise C ON, Tone C ON
         jsr setMixerC
-        lda #$0F        ; Mid-range noise crunch
+        lda #$0F        ; Mid-range "Breath" noise
         ldy #6
         jsr SETAY
-        pla             ; Get Variation for Tone pitch
+        pla             ; Get Variation for Vowel Tone
         ldy #4          ; Fine Tone C
         jsr SETAY
         lda #$01        ; Coarse Tone C
         ldy #5
         jsr SETAY
-        
-        ;; Initialize ticker manager slide
-        lda #$08        ; Speed of pitch drop
-        sta freq_slide_C 
-        
         ldx #$00
-        lda #$08        ; Hardware Env Period
+        lda #$08        ; Env Coarse (Bust of noise)
         jmp trigger
 
-;;; 1. Kick Drum ("s" - Thump)
+;;; COMBO "S" (Kick / Deep Plosive 'B/P/D')
+;;; A = Impact (0=Deep Thump, 15=Tight Pop)
 cmdKickS:       
-        lda #$20        ; Mixer: Noise C OFF, Tone C ON
+        lda #$20        ; Noise C OFF, Tone C ON
         jsr setMixerC
-        pla             ; Get Variation
+        pla             ; Get Variation for Impact
         clc
-        adc #$05
+        adc #$05        ; Base low frequency
         ldy #5          ; Coarse Tone C
         jsr SETAY
         lda #$00        ; Fine Tone C
         ldy #4
         jsr SETAY
-        
-        ;; Initialize ticker manager slide
-        lda #$15        ; Fast/Deep pitch drop
-        sta freq_slide_C
-
         ldx #$00
-        lda #$0A        ; Hardware Env Period
+        lda #$0C        ; Env Coarse (Heavy thump)
         ;; fall through to trigger
 
-;;; --- COMMON TRIGGER ---
 trigger:
         ldy #12         ; R12 = Env Period Coarse
         jsr SETAY
@@ -98,18 +91,17 @@ trigger:
         ldy #11         ; R11 = Env Period Fine
         jsr SETAY
         lda #$09        ; Shape: Single Decay (\)
-        ldy #13         ; R13 starts the hardware cycle
+        ldy #13         ; R13 starts the one-shot
         jsr SETAY
         rts
 
-;;; --- MIXER SUBROUTINE ---
 setMixerC:
         pha
         lda mixer_cache 
-        and #%11011011  ; Clear Channel C bits (2 and 5)
+        and #%11011011  ; Mask Channel C
         sta mixer_cache
         pla
-        and #%00100100  ; Keep only relevant bits
+        and #%00100100 
         ora mixer_cache
         sta mixer_cache
         ldy #7
@@ -117,6 +109,4 @@ setMixerC:
         jsr SETAY
         rts
 
-mixer_cache:    .byte $FF
-freq_slide_C:   .byte $00 ; Linked to your ticker manager
-vol_env_C:      .byte $00 ; Linked to your ticker manager
+mixer_cache: .byte $FF
