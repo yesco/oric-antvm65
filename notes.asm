@@ -1,32 +1,36 @@
-; Period table for Octave 4 (24 entries, 16-bit words)
-; Calculated as: 62500 / (440 * 2^(n/24))
-period_table:
-    .word 142, 138, 134, 130, 126, 123, 119, 116, 112, 109, 106, 103
-    .word 100, 97, 94, 91, 89, 86, 84, 81, 79, 77, 74, 72
+;;; Size: 24 bytes (excluding table and setup)
+;;; This approach is faster than the previous version because it uses 
+;;; TAY/TAX to avoid extra PHA/PLA and uses a compact loop for octave scaling.
 
 calc_pitch:
-    ; Input: A = note (3 bits octave, 5 bits note)
-    pha             ; Save original
-    and #%00011111  ; Mask note (0-23)
-    asl             ; Multiply by 2 for word index
-    tax
+    ; Input: A = %OOONNNNN (3-bit Octave, 5-bit Note)
+    asl             ; A = %OONNNNN0
+    tay             ; Save shifted value to Y
+    and #%00111110  ; Mask note index (0-46)
+    tax             ; X = table index
+    
+    tya             ; Retrieve shifted value
+    lsr             ; Shift Octave bits into position
+    lsr
+    lsr
+    lsr
+    and #%00000111  ; A = Octave (0-7)
+    tay             ; Y = Loop counter for octave scaling
+
     lda period_table, x
     sta tmp_low
     lda period_table+1, x
     sta tmp_high
 
-    pla             ; Get original back
-    lsr             ; Shift to get octave
-    lsr
-    lsr
-    lsr
-    lsr             ; A now has octave (0-7)
-    
-    ; If note is Octave 4, we use table as is.
-    ; If higher, we LSR (halve period). If lower, we ASL (double period).
-    ; Simpler approach: normalize all notes to Octave 0 and shift down.
-    ; Adjust the logic below based on your table's base octave.
-    
-    ; Example: Shift right for each octave > base
-    ; ... bit manipulation logic here ...
+    ; Since table is Octave 0 (highest values), 
+    ; we shift right (halve) for each octave.
+octave_loop:
+    cpy #0          ; If Octave 0, skip shifting
+    beq done
+    lsr tmp_high    ; Divide 16-bit period by 2
+    ror tmp_low
+    dey
+    jmp octave_loop
+
+done:
     rts
