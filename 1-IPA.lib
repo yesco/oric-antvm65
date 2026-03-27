@@ -109,6 +109,13 @@ These are the building blocks for almost all English words.
 | 87 | TR- | 3, 13, $FF | T → R |
 | 88 | -TS | 3, 2, $FF | T → S (Plural) |
 
+
+
+
+
+
+
+
 Using 89–128 for "Global Common Words" (words that sound similar across many Indo-European or Asian languages) creates a highly efficient "Bridge" library.
 
 Tier 2.5: Global Common Words (IDs 89–128)
