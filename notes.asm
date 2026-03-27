@@ -4,30 +4,28 @@
 ;;; 38 B 32c - keeping lo in A makes addition faster and saves 4 bytes
 ;;; 35 B 30c - Using Y for temp storage instead of PHA/PLA saves 2 bytes
 ;;; 31 B 26c - %NNNNNOOO + register-only logic (no stack) saves 4 bytes
-;;; 48 B 52c - NMOS 6502 compatible interpret/dispatch (no JMP (addr,x))
-;;; 127 B Total Size (79 B code, 48 B table)
+;;; 52 B 58c - NMOS 6502 Interpret: ipy pointer (no stack), RTS dispatch
+;;; 131 B Total Size (83 B code, 48 B table)
 
-; Input: (stream),y points to VM data
+; Input: ipy (stream index), detune_lo/hi
 ; Note Path: %NNNNNOOO (Note 0-23, Octave 0-7)
 ; Cmd Path:  %11PCCIII (P=Param flag, C=Group, I=Index)
 interpret:
+    ldy ipy             ; 3B | Load stream index
     lda (stream),y      ; 5B | Get command byte
-    iny                 ; 2B
-    sta cmd             ; 3B | Save raw byte for P-bit check
+    inc ipy             ; 3B | inc pointer
+    tax                 ; 1B | X = raw byte
     
     and #%00000111      ; 2B | Isolate III (Index or Octave)
-    pha                 ; 2B | Store for later (Y is stream index)
-    
-    lda cmd             ; 3B
+    tay                 ; 1B | Y = III
+
+    txa                 ; 1B
     lsr                 ; 1B | %011PCCII
     lsr                 ; 1B | %0011PCCI
     and #%00111110      ; 2B | Mask for Note*2 or Group*2
-    tax                 ; 1B | X = index
+    tax                 ; 1B | X = index (Note*2 or 11PCC*2)
 
-    pla                 ; 2B | Restore III
-    tay                 ; 1B | Y = III (Octave or Cmd Index)
-
-    cpx #48             ; 2B | If Note index >= 24*2, it's a command
+    cpx #48             ; 2B | If Note index >= 24*2 (48), it's a command
     bcs command_path    ; 2B
 
 note_path:
@@ -37,45 +35,42 @@ note_path:
     lda period_table, x   ; 3B | A = Low Byte
     
 octave_loop:
-    dey                 ; 1B
-    bmi pitch_done      ; 2B | If Y was 0, skip
-    lsr tmp_high        ; 5B
+    dey                 ; 1B | Decrement octave
+    bmi pitch_done      ; 2B | Exit if Y was 0
+    lsr tmp_high        ; 5B | 16-bit shift
     ror                 ; 1B
     jmp octave_loop     ; 3B
 
 pitch_done:
-    ; --- Optimized Detune Addition ---
     clc                 ; 1B
-    adc detune_lo       ; 3B | A = Final Low
-    sta tmp_low         ; 3B | Temp save Low
+    adc detune_lo       ; 3B
+    tay                 ; 1B | Use Y as temp for Low Byte
     lda tmp_high        ; 3B
     adc detune_hi       ; 3B
     tax                 ; 1B | X = Final High
-    lda tmp_low         ; 3B | A = Final Low
+    tya                 ; 1B | A = Final Low
     rts                 ; 1B
 
 command_path:
-    ; X = 11PCC * 2. Handle P flag (bit 5 of raw 'cmd')
-    lda #0              ; 2B | Default param
-    bit cmd             ; 3B | Check bit 5 (P) and bit 7/6
-    bvc dispatch        ; 2B | V flag is bit 6... wait, bit 5 is not a flag.
+    ; Handle P flag (bit 5 of original byte, which is bit 3 of shifted X)
+    stx tmp_group       ; 3B | Save shifted index
+    txa                 ; 1B
+    and #%00001000      ; 2B | Check bit 3 (the shifted P bit)
+    beq no_param        ; 2B
     
-    ; Manual bit 5 check for NMOS 6502
-    lda cmd             ; 3B
-    and #%00100000      ; 2B
-    beq dispatch        ; 2B
+    ldy ipy             ; 3B
+    lda (stream),y      ; 5B | Fetch Param
+    inc ipy             ; 3B
     
-    lda (stream),y      ; 5B | Fetch Parameter Byte
-    iny                 ; 2B
-    sty stream_y        ; 3B | Save Y for the command routine
-
-dispatch:
-    ; NMOS 6502 JMP (ADDR,X) Workaround: Push to stack and RTS
-    lda groupjmps+1, x  ; 3B | High byte
+no_param:
+    lda tmp_group       ; 3B
+    and #%00000110      ; 2B | Isolate PCC * 2 (Group index)
+    tax                 ; 1B
+    ; RTS dispatch trick for NMOS 6502
+    lda groupjmps+1, x  ; 3B
     pha                 ; 1B
-    lda groupjmps, x    ; 3B | Low byte
+    lda groupjmps, x    ; 3B
     pha                 ; 1B
-    ; Note: Routine must be addr-1 for RTS trick
     rts                 ; 1B
 
 ; 24-TET Period Table (Octave 0)
