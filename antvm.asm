@@ -691,7 +691,7 @@ dispatch:
 
         ;; A= param, Y= iii
         JMP (groupjmps,X)       ; dispatch
-
+1
 
         ;; --- The Group Jump Table ---
 groupjmps:      
