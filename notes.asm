@@ -48,21 +48,18 @@ interpret:
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
-        txa
         eor #48             ; A = 0000PCC0
         lsr                 ; A = 00000PCC (0-7)
         tax
-        lda offset_table, x ; Get relative offset
-        sta dispatch_br+1   ; SMC the branch offset
-
-        txa                 ; A = 00000PCC
-        and #%00000100      ; Check P bit (bit 2 after LSR)
-        beq no_param
-        
+        cmp #4              ; Carry set if P=1
+        lda offset_table, x
+        sta dispatch_br+1
+        bcc no_param
         ldy ipy
         lda (stream),y      ; Fetch Parameter into A
         inc ipy
 no_param:
+        sec
 dispatch_br:
         bcs *               ; Jumps directly to cmd via SMC offset
 
