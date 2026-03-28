@@ -94,9 +94,9 @@ nnnnn oct = NOTE...
 11 111 100|?iii xxxx= ... ?
 11 111 100|?111 xxxx= EXTEND/FREE
 
-11 111 101   = CHANNEL A
-11 111 110   = CHANNEL B
-11 111 111   = CHANNEL C
+11 111 101   = CHANNEL A ...TODO: move to NON-PARAM
+11 111 110   = CHANNEL B ...TODO: move to NON-PARAM
+11 111 111   = CHANNEL C ...TODO: move to NON-PARAM
 ```
 
 
@@ -647,6 +647,197 @@ Next Step: Define the "Gate" behavior—is it a fixed 1-tick "gap" at the end of
 A+B+C == alternating abcabcabcabcabc
 C+B+A == all same
 ```
+
+## Notes and Octave limitations
+
+In the table below, Ideal Frequency is the perfect musical note, while Actual Frequency is what the Oric produces because the AY-3-8912 must "round" to the nearest integer Period.
+At Octave 7, the "steps" between periods are so large that the notes become significantly out of tune.
+
+| Note Name | Ideal Freq | Period (Int) | Actual Freq | Error (Hz) | Error (%) |
+|---|---|---|---|---|---|
+| $C_{7}$ | 2093.00 | 30 | 2083.33 | -9.67 | -0.46% |
+| $C^{\#}_{7}$ | 2217.46 | 28 | 2232.14 | +14.68 | +0.66% |
+| $D_{7}$ | 2349.32 | 27 | 2314.81 | -34.51 | -1.47% |
+| $D^{\#}_{7}$ | 2489.02 | 25 | 2500.00 | +10.98 | +0.44% |
+| $E_{7}$ | 2637.02 | 24 | 2604.17 | -32.85 | -1.25% |
+| $F_{7}$ | 2793.83 | 22 | 2840.91 | +47.08 | +1.69% |
+| $G_{7}$ | 3135.96 | 20 | 3125.00 | -10.96 | -0.35% |
+| $A_{7}$ | 3520.00 | 18 | 3472.22 | -47.78 | -1.36% |
+| $B_{7}$ | 3951.07 | 16 | 3906.25 | -44.82 | -1.13% |
+| $C_{8}$ | 4186.01 | 15 | 4166.67 | -19.34 | -0.46% |
+| $E_{8}$ | 5274.04 | 12 | 5208.33 | -65.71 | -1.25% |
+| $G_{8}$ | 6271.93 | 10 | 6250.00 | -21.93 | -0.35% |
+| $A_{8}$ | 7040.00 | 9 | 6944.44 | -95.56 | -1.36% |
+| $B_{8}$ | 7902.13 | 8 | 7812.50 | -89.63 | -1.13% |
+
+Why this happens:
+
+* Low Resolution: In Octave 0, a period of 3822 vs 3821 is a tiny frequency change. In Octave 7, changing the period from 9 to 8 jumps the frequency by nearly 900 Hz!
+* The "Tolerance" Rule: Generally, humans notice a pitch error of about 0.5% (approx. 5-10 cents). As you can see, many notes in Octave 7 exceed 1.0% error, meaning they sound noticeably "sour" or "sharp/flat" compared to a well-tuned instrument.
+* Vibrato: This is why vibrato sounds "choppy" on high notes; the chip doesn't have enough intermediate steps to make the pitch change smooth.
+
+Would you like to see a software trick (like "fine-tuning" offsets) to help minimize these errors in your player?
+
+It is definitely a "lo-fi" quirk of the hardware! When the Period drops into single digits, you aren't really playing notes anymore; you are playing integer divisions of the master clock.
+This makes them perfect for effects and overtones:
+1. The "Ring Modulator" Effect
+If you mix two of these high, slightly "out of tune" frequencies together (e.g., Period 8 and Period 9), they create Intermodulation Distortion. On the Oric’s speaker, this sounds like a harsh, metallic "clanging" or "ringing"—perfect for bells, robot voices, or industrial textures.
+2. Digital Overtones (Aliasing)
+Because these frequencies (up to 8.9 kHz) are so high, they often interact with the sampling rate of the ear or the playback hardware. This creates "ghost" frequencies (overtones) that are much lower than the actual note, giving the sound a thick, "dirty" character that you can't get with pure low-frequency notes.
+3. Percussion "Snaps"
+In a drum macro, you can use these extreme values ($07–$0F) for just the first 1/50th of a second (one frame). This creates a sharp "click" or "transient" at the start of a sound, making an electronic kick drum sound like it has a physical "beater" hitting a skin.
+4. Why the "1-Step" Gap is "Funny"
+At Period 2, the frequency is 31,250 Hz.
+At Period 1, the frequency is 62,500 Hz.
+That is a full octave jump caused by changing a single bit! You lose all the notes in between.
+Pro-tip: If you want to make these "sour" high notes sound better, try enabling Noise (Register 7) at a high frequency simultaneously. The noise masks the pitch error and turns the "bad" note into a "bright" texture.
+Would you like to see a 3-frame drum macro that uses these high values to create a "snare" hit?
+
+In chiptunes, these extreme high-frequency values (Octave 7 and 8) are the "secret sauce" for percussion because they provide a sharp, non-musical transient (the initial "click" or "thwack") that purely musical notes can't achieve. [1, 2] 
+Below is a 3-frame snare drum macro for the [Oric Atmos AY-3-8912](https://wiki.defence-force.org/doku.php?id=oric:hardware:the_via_and_ay-3-8912) that uses these "funny" values to create a realistic hit.
+3-Frame Snare Macro
+
+| Frame [1, 2, 3, 4] | Register 6 (Noise) | Register 7 (Mixer) | Registers 8-10 (Volume) | Effect Description |
+|---|---|---|---|---|
+| 0 | $01 (Tiny/High) | %11100111 | $0F (Max) | The Attack: High-pitched noise creates the "snap" of the stick hitting the skin. |
+| 1 | $08 (Mid-range) | %11110111 | $0C (High) | The Body: Dropping the noise frequency provides the "thump" of the drum shell. |
+| 2 | $1A (Bassy/Low) | %11110111 | $08 (Med) | The Tail: Low, rumbly noise simulates the rattling of the metal wires (snares) underneath. |
+
+Why this works:
+
+* Frame 0 (High Pitch): By using a Noise Period of 1, you get the highest possible white noise frequency. It sounds like a sharp "tss" or "click".
+* Rapid Change: Changing these values every frame (1/50th of a second on the Oric) mimics the complex physics of a real drum, which starts high and drops in pitch as the energy dissipates.
+* The Mixer (R7): In the table above, the mixer is set to Enable Noise on Channel A but Disable Tone. This ensures you only hear the textured noise and not a steady beep. [5, 6, 7] 
+
+Pro-tip: To make this sound even "crunchier," you can briefly enable a very high-pitched Tone (like your Period 7 or 8) during Frame 0 only, then switch to pure Noise for the rest of the sound.
+Would you like the Assembly code to implement a "Macro Player" that reads these values from a table and writes them to the AY chip each frame?
+
+[1] [https://www.youtube.com](https://www.youtube.com/watch?v=Fks15MXxwas)
+[2] [https://www.youtube.com](https://www.youtube.com/watch?v=ZVZWGKuaJt4)
+[3] [https://www.youtube.com](https://www.youtube.com/watch?v=LVmEsVN6oDQ#:~:text=This%20approach%20involves%20creating%20a%20snare%20sample,can%20be%20achieved%20with%20virtually%20any%20VST.)
+[4] [https://www.youtube.com](https://www.youtube.com/watch?v=YcC-Ga3fkNE)
+[5] [https://wiki.defence-force.org](https://wiki.defence-force.org/doku.php?id=oric:hardware:the_via_and_ay-3-8912)
+[6] [https://www.youtube.com](https://www.youtube.com/watch?v=Auh1rD1CjBI&t=76)
+[7] [https://softspectrum48.weebly.com](https://softspectrum48.weebly.com/notes/ay-emulation-part-2-about-the-ay-3-8912)
+
+
+
+### Octave 6
+
+In Octave 6, the AY-3-8912 begins to transition from "musical" to "crunchy." While better than Octave 7, you still see significant tuning jumps because the period values are small (mostly between 30 and 60).
+Here is the frequency and error table for your Notes 0–23 at Octave 6:
+
+| Hex Value | Index | Octave | Note Name | Ideal Freq | Period (Dec) | Actual Freq | Error % |
+|---|---|---|---|---|---|---|---|
+| $06 | 0 | 6 | $C_{6}$ | 1046.50 | 60 | 1041.67 | -0.46% |
+| $0E | 1 | 6 | $C^{\#}_{6}$ | 1108.73 | 58 | 1077.59 | -2.81% |
+| $16 | 2 | 6 | $D_{6}$ | 1174.66 | 53 | 1179.25 | +0.39% |
+| $1E | 3 | 6 | $D^{\#}_{6}$ | 1244.51 | 50 | 1250.00 | +0.44% |
+| $26 | 4 | 6 | $E_{6}$ | 1318.51 | 47 | 1329.79 | +0.85% |
+| $2E | 5 | 6 | $F_{6}$ | 1396.91 | 45 | 1388.89 | -0.57% |
+| $36 | 6 | 6 | $F^{\#}_{6}$ | 1479.98 | 42 | 1488.10 | +0.55% |
+| $3E | 7 | 6 | $G_{6}$ | 1567.98 | 40 | 1562.50 | -0.35% |
+| $46 | 8 | 6 | $G^{\#}_{6}$ | 1661.22 | 38 | 1644.74 | -0.99% |
+| $4E | 9 | 6 | $A_{6}$ | 1760.00 | 35 | 1785.71 | +1.46% |
+| $56 | 10 | 6 | $A^{\#}_{6}$ | 1864.66 | 34 | 1838.24 | -1.42% |
+| $5E | 11 | 6 | $B_{6}$ | 1975.53 | 32 | 1953.13 | -1.13% |
+| $66 | 12 | 6 | $C_{7}$ | 2093.00 | 30 | 2083.33 | -0.46% |
+| $6E | 13 | 6 | $C^{\#}_{7}$ | 2217.46 | 28 | 2232.14 | +0.66% |
+| $76 | 14 | 6 | $D_{7}$ | 2349.32 | 27 | 2314.81 | -1.47% |
+| $7E | 15 | 6 | $D^{\#}_{7}$ | 2489.02 | 25 | 2500.00 | +0.44% |
+| $86 | 16 | 6 | $E_{7}$ | 2637.02 | 24 | 2604.17 | -1.25% |
+| $8E | 17 | 6 | $F_{7}$ | 2793.83 | 22 | 2840.91 | +1.69% |
+| $96 | 18 | 6 | $F^{\#}_{7}$ | 2959.96 | 21 | 2976.19 | +0.55% |
+| $9E | 19 | 6 | $G_{7}$ | 3135.96 | 20 | 3125.00 | -0.35% |
+| $A6 | 20 | 6 | $G^{\#}_{7}$ | 3322.44 | 19 | 3289.47 | -0.99% |
+| $AE | 21 | 6 | $A_{7}$ | 3520.00 | 18 | 3472.22 | -1.36% |
+| $B6 | 22 | 6 | $A^{\#}_{7}$ | 3729.31 | 17 | 3676.47 | -1.42% |
+| $BE | 23 | 6 | $B_{7}$ | 3951.07 | 16 | 3906.25 | -1.13% |
+
+Key Takeaways for Octave 6:
+
+* The "Rough" Spots: Notice $C^{\#}_6$ at index 1. It has nearly 3% error! This is because the math wants a period of 56.37, but the chip has to pick 56 or 57. It sounds noticeably "flat."
+* Vibrato Limit: In this octave, a "step" of 1 in the period changes the pitch by about 20–50 Hz. This makes software vibrato (LFO) look like stair-steps rather than a smooth wave.
+* Lead Synths: This is the highest octave where "shredding" solos still sound like music. Anything higher starts sounding like a smoke alarm.
+
+Since Octave 6 has these "sour" notes, would you like to see how to use detune offsets (adding/subtracting 1 from the period) to make chords sound "fatter"?
+
+In Octave 6, the AY-3-8912 begins to transition from "musical" to "crunchy." While better than Octave 7, you still see significant tuning jumps because the period values are small (mostly between 30 and 60).
+Here is the frequency and error table for your Notes 0–23 at Octave 6:
+
+| Hex Value | Index | Octave | Note Name | Ideal Freq | Period (Dec) | Actual Freq | Error % |
+|---|---|---|---|---|---|---|---|
+| $06 | 0 | 6 | $C_{6}$ | 1046.50 | 60 | 1041.67 | -0.46% |
+| $0E | 1 | 6 | $C^{\#}_{6}$ | 1108.73 | 58 | 1077.59 | -2.81% |
+| $16 | 2 | 6 | $D_{6}$ | 1174.66 | 53 | 1179.25 | +0.39% |
+| $1E | 3 | 6 | $D^{\#}_{6}$ | 1244.51 | 50 | 1250.00 | +0.44% |
+| $26 | 4 | 6 | $E_{6}$ | 1318.51 | 47 | 1329.79 | +0.85% |
+| $2E | 5 | 6 | $F_{6}$ | 1396.91 | 45 | 1388.89 | -0.57% |
+| $36 | 6 | 6 | $F^{\#}_{6}$ | 1479.98 | 42 | 1488.10 | +0.55% |
+| $3E | 7 | 6 | $G_{6}$ | 1567.98 | 40 | 1562.50 | -0.35% |
+| $46 | 8 | 6 | $G^{\#}_{6}$ | 1661.22 | 38 | 1644.74 | -0.99% |
+| $4E | 9 | 6 | $A_{6}$ | 1760.00 | 35 | 1785.71 | +1.46% |
+| $56 | 10 | 6 | $A^{\#}_{6}$ | 1864.66 | 34 | 1838.24 | -1.42% |
+| $5E | 11 | 6 | $B_{6}$ | 1975.53 | 32 | 1953.13 | -1.13% |
+| $66 | 12 | 6 | $C_{7}$ | 2093.00 | 30 | 2083.33 | -0.46% |
+| $6E | 13 | 6 | $C^{\#}_{7}$ | 2217.46 | 28 | 2232.14 | +0.66% |
+| $76 | 14 | 6 | $D_{7}$ | 2349.32 | 27 | 2314.81 | -1.47% |
+| $7E | 15 | 6 | $D^{\#}_{7}$ | 2489.02 | 25 | 2500.00 | +0.44% |
+| $86 | 16 | 6 | $E_{7}$ | 2637.02 | 24 | 2604.17 | -1.25% |
+| $8E | 17 | 6 | $F_{7}$ | 2793.83 | 22 | 2840.91 | +1.69% |
+| $96 | 18 | 6 | $F^{\#}_{7}$ | 2959.96 | 21 | 2976.19 | +0.55% |
+| $9E | 19 | 6 | $G_{7}$ | 3135.96 | 20 | 3125.00 | -0.35% |
+| $A6 | 20 | 6 | $G^{\#}_{7}$ | 3322.44 | 19 | 3289.47 | -0.99% |
+| $AE | 21 | 6 | $A_{7}$ | 3520.00 | 18 | 3472.22 | -1.36% |
+| $B6 | 22 | 6 | $A^{\#}_{7}$ | 3729.31 | 17 | 3676.47 | -1.42% |
+| $BE | 23 | 6 | $B_{7}$ | 3951.07 | 16 | 3906.25 | -1.13% |
+
+Key Takeaways for Octave 6:
+
+* The "Rough" Spots: Notice $C^{\#}_6$ at index 1. It has nearly 3% error! This is because the math wants a period of 56.37, but the chip has to pick 56 or 57. It sounds noticeably "flat."
+* Vibrato Limit: In this octave, a "step" of 1 in the period changes the pitch by about 20–50 Hz. This makes software vibrato (LFO) look like stair-steps rather than a smooth wave.
+* Lead Synths: This is the highest octave where "shredding" solos still sound like music. Anything higher starts sounding like a smoke alarm.
+
+Since Octave 6 has these "sour" notes, would you like to see how to use detune offsets (adding/subtracting 1 from the period) to make chords sound "fatter"?
+
+In chiptunes, "detuning" is the process of offsetting the pitch of two or more channels playing the same note to create a chorus or phasing effect. Since the AY-3-8912 is monophonic per channel, you use two channels (e.g., A and B) to make the sound "fatter". [1, 2, 3] 
+The "Fat" Sound Technique
+By adding or subtracting a small value from the Period, you create a slight frequency difference. This causes the two square waves to "drift" in and out of phase, resulting in a rich, moving texture rather than a flat, static beep. [2] 
+
+* Channel A: Base Period (e.g., $001E for $C_{7}$)
+* Channel B: Base Period + 1 (e.g., $001F)
+* Result: A "thick" or "chorused" lead.
+
+Assembly Implementation
+You can modify your existing cmdNOTE logic to handle a second channel with an offset. In 6502 assembly, this is just a simple ADC (Add with Carry) or SBC (Subtract with Carry) after your octave shift.
+
+; Assuming A = Low Byte, tmp_high = High Byte from your previous routine
+        sta channel_a_low
+        lda tmp_high
+        sta channel_a_high
+
+; Create detuned Channel B
+        lda channel_a_low
+        clc
+        adc #$02            ; Add a small offset (try 1, 2, or 3)
+        sta channel_b_low
+        lda channel_a_high
+        adc #$00            ; Add carry if necessary
+        sta channel_b_high
+
+Why this is effective:
+
+* Beating Frequencies: The small difference in Hz creates a "beat frequency" that your ear perceives as movement.
+* Stereo Widening: If the Oric's output is split into stereo (common in some hardware mods), panning the slightly detuned channels left and right makes the sound feel physically "larger".
+* Masking Errors: This is particularly useful in Octave 6 and 7 where notes are "sour." The detuning makes the pitch error feel like an intentional "lo-fi" character rather than a mistake. [2] 
+
+Pro-tip: For a truly massive sound, use a variable detune that changes every frame (vibrato). If Channel A and B are vibrating at different speeds, the "phasing" will constantly shift, creating a lush, professional synth sound.
+Would you like to see how to implement software vibrato to modulate this detuning automatically?
+
+[1] [https://www.youtube.com](https://www.youtube.com/watch?v=b8uAda926so)
+[2] [https://www.youtube.com](https://www.youtube.com/watch?v=HskOPwpqzOs)
+[3] [https://www.midibox.org](https://www.midibox.org/dokuwiki/doku.php?id=midibox_ay_3_8912)
+
 
 
 

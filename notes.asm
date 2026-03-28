@@ -33,8 +33,8 @@ interpret:
         ldy ipy             ; 3B | Load stream index
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
+
         tax                 ; 1B | X = raw byte
-        
         and #%00000111      ; 2B | Isolate III (Index or Octave)
         tay                 ; 1B | Y = III
 
@@ -85,7 +85,21 @@ cmdNOTE:
         sta tmp_high          ; 3B
         lda period_table, x   ; 3B | A = Low Byte
         
+.ifdef NEW
+;;; 10 B
+; suggested faster in gernal case?
+        cpy #0              ; Check if Y is already 0
+        beq pitch_done      ; If so, skip shifting
 octave_loop:
+;;; 12 c/loop
+        lsr tmp_high        
+        ror                 
+        dey                 
+        bne octave_loop     ; BNE is 
+.else ; OLD
+octave_loop:
+;;; 9 B
+;;; 13 c/loop
         dey                 ; 1B
         bmi pitch_done      ; 2B
         lsr tmp_high        ; 5B
