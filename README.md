@@ -61,7 +61,7 @@ The stream is an simple byte-coded VM: it has two types of commands:
 ```
  nnnnn oct = Note (5 bits for note value 0-23, 3 bits for octave 0-7)
                  [01=sub 23=bass 45=melody 67=clarity]
-     11 pgg iii = commands (pgg: group bits 0-7, iii: data bits 0-7)
+ 11 pgg iii = commands (pgg: group bits 0-7, iii: data bits 0-7)
 ```
 
 A note, after being set is "played", and it yields. That is it plays it's VALUE time ticks, and then it's REST specifedc ticks. If VALUE is 0, then it doesn't yield *(TODO:!)* and WAIT can be used.
@@ -95,7 +95,7 @@ nnnnn oct = NOTE...
 
 111 11 101   = CHANNEL A
 111 11 110   = CHANNEL B
-111 11 111   = CHANNEL C
+11 111 111      = CHANNEL C
 ```
 
 
