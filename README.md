@@ -59,9 +59,9 @@ Tag-line: "AntVM65 isn't just a player; it’s a Sound Language that treats spee
 The stream is an simple byte-coded VM: it has two types of commands:
 
 ```
- ooo nnnnn = Note (octave: 0-7, note: 0-23)
-             [01=sub 23=bass 45=melody 67=clarity]
- cmd 11yyy = commands (cmd: 0-7, data: yyy=0-7)
+ nnnnn oct = Note (5 bits for note value 0-23, 3 bits for octave 0-7)
+                 [01=sub 23=bass 45=melody 67=clarity]
+     11 pgg iii = commands (pgg: group bits 0-7, iii: data bits 0-7)
 ```
 
 A note, after being set is "played", and it yields. That is it plays it's VALUE time ticks, and then it's REST specifedc ticks. If VALUE is 0, then it doesn't yield *(TODO:!)* and WAIT can be used.
@@ -73,12 +73,12 @@ It's important to set volume and other parameters "before" the note commences. M
 ## Groups of commands
  
 --- no arguments
-ooo nn nnn = NOTE...
+nnnnn oct = NOTE...
  
-000 11 iii = WAIT 1s
-001 11 iii = ???
-010 11 iii = RAW registers
-011 11 iii = VALUE/REST: Articulation Presets
+11 000 iii = WAIT 1s
+11 001 iii = ???
+11 010 iii = RAW registers
+11 011 iii = VALUE/REST: Articulation Presets
  
 ---  with argument(s)
 100 11 ppp ? = RETURN/CALL local (TODO: not take byte)
@@ -105,17 +105,17 @@ TODO: cleanup
 
 
 ```
-0ii 11yyy = no argument
+11 pgg iii = command (no argument implies parameter flag 'p' is 0)
 
-000 11 000 = WAIT 0.5s
-000 11 www = WAIT (www+1)*20ms: 20-140ms)
+11 000 000 = WAIT 0.5s
+11 000 www = WAIT (www+1)*20ms: 20-140ms)
 ```
 
 TODO: tie 20ms to BPM 'instead' 8th or 16th note
 
 ```
-001 11 000 = ?RETURN
-001 11 001 = ?YIELD
+11 001 000 = ?RETURN
+11 001 001 = ?YIELD
 001 11 010 = ?STOP
 001 11 011 = ?QUIT-ALL
 
@@ -585,7 +585,7 @@ Next Step: Define the "Gate" behavior—is it a fixed 1-tick "gap" at the end of
 ```
 111 11 101      = CHANNEL A
 111 11 110      = CHANNEL B
-111 11 111      = CHANNEL C
+11 111 111      = CHANNEL C
 
 A+B+C == alternating abcabcabcabcabc
 C+B+A == all same
