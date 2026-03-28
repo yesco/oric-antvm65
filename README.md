@@ -81,20 +81,20 @@ nnnnn oct = NOTE...
 11 011 iii = VALUE/REST: Articulation Presets
  
 ---  with argument(s)
-100 11 ppp ? = RETURN/CALL local (TODO: not take byte)
-101 11 lng|P = CALL lang:Phonem
-110 11 0xx|..= TAILCALL/GOTO/BEQ/BNE
-110 11 1xx   = DRUM/SPEECH
+11 100 ppp ? = RETURN/CALL local (TODO: not take byte)
+11 101 lng|P = CALL lang:Phonem
+11 110 0xx|..= TAILCALL/GOTO/BEQ/BNE
+11 110 1xx   = DRUM/SPEECH
  
-111 11 000|vl= YIELD/SILENCE/SUSTAINED/DURATION
-111 11 0xx|WW= DELTA vol/pit/nois
+11 111 000|vl= YIELD/SILENCE/SUSTAINED/DURATION
+11 111 0xx|WW= DELTA vol/pit/nois
 
-111 11 100|?000 xxxx= SYSTEM/RESERVED
-111 11 100|?iii xxxx= ... ?
-111 11 100|?111 xxxx= EXTEND/FREE
+11 111 100|?000 xxxx= SYSTEM/RESERVED
+11 111 100|?iii xxxx= ... ?
+11 111 100|?111 xxxx= EXTEND/FREE
 
-111 11 101   = CHANNEL A
-111 11 110   = CHANNEL B
+11 111 101   = CHANNEL A
+11 111 110   = CHANNEL B
 11 111 111      = CHANNEL C
 ```
 
@@ -116,13 +116,13 @@ TODO: tie 20ms to BPM 'instead' 8th or 16th note
 ```
 11 001 000 = ?RETURN
 11 001 001 = ?YIELD
-001 11 010 = ?STOP
-001 11 011 = ?QUIT-ALL
+11 001 010 = ?STOP
+11 001 011 = ?QUIT-ALL
 
-001 11 100
-001 11 101
-001 11 110
-001 11 111
+11 001 100
+11 001 101
+11 001 110
+11 001 111
 ```
 
 ## RAW AY Registers
@@ -132,10 +132,10 @@ TODO: move to 1xx as they take parameters!
 TODO: how to address reg>7 ?
 
 ```
- 010 11 rrr | BYTE     = SETAY   ( 2 bytes)
+ 11 010 rrr | BYTE     = SETAY   ( 2 bytes)
  -- (should these auto-yield?)
- 010 11 111 | ...14B...= DUMPAY  (15 bytes)
- 010 11 110 | MASK |...= AYPDATE (3..10 bytes)
+ 11 010 111 | ...14B...= DUMPAY  (15 bytes)
+ 11 010 110 | MASK |...= AYPDATE (3..10 bytes)
 
    "90% of your updates in a song are just these 8 registers."
 
@@ -161,16 +161,16 @@ Rest period: is the silence within that value.
 Isn't a full note "4 seconds"? ("normal BPM: 60")
 
 ```
-011 11 xxx        = VALUE (i.e. length)
+11 011 xxx        = VALUE (i.e. length)
 
-011 11 000        = SUSTAIN (no rest)
-011 11 001        = VALUE 1 = full note (1/1) 200 ticks
-011 11 010        = VALUE 2 = half      (1/2) 100
-011 11 011        = VALUE 3 = quarter   (1/4)  50
-011 11 100        = VALUE               (1/8)  25
-011 11 101                              (1/16) 12
-011 11 110                              (1/32)  6 ticks
-011 11 111        = LEGATO (no rest), "switch"
+11 011 000        = SUSTAIN (no rest)
+11 011 001        = VALUE 1 = full note (1/1) 200 ticks
+11 011 010        = VALUE 2 = half      (1/2) 100
+11 011 011        = VALUE 3 = quarter   (1/4)  50
+11 011 100        = VALUE               (1/8)  25
+11 011 101                              (1/16) 12
+11 011 110                              (1/32)  6 ticks
+11 011 111        = LEGATO (no rest), "switch"
 ```
 
 Legato: FIX, is when just the tone is changed but not trigger new envelopes to restart...
@@ -189,15 +189,15 @@ The VM calculates timing using Bit-Shifts against a Whole Note (BPS) value (defa
 Defines the note's base length (Total_Ticks)
 
 ```
-011 11 vvv                       in 60 BPM
-011 11 000 = SUSTAIN / MANUAL    ===========
-011 11 001 = 1/1 (Whole)   >> 0  (200 ticks)
-011 11 010 = 1/2 (Half)    >> 1  (100 ticks)
-011 11 011 = 1/4 (Quarter) >> 2  ( 50 ticks)
-011 11 100 = 1/8 (8th)     >> 3  ( 25 ticks)
-011 11 101 = 1/16 (16th)   >> 4  ( 12 ticks)
-011 11 110 = 1/32 (32nd)   >> 5  (  6 ticks)
-011 11 111 = LEGATO (one-shot: just update freq/not env)
+11 011 vvv                       in 60 BPM
+11 011 000 = SUSTAIN / MANUAL    ===========
+11 011 001 = 1/1 (Whole)   >> 0  (200 ticks)
+11 011 010 = 1/2 (Half)    >> 1  (100 ticks)
+11 011 011 = 1/4 (Quarter) >> 2  ( 50 ticks)
+11 011 100 = 1/8 (8th)     >> 3  ( 25 ticks)
+11 011 101 = 1/16 (16th)   >> 4  ( 12 ticks)
+11 011 110 = 1/32 (32nd)   >> 5  (  6 ticks)
+11 011 111 = LEGATO (one-shot: just update freq/not env)
 ```
 
 ```
@@ -229,7 +229,7 @@ Echo Sync: The Echo_Delay now automatically snaps to the "Silence Gap": Total_Ti
 
 The "Zero" Safety: If (vvv + r) results in 0 ticks, the VM defaults to a 1-tick pulse to ensure the AY chip always fires a transient (essential for percussion).
 
-Sticky State: Once 011 11 vvv is set, every subsequent note on that channel follows that rhythmic "Grid" until changed.
+Sticky State: Once 11 011 vvv is set, every subsequent note on that channel follows that rhythmic "Grid" until changed.
 
 The Updated Note Trigger Flow
 
@@ -274,7 +274,7 @@ A "Grid" is efficient because it limits the choices. Instead of needing 8 bits t
 The Verdict: It’s "Rhythmic" because it’s based on musical divisions (1/2, 1/4, 1/8), and it’s a "Grid" because it provides a rigid structure that all channels (A, B, C) and effects (Echo/Link) align to automatically.
 
 (TODO: review)
-Does your Yield/Wait for Event command (111 11 000 + 00) also snap to this Grid, or can it break the "musical" timing for special FX?
+Does your Yield/Wait for Event command (11 111 000 + 00) also snap to this Grid, or can it break the "musical" timing for special FX?
 
 The "AntVM" Final Spec Logic:
 
@@ -329,33 +329,33 @@ The Verdict: Latched triggering is the way to go. It keeps the "Pulse" of the VM
 Proposed 011 Mapping:
 
 ```
-011 11 000 | SHIFT = QUICK LINK
-011 11 001 | DELAY = QUICK ECHO
-011 11 010         = TOGGLE NOISE (1 byte)
-011 11 100         = STOP ALL (1 byte). PANIC SILENCE
-011 11 101 - 111   = RESERVED deltas controls
+11 011 000 | SHIFT = QUICK LINK
+11 011 001 | DELAY = QUICK ECHO
+11 011 010         = TOGGLE NOISE (1 byte)
+11 011 100         = STOP ALL (1 byte). PANIC SILENCE
+11 011 101 - 111   = RESERVED deltas controls
 ```
 
 ## Control commands with argument
 
 ```
-1__ 11 ___     = command with argument(s)
+11 1__ ___     = command with argument(s)
 ```
 
 
 ## "Phonems"/"words" (subroutines)
 
 ```
-100 11 000     = RETURN
-100 11 ppp     = CALL ppp (local language phonem: 1-7)
+11 100 000     = RETURN
+11 100 ppp     = CALL ppp (local language phonem: 1-7)
 
-101 11 000 + P = CALL Phonem (0-255: local language)
-101 11 lll + P = CALL language:1-7, Phonem: 0-255
+11 101 000 + P = CALL Phonem (0-255: local language)
+11 101 lll + P = CALL language:1-7, Phonem: 0-255
 
-110 11 000 + P = TAILCALL Phonem (local lang)
-110 11 001 + R = GOTO Relative (rel branch)
-110 11 010 + R = BEQ Relative (if zero)
-110 11 011 + R = BNE Relative (if !zero)
+11 110 000 + P = TAILCALL Phonem (local lang)
+11 110 001 + R = GOTO Relative (rel branch)
+11 110 010 + R = BEQ Relative (if zero)
+11 110 011 + R = BNE Relative (if !zero)
 
 **TODO:**
 
@@ -367,10 +367,10 @@ Proposed 011 Mapping:
 ## Drum effects
 
 ```
-110 11 100      = kick  / 's'  (~50-100Hz)
-110 11 101      = snare / 'sh' 
-110 11 110      = hihat closed / 'ch'
-110 11 111      = hihat open   / 'th'/'ts' (cymbal)
+11 110 100      = kick  / 's'  (~50-100Hz)
+11 110 101      = snare / 'sh' 
+11 110 110      = hihat closed / 'ch'
+11 110 111      = hihat open   / 'th'/'ts' (cymbal)
 ```
 
 ## DELTAS
@@ -409,13 +409,13 @@ echo? B delay A less vol
 (also see 011 for only VALUE/length changes)
 
 ```
-111 11 000 + 00 = YIELD/STOP (wait for "event")
-111 11 000 + 0l = SILENCE pause set REST rest: 1-7
-111 11 000 + v0 = SUSTAINED vol:0-15
-111 11 000 + vl = DURATION  vol:0-15 set VALUE:1-7
-111 11 001 + WW = DELTAS volume
-111 11 010 + WW = DELTAS pitch
-111 11 011 + WW = DELTAS noise
+11 111 000 + 00 = YIELD/STOP (wait for "event")
+11 111 000 + 0l = SILENCE pause set REST rest: 1-7
+11 111 000 + v0 = SUSTAINED vol:0-15
+11 111 000 + vl = DURATION  vol:0-15 set VALUE:1-7
+11 111 001 + WW = DELTAS volume
+11 111 010 + WW = DELTAS pitch
+11 111 011 + WW = DELTAS noise
 
   v:4 bits is initial volume
 
@@ -455,7 +455,7 @@ Modifier: The Rest (r) or Duration (l) adds a "Shift" to that speed.
 Logic: Actual_Speed = Base_Speed + (r << 1)
 
 ### The AntVM Strategy
-- Since you have the 111 11 001/010/011 DELTA blocks, use the l/r values as "Multipliers":
+- Since you have the 11 111 001/010/011 DELTA blocks, use the l/r values as "Multipliers":
 - Default: If l and r are 0, the Delta Engine runs at the "Language" speed.
 - Active: if l > 0, the VM uses it to scale the 1-bit ticker.
 
@@ -504,8 +504,8 @@ It’s a "Musical Shortcut." By linking Delay to Rest, you ensure the song never
 These have various formats and may be used to extend it further but, they take many bytes!
 
 ```
-111 11 100|0xxx iiii|BYTE = B.EXTEND   (3 bytes)
-111 11 100|1xxx iiii|WORD = W.EXTEND   (4 bytes)
+11 111 100|0xxx iiii|BYTE = B.EXTEND   (3 bytes)
+11 111 100|1xxx iiii|WORD = W.EXTEND   (4 bytes)
 ```
 
 ###  RAW Messaging
@@ -517,17 +517,17 @@ There is commands to set Y, AX, and to finally JSR an address. Result is stored 
 Using BEQ and BNE simple tests can be performed using the value of AX.
 
 ```
-111 11 100|0000 0000|BYTE = "Y:=BYTE;" (3 bytes)
-111 11 100|1000 0000|WORD = "AX:=WORD;"
-111 11 100|1000 0001|ADDR = JSR addr   (using AXY)
+11 111 100|0000 0000|BYTE = "Y:=BYTE;" (3 bytes)
+11 111 100|1000 0000|WORD = "AX:=WORD;"
+11 111 100|1000 0001|ADDR = JSR addr   (using AXY)
 ```
 
 ### Global timing info
 
 ```
-111 11 100|0000 0001|BYTE = BPM (beats) (ticks?)
-111 11 100|0000 0010|BYTE = "Global Gate" (percentage)
-111 11 100|0000 0011|BYTE ... ???
+11 111 100|0000 0001|BYTE = BPM (beats) (ticks?)
+11 111 100|0000 0010|BYTE = "Global Gate" (percentage)
+11 111 100|0000 0011|BYTE ... ???
 
 TODO: BPM 60 == 200 ticks
 ```
@@ -542,49 +542,49 @@ Next Step: Define the "Gate" behavior—is it a fixed 1-tick "gap" at the end of
 ### UNDEFINED/FREE
 
 ```
-111 11 100|0xxx iiii|BYTE = B.EXTEND   (3 bytes)
-111 11 100|1xxx iiii|WORD = W.EXTEND   (4 bytes)
+11 111 100|0xxx iiii|BYTE = B.EXTEND   (3 bytes)
+11 111 100|1xxx iiii|WORD = W.EXTEND   (4 bytes)
 ```
 
 ### RESERVED/SYSTEM
 
 ```
-111 11 100|0000 iiii|BYTE i>0011
-111 11 100|0000 0100|BYTE
-111 11 100|0000 0101|BYTE
-111 11 100|0000 0110|BYTE
-111 11 100|0000 0111|BYTE
+11 111 100|0000 iiii|BYTE i>0011
+11 111 100|0000 0100|BYTE
+11 111 100|0000 0101|BYTE
+11 111 100|0000 0110|BYTE
+11 111 100|0000 0111|BYTE
 
-111 11 100|1000 iiii|WORD i>0000
-111 11 100|1000 0100|WORD
-111 11 100|1000 0101|WORD
-111 11 100|1000 0110|WORD
-111 11 100|1000 0111|WORD
+11 111 100|1000 iiii|WORD i>0000
+11 111 100|1000 0100|WORD
+11 111 100|1000 0101|WORD
+11 111 100|1000 0110|WORD
+11 111 100|1000 0111|WORD
 ...
 
 ### FREE
 
-111 11 100|0000 iiii|BYTE = RESERVED/SYTEM
+11 111 100|0000 iiii|BYTE = RESERVED/SYTEM
 
 ---- 3 bytes 1 byte param
-111 11 100|0xxx 0100|BYTE = FREE
-111 11 100|0xxx 0101|BYTE = FREE
-111 11 100|0xxx 0110|BYTE = FREE
-111 11 100|0xxx 0111|BYTE = FREE
+11 111 100|0xxx 0100|BYTE = FREE
+11 111 100|0xxx 0101|BYTE = FREE
+11 111 100|0xxx 0110|BYTE = FREE
+11 111 100|0xxx 0111|BYTE = FREE
 
 ---- 4 bytes 2 byte param
-111 11 100|1xxx iiii|WORD i>0000
-111 11 100|1xxx 0100|WORD = FREE
-111 11 100|1xxx 0101|WORD = FREE
-111 11 100|1xxx 0110|WORD = FREE
-111 11 100|1xxx 0111|WORD = FREE
+11 111 100|1xxx iiii|WORD i>0000
+11 111 100|1xxx 0100|WORD = FREE
+11 111 100|1xxx 0101|WORD = FREE
+11 111 100|1xxx 0110|WORD = FREE
+11 111 100|1xxx 0111|WORD = FREE
 ```
 
 ##  Channel shortcuts (additive if in seq)
 
 ```
-111 11 101      = CHANNEL A
-111 11 110      = CHANNEL B
+11 111 101      = CHANNEL A
+11 111 110      = CHANNEL B
 11 111 111      = CHANNEL C
 
 A+B+C == alternating abcabcabcabcabc
