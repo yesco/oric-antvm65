@@ -50,10 +50,13 @@ interpret:
 command:
         txa
         eor #48             ; A = 0000PCC0
-        sta dispatch_br+1   ; SMC
-        ; Carry is set from CPX #48
+        lsr                 ; A = 00000PCC (0-7)
+        tax
+        lda offset_table, x ; Get relative offset
+        sta dispatch_br+1   ; SMC the branch offset
 
-        and #%00001000      ; Check P bit (bit 3)
+        txa                 ; A = 00000PCC
+        and #%00000100      ; Check P bit (bit 2 after LSR)
         beq no_param
         
         ldy ipy
@@ -61,18 +64,18 @@ command:
         inc ipy
 no_param:
 dispatch_br:
-        bcs *               ; Modified to jump into the table below
-        
-        bcs cmdWAIT         ; 0
-        bcs cmdCTRL         ; 2
-        bcs cmdSETAY        ; 4
-        bcs cmdVALUE        ; 6
-        bcs cmdLocalCALL    ; 8
-        bcs cmdLangCALL     ; 10
-        bcs cmdFlowDrums    ; 12
-        bcs cmdModSet       ; 14
+        bcs *               ; Jumps directly to cmd via SMC offset
 
                                 ; --- Data Tables ---
+offset_table:
+        .byte cmdWAIT-dispatch_br-2
+        .byte cmdCTRL-dispatch_br-2
+        .byte cmdSETAY-dispatch_br-2
+        .byte cmdVALUE-dispatch_br-2
+        .byte cmdLocalCALL-dispatch_br-2
+        .byte cmdLangCALL-dispatch_br-2
+        .byte cmdFlowDrums-dispatch_br-2
+        .byte cmdModSet-dispatch_br-2
 
 period_table:
         .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
