@@ -70,6 +70,8 @@ Each channel (A,B,C,Noise) typically has it's own "cursor" (and stack) that does
 
 It's important to set volume and other parameters "before" the note commences. Most such settings are per channel (A,B,C,Noise) and are sticky - that is they are permanent until explicitly changed.
 
+
+
 ## Groups of commands
  
 --- no arguments
@@ -81,23 +83,32 @@ nnnnn oct = NOTE...
 11 011 iii = SUSTAIN/ whole/half/quarter/...32th /LEGATO
  
 ---  with argument(s)
-11 100 ppp|? = RETURN/CALL local (TODO: not take byte)
+11 100 ppp|? = RETURN/CALL local (TODO: not take byte) (dispatch)
 11 101 lng|P = CALL lang:Phonem
-11 110 0xx|??= TAILCALL/GOTO/BEQ/BNE
 
+11 110 0xx|??= TAILCALL/GOTO/BEQ/BNE (dispatch)
 11 110 1xx|A = DRUM/SPEECH with noise pitch param A
  
 11 111 000|vl= YIELD/SILENCE/SUSTAINED/DURATION
-11 111 0xx|WW= DELTA vol/pit/nois
+11 111 0xx|WW= DELTA vol/pit/nois (dispatch)
 
 11 111 100|?000 xxxx= SYSTEM/RESERVED
-11 111 100|?iii xxxx= ... ?
+11 111 100|?iii xxxx= ... ?  (dispatch)
 11 111 100|?111 xxxx= EXTEND/FREE
 
-11 111 101   = CHANNEL A ...TODO: move to NON-PARAM
+11 111 101   = CHANNEL A ...TODO: move to NON-PARAM  (dispatch)
 11 111 110   = CHANNEL B ...TODO: move to NON-PARAM
 11 111 111   = CHANNEL C ...TODO: move to NON-PARAM
 ```
+
+We have 5 groups of instructions that need to do internal individual dispatch on iii, bytes: 
+- dey/bmi-chain:	  105 (* 5 21)
+
+- 2xlda/pha/rts-dispatch: 125 (* 5 (+ 9 16))
+- 2xlda+sta/jmp()-disp:   145 (* 5 (+ 13 16))
+- 2xlda opt jmp-dispatch: 122 (+ (* 5 (+ 7 16)) 7)
+- big 6-bits dispatch:    129 (+ 7 4 (* 64 2) (- 6 16))
+  (this one saves 10 by replacing global dispatch)
 
 
 ## Commands  Details
