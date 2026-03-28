@@ -75,16 +75,17 @@ It's important to set volume and other parameters "before" the note commences. M
 --- no arguments
 nnnnn oct = NOTE...
  
-11 000 iii = WAIT 1s
-11 001 iii = ???
-11 010 iii = RAW registers
-11 011 iii = VALUE/REST: Articulation Presets
+11 000 rrr = SETAY / YUPDATE / DUMPAY ("rrrr": 14 regs) 
+11 001 rrr =             - " -
+11 010 iii = WAIT 1s/ 1-8 x TPV (ticks per VALUE)
+11 011 iii = SUSTAIN/ whole/half/quarter/...32th /LEGATO
  
 ---  with argument(s)
-11 100 ppp ? = RETURN/CALL local (TODO: not take byte)
+11 100 ppp|? = RETURN/CALL local (TODO: not take byte)
 11 101 lng|P = CALL lang:Phonem
-11 110 0xx|..= TAILCALL/GOTO/BEQ/BNE
-11 110 1xx   = DRUM/SPEECH
+11 110 0xx|??= TAILCALL/GOTO/BEQ/BNE
+
+11 110 1xx|A = DRUM/SPEECH with noise pitch param A
  
 11 111 000|vl= YIELD/SILENCE/SUSTAINED/DURATION
 11 111 0xx|WW= DELTA vol/pit/nois
@@ -95,7 +96,7 @@ nnnnn oct = NOTE...
 
 11 111 101   = CHANNEL A
 11 111 110   = CHANNEL B
-11 111 111      = CHANNEL C
+11 111 111   = CHANNEL C
 ```
 
 
@@ -103,79 +104,104 @@ nnnnn oct = NOTE...
 
 TODO: cleanup
 
-
-```
-11 pgg iii = command (no argument implies parameter flag 'p' is 0)
-
-11 000 000 = WAIT 0.5s
-11 000 www = WAIT (www+1)*20ms: 20-140ms)
-```
-
-TODO: tie 20ms to BPM 'instead' 8th or 16th note
-
-```
-11 001 000 = ?RETURN
-11 001 001 = ?YIELD
-11 001 010 = ?STOP
-11 001 011 = ?QUIT-ALL
-
-11 001 100
-11 001 101
-11 001 110
-11 001 111
-```
-
 ## RAW AY Registers
 
-TODO: move to 1xx as they take parameters!
+```
+ 11 000 rrr | BYTE     = SETAY   ( 2 bytes)
 
-TODO: how to address reg>7 ?
+maybe just need a:
+
+ 11 cc rrrr | BYTE       = SETAYR (R0-R13) = BYTE
+ 11 cc 1110 | MASK | ... = AYDATE (a partial "frame")
+ 11 cc 1111 | ..14 byte..= DUMPAY (a full "frame")
+
+
+(TODO: reconsider/implement)
+
+**Too complicated and too many special "clever" cases***
+
+We will not abondon raw AY chip manipulations! But we'll take a "complicated" approach to try to optimzie the stream. We've divided updates to 4 different styles:
+
+- 15 B = DUMPAY: copies 14 bytes directly into the registers. This command have 1 byte overheadl
+- 3-10 B = AYUPDATE: fine-tuning update messages, can manipulate low byte pitch of A,B,C and their volume, as well as noise period and turn on/off tones+noise. A mask defines what elements come. This command have 2 byte overhead.
+
+These complements AYUPDATE, either by first being set followed by an AYUPDATE, or because we're updating only one thing.
+
+- 2 B = SETAYH: set "hi/unsual controls". One byte overhead per update. These are unusual updates, but complement AYUPDATE
+- 3 B = SETAYW: update 2-byte pitch values. Can be used for big change for a single Channel.
+
+(Most likely these will not be needed but are added for effects and for a possible, compressed YM-style stream. Efficiency maybe low.)
 
 ```
- 11 010 rrr | BYTE     = SETAY   ( 2 bytes)
- -- (should these auto-yield?)
+   - 0: R1: A hi + vol
+   - 1: R3: B hi + vol
+   - 2: R5: C hi + vol
+   - 3: R6: noise 6 bits
+   - 4: R7: mixer
+   - 5: R8: vol A+B (not C!)
+
+-- DUMPAY and AYPDATE will AUTO-YIELD (if VALUE+REST set)
+   - 6: DUMPAY | ...14B...
+   - 7: AYPDATE | MASK | ...
+
  11 010 111 | ...14B...= DUMPAY  (15 bytes)
  11 010 110 | MASK |...= AYPDATE (3..10 bytes)
 
    "90% of your updates in a song are just these 8 registers."
 
    MASK:   
-   - 0: Fine Pitch A
-   - 1: Fine Pitch B
-   - 2: Fine Pitch C
-   - 3: Volume A
-   - 4: Volume B
-   - 5: Volume C
-   - 6: Noise Period (Global)
-   - 7: Mixer (R7)
+   - 0:  R0= Fine Pitch A
+   - 1:  R2= Fine Pitch B
+   - 2:  R4= Fine Pitch C
+   - 3:  R6= Noise Period (Global)
+   - 4:  R7= Mixer
+   - 5:  R8= Volume A
+   - 6:  R9= Volume B
+   - 7: R10= Volume C
 ```
 
-## VALUE/REST: Articulation Presets (note+rest lengths)
-
-```
-Value: duration length in "ticks"
-Gate:  % time the sound is on (Duty Cycle)
-Rest period: is the silence within that value.
 ```
 
-Isn't a full note "4 seconds"? ("normal BPM: 60")
+- 0
+  R0: Channel A Tone Period, Fine Tune (low 8 bits)
+  R1: Channel A Tone Period, Coarse Tune (high 4 bits)
+  (R1: upper 4 bits != 0 copied to R8)
+
+- 1
+  R2: Channel B Tone Period, Fine Tune (low 8 bits)
+  R3: Channel B Tone Period, Coarse Tune (high 4 bits)
+  (R3: upper 4 bits != 0 copied to R9)
+
+- 2
+  R4: Channel C Tone Period, Fine Tune (low 8 bits)
+  R5: Channel C Tone Period, Coarse Tune (high 4 bits)
+  (R5: upper 4 bits != 0 copied to R10)
+
+- 3
+  R11: Envelope Period, Fine Tune (low 8 bits)
+  R12: Envelope Period, Coarse Tune (high 8 bits)
+
+- 4
+  R6: Noise Generator Period (5-bit value for noise frequency)
+  R13: Envelope Shape/Cycle (selects attack, decay, sustain, and release pattern)
+
+- 5
+  R7: Mixer Control (enables/disables Tone/Noise per channel and sets I/O port directions)
+
+- 6
+- 7
+
+
+
+### WAIT
+
 
 ```
-11 011 xxx        = VALUE (i.e. length)
-
-11 011 000        = SUSTAIN (no rest)
-11 011 001        = VALUE 1 = full note (1/1) 200 ticks
-11 011 010        = VALUE 2 = half      (1/2) 100
-11 011 011        = VALUE 3 = quarter   (1/4)  50
-11 011 100        = VALUE               (1/8)  25
-11 011 101                              (1/16) 12
-11 011 110                              (1/32)  6 ticks
-11 011 111        = LEGATO (no rest), "switch"
+11 010 000 = WAIT 0.5s
+11 010 www = WAIT (www+1)*20ms: 20-140ms)
 ```
 
-Legato: FIX, is when just the tone is changed but not trigger new envelopes to restart...
-
-You wrote (and I take it for begin more like % than actual absolute ticks?):
+TODO: tie 20ms to BPM 'instead' 8th or 16th note
 
 ## The GRID ("AI discussion")
 
@@ -198,10 +224,12 @@ Defines the note's base length (Total_Ticks)
 11 011 101 = 1/16 (16th)   >> 4  ( 12 ticks)
 11 011 110 = 1/32 (32nd)   >> 5  (  6 ticks)
 11 011 111 = LEGATO (one-shot: just update freq/not env)
-```
 
-```
- TODO: how to set R    ??? 11 ??? | 0r
+*... TODO:* REST, how to set it?
+
+   vvv is just number of shifts (TPS>> vvv)
+
+*(automatic using global rule?)
 
  r (Gate Shift): Defines the "Duty Cycle" (Gate_Ticks).
 
@@ -217,6 +245,21 @@ Defines the note's base length (Total_Ticks)
 
        Use code with caution. LOL
 ```
+
+## VALUE/REST: Articulation Presets (note+rest lengths)
+*realtive* idea
+
+```
+Value: duration length in "ticks"
+Gate:  % time the sound is on (Duty Cycle)
+Rest period: is the silence within that value.
+```
+Legato: FIX, is when just the tone is changed but not trigger new envelopes to restart...
+
+You wrote (and I take it for begin more like % than actual absolute ticks?):
+
+
+
 
 ## The GRID ("AI discussion")
 
@@ -358,6 +401,20 @@ Proposed 011 Mapping:
 11 110 011 + R = BNE Relative (if !zero)
 
 **TODO:**
+
+```
+????
+11 001 000 = ?RETURN
+11 001 001 = ?YIELD
+11 001 010 = ?STOP
+11 001 011 = ?QUIT-ALL
+
+11 001 100
+11 001 101
+11 001 110
+11 001 111
+```
+
 
 ??? 11 ???     = PUSH/SET LANGUAGE, RETURN ENDS
                  (but continues at next pos)
