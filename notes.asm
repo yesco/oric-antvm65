@@ -48,29 +48,31 @@ interpret:
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
-                                ; A contains shifted value %0011PCCI. P=bit 3, CC=bits 1-2.
-        and #%00001000      ; 2B | Check shifted P bit (bit 3)
-        beq no_param        ; 2B
+        txa
+        eor #48             ; A = 0000PCC0
+        sta dispatch_br+1   ; SMC
+        ; Carry is set from CPX #48
+
+        and #%00001000      ; Check P bit (bit 3)
+        beq no_param
         
-        ldy ipy             ; 3B
-        lda (stream),y      ; 5B | Fetch Parameter into A
-        inc ipy             ; 3B
-        
+        ldy ipy
+        lda (stream),y      ; Fetch Parameter into A
+        inc ipy
 no_param:
-        txa                 ; 1B
-        and #%00001110      ; 2B | Isolate PCC*2 (Bits 1,2,3)
-        tax                 ; 1B
+dispatch_br:
+        bcs *               ; Modified to jump into the table below
         
-        lda groupjmps+1, x  ; 3B | RTS dispatch trick
-        pha                 ; 1B
-        lda groupjmps, x    ; 3B
-        pha                 ; 1B
-        rts                 ; 1B
+        bcs cmdWAIT         ; 0
+        bcs cmdCTRL         ; 2
+        bcs cmdSETAY        ; 4
+        bcs cmdVALUE        ; 6
+        bcs cmdLocalCALL    ; 8
+        bcs cmdLangCALL     ; 10
+        bcs cmdFlowDrums    ; 12
+        bcs cmdModSet       ; 14
 
                                 ; --- Data Tables ---
-groupjmps:      
-        .word cmdWAIT-1, cmdCTRL-1, cmdSETAY-1, cmdVALUE-1
-        .word cmdLocalCALL-1, cmdLangCALL-1, cmdFlowDrums-1, cmdModSet-1
 
 period_table:
         .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
