@@ -87,47 +87,58 @@ oct4_table:
         .byte 189, 184, 178, 173, 168, 164, 159, 154
         .byte 150, 146, 142, 138, 134, 130, 126, 122
 
-;;; Input from dispatch: X=A=nnnnn0 Y=octave(0-7)
-;;; 28B shift 0-7 steps
-;;; 51B optimize by second byte array for oct>=4 (hip=0)
-;;; 37B tight dual-table shifter
+;;; Playing a NOTE command
+;;;   X=A=nnnnn0 Y=octave(0-7) (from dispatch)
+;;; 
+, 130, 126, 122
+
+;;; Cycle Counts (Absolute addressing, no page crossing, includes RTS):
+;;; Oct 0: 42c | Oct 1: 54c | Oct 2: 66c | Oct 3: 78c
+;;; Oct 4: 36c | Oct 5: 47c | Oct 6: 58c | Oct 7: 69c
+;;;
+;;; 28B shift 0-7 steps, 17-122cycles (SLOW for high oct)
+;;; 67B optimize by second byte array for oct>=4 (hip=0)
+;;; 55B tight dual-table shifter
+;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
-        cpy #4              ; 2B | Check if Octave 4+
-        bcs .high_oct       ; 2B | Branch to 8-bit logic
+        cpy #4              ; 2
+        bcs .high_oct       ; 2/3 | Branch to 8-bit logic
         
-        lda period_table+1, x ; 3B | Load High Octave 0-3
-        sta tmp_high          ; 3B
-        lda period_table, x   ; 3B | A = Low Byte
+        lda period_table+1, x ; 4
+        sta tmp_high          ; 3
+        lda period_table, x   ; 4
         
-        cpy #0              ; 2B | Skip loop if Octave 0
-        beq pitch_done      ; 2B
+        cpy #0              ; 2
+        beq .low_done       ; 2/3
 .low_loop:
-        lsr tmp_high        ; 5B | 16-bit shift
-        ror                 ; 1B
-        dey                 ; 1B
-        bne .low_loop       ; 2B
-        beq pitch_done      ; 2B
+        lsr tmp_high        ; 5  | 16-bit shift loop (9c per iter)
+        ror                 ; 2
+        dey                 ; 2
+        bne .low_loop       ; 2/3
+.low_done:
+        ldx tmp_high        ; 3
+        jmp pitch_done      ; 3
 
 .high_oct:
-        lsr                 ; 1B | A = nnnnn (Index)
-        tax                 ; 1B | X = nnnnn
-        lda #0              ; 2B | High byte is 0 for Octave 4+
-        sta tmp_high        ; 3B
-        lda oct4_table, x   ; 4B | Load the 8-bit base note
-        cpy #4              ; 2B | Check if Octave 4
-        beq pitch_done      ; 2B | If Octave 4, no shifts needed
+        lsr                 ; 2 | A = nnnnn (Index)
+        tax                 ; 2
+        lda oct4_table, x   ; 4
 .high_loop:
-        lsr                 ; 1B | 8-bit shift
-        dey                 ; 1B
-        cpy #4              ; 2B | Loop until we hit Octave 4
-        bne .high_loop      ; 2B
+        cpy #4              ; 2 | 8-bit shift loop (6c per iter)
+        beq .high_done      ; 2/3
+        lsr                 ; 2
+        dey                 ; 2
+        ;; always
+        bne .high_loop      ; 2/3
+.high_done:
+        ldx #0              ; 2
 
 pitch_done:
-        clc                 ; 1B
-        adc detune_lo       ; 3B
-        tay                 ; 1B | Final Low in Y
-        lda tmp_high        ; 3B
-        adc detune_hi       ; 3B | Final High in A
-        tax                 ; 1B | Final High in X
-        tya                 ; 1B | Final Low in A
-        rts                 ; 1B
+        clc                 ; 2
+        adc detune_lo       ; 3
+        tay                 ; 2
+        txa                 ; 2
+        adc detune_hi       ; 3
+        tax                 ; 2
+        tya                 ; 2
+        rts                 ; 6
