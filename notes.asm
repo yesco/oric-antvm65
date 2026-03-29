@@ -74,49 +74,60 @@ offset_table:
         .byte cmdFlowDrums-dispatch_br-2
         .byte cmdModSet-dispatch_br-2
 
+
+;;; 48 bytes (Octave 0-3 base)
 period_table:
         .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
         .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
         .word 2408, 2339, 2273, 2208, 2145, 2084, 2025, 1967
 
-;;; Input from dispatch: X=nnnnn0 Y=oct
+;;; 24 bytes (Octave 4 base - 8-bit)
+oct4_table:
+        .byte 238, 232, 225, 219, 212, 206, 200, 195
+        .byte 189, 184, 178, 173, 168, 164, 159, 154
+        .byte 150, 146, 142, 138, 134, 130, 126, 122
+
+;;; Input from dispatch: X=A=nnnnn0 Y=octave(0-7)
+;;; 28B shift 0-7 steps
+;;; 51B optimize by second byte array for oct>=4 (hip=0)
+;;; 37B tight dual-table shifter
 cmdNOTE:
-        lda period_table+1, x ; 3B
+        cpy #4              ; 2B | Check if Octave 4+
+        bcs .high_oct       ; 2B | Branch to 8-bit logic
+        
+        lda period_table+1, x ; 3B | Load High Octave 0-3
         sta tmp_high          ; 3B
         lda period_table, x   ; 3B | A = Low Byte
         
-.ifdef NEW
-;;; 10 B
-; suggested faster in gernal case?
-        cpy #0              ; Check if Y is already 0
-        beq pitch_done      ; If so, skip shifting
-octave_loop:
-;;; 12 c/loop
-        lsr tmp_high        
-        ror                 
-        dey                 
-        bne octave_loop     ; BNE is 
-.else ; OLD
-octave_loop:
-;;; 9 B
-;;; 13 c/loop
-        dey                 ; 1B
-        bmi pitch_done      ; 2B
-        lsr tmp_high        ; 5B
+        cpy #0              ; 2B | Skip loop if Octave 0
+        beq pitch_done      ; 2B
+.low_loop:
+        lsr tmp_high        ; 5B | 16-bit shift
         ror                 ; 1B
-        jmp octave_loop     ; 3B
+        dey                 ; 1B
+        bne .low_loop       ; 2B
+        beq pitch_done      ; 2B
 
-;;; TODO: hwoabout delta encoding stuff?
-;;;   maybe remove and do in "ticks"
-;;;   do ticks just manipulate values
+.high_oct:
+        lsr                 ; 1B | A = nnnnn (Index)
+        tax                 ; 1B | X = nnnnn
+        lda #0              ; 2B | High byte is 0 for Octave 4+
+        sta tmp_high        ; 3B
+        lda oct4_table, x   ; 4B | Load the 8-bit base note
+        cpy #4              ; 2B | Check if Octave 4
+        beq pitch_done      ; 2B | If Octave 4, no shifts needed
+.high_loop:
+        lsr                 ; 1B | 8-bit shift
+        dey                 ; 1B
+        cpy #4              ; 2B | Loop until we hit Octave 4
+        bne .high_loop      ; 2B
+
 pitch_done:
         clc                 ; 1B
-        adc detune_lo       ; 3B | A = Final Low
-        tay                 ; 1B | Temp save Low in Y
+        adc detune_lo       ; 3B
+        tay                 ; 1B | Final Low in Y
         lda tmp_high        ; 3B
-        adc detune_hi       ; 3B | A = Final High
-        tax                 ; 1B | X = Final High
-        tya                 ; 1B | A = Final Low
-
-        ;;  Yield
+        adc detune_hi       ; 3B | Final High in A
+        tax                 ; 1B | Final High in X
+        tya                 ; 1B | Final Low in A
         rts                 ; 1B
