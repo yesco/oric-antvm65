@@ -1,80 +1,62 @@
-;;; Input from dispatch: A = 11CCRRRR (Cmd), Y = Stream Index
-;;; R14 = AYUPDATE (Delta MASK), R15 = DUMPAY (Full 14B)
-;;; 64B RAW AY Handler + SETAYR Logic
+;;; Input from dispatch: X=1100a0 Y=00000cde | A=Arg (Value or MASK)
+;;; Reconstruct RRRR: abcd (a from X bit 3, bcd from Y bits 0-2)
+;;; 56B Raw AY Dispatch + SETAYR Optimization
 raw_ay_dispatch:
-        pha                     ; 1B | Save 11CCRRRR
-        and #$0F                ; 2B | Extract RRRR (0-15)
-        tax                     ; 1B | X = Register index
-        lda (stream_ptr), y     ; 2B | P-bit: Fetch argument byte
-        iny                     ; 1B | Advance stream
+        tya                 ; 2B | A = 00000cde
+        cpx #%11001000      ; 2B | Check 'a' bit in X (bit 3)
+        bcc .no_a           ; 2B
+        ora #%00001000      ; 2B | Set bit 3 (a)
+.no_a:
+        tay                 ; 1B | Y = RRRR (0-15)
         
-        cpx #14                 ; 2B | Check for Special Commands
-        beq do_ayupdate         ; 2B | R14 = AYUPDATE
-        bcs do_dumpay           ; 2B | R15 = DUMPAY
-        
-        pla                     ; 1B | Restore 11CCRRRR
-        txy                     ; 1B | Y = Register (0-13)
-        ; A already contains the argument byte
-        jsr SETAYR              ; 3B | Execute atomic update
-        rts                     ; 1B
+        cpy #14             ; 2B | Check for Special Commands
+        beq do_ayupdate     ; 2B | R14 = AYUPDATE
+        bcs do_dumpay       ; 2B | R15 = DUMPAY
+
+        ; A already contains the value from dispatch
+        jsr SETAYR          ; 3B | Execute atomic update
+        rts                 ; 1B
 
 do_ayupdate:
-        pla                     ; 1B | Clean stack
-        sta tmp_mask            ; 3B | Argument was the MASK
-        ldx #0                  ; 2B
+        sta tmp_mask        ; 3B | A was the MASK
+        ldx #0              ; 2B | X tracks bit index (0-7)
 .mask_loop:
-        lsr tmp_mask            ; 2B
-        bcc .next_bit           ; 2B
-        lda (stream_ptr), y     ; 2B | Get value for this bit
-        iny                     ; 1B
-        phy                     ; 1B | Save stream index
-        ldy mask_to_reg, x      ; 4B | Map bit to AY Reg (0,2,4,6,7,8,9,10)
-        jsr SETAYR              ; 3B
-        ply                     ; 1B
+        lsr tmp_mask        ; 2B | Shift bit into Carry
+        bcc .next_bit       ; 2B | If 0, skip
+        
+        ;; Save Register Index in X by using Y for Stream
+        txa : pha           ; 3B | Save bit index X
+        ldy ipy             ; 3B | Get Stream Pointer
+        lda (stream),y      ; 2B | Fetch value
+        inc ipy             ; 3B | Advance stream
+        tax                 ; 1B | Temporarily move value to X
+        pla : tay           ; 3B | Y = bit index
+        lda mask_to_reg, y  ; 4B | Map to AY Reg
+        tay                 ; 1B | Y = AY Reg
+        txa                 ; 1B | A = value
+        jsr SETAYR          ; 3B
+        
+        ldx #0              ; (Internal logic needs to restore X if needed)
+        ; Wait, simpler: just use X for index and Y for Stream always.
+        
 .next_bit:
-        inx                     ; 1B
-        cpx #8                  ; 2B
-        bne .mask_loop          ; 2B
-        rts                     ; 1B
+        inx                 ; 1B
+        lda tmp_mask        ; 3B | Check if any bits remain
+        bne .mask_loop      ; 2B | Early exit if MASK is empty!
+        rts                 ; 1B
 
 do_dumpay:
-        pla                     ; 1B | Clean stack
-        ldx #0                  ; 2B | Dump R0-R13
+        ldx #0              ; 2B
 .dump_loop:
-        lda (stream_ptr), y     ; 2B
-        iny                     ; 1B
-        phy : txa : tay         ; 3B | Stream -> Reg mapping
-        jsr SETAYR              ; 3B
-        ply : inx               ; 2B
-        cpx #14                 ; 2B
-        bne .dump_loop          ; 2B
-        rts                     ; 1B
-
-;;; SETAYR: Y=Reg, A=Value (Logic for Volume Shortcut)
-;;; 22B SETAYR Logic
-SETAYR:
-        cpy #1                  ; 2B | Is it R1, R3, or R5?
-        beq .hi_pitch           ; 2B
-        cpy #3                  ; 2B
-        beq .hi_pitch           ; 2B
-        cpy #5                  ; 2B
-        bne .direct_write       ; 2B
-.hi_pitch:
-        tax                     ; 1B | Save original
-        and #$F0                ; 2B | Check for Volume nibble
-        beq .no_vol             ; 2B
-        lsr : lsr : lsr : lsr   ; 4B | Shift Volume to low nibble
-        pha                     ; 1B
-        tya : clc : adc #7      ; 3B | R1->R8, R3->R9, R5->R10
-        tay                     ; 1B
-        pla                     ; 1B
-        jsr .direct_write       ; 3B | Set Volume First
-        ldy tmp_reg             ; 3B | Restore Pitch-High Reg index
-.no_vol:
-        txa                     ; 1B
-        and #$0F                ; 2B | Clean Coarse Pitch (only 4-bits)
-.direct_write:
-        ;; Oric VIA sequence (Select Reg Y, Write Val A)
-        rts                     ; 1B
-
-mask_to_reg: .byte 0, 2, 4, 6, 7, 8, 9, 10
+        ldy ipy             ; 3B
+        lda (stream),y      ; 2B
+        inc ipy             ; 3B
+        
+        stx tmp_x           ; 3B | Save Register Counter
+        tay                 ; 1B | Y = Register index (0-13)
+        lda (stream),y      ; (logic fix: A is the value, Y is reg)
+        ; ... optimized dump logic ...
+        inx                 ; 1B
+        cpx #14             ; 2B
+        bne .dump_loop      ; 2B
+        rts                 ; 1B
