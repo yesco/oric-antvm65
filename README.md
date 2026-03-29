@@ -118,13 +118,33 @@ TODO: cleanup
 ## RAW AY Registers
 
 ```
- 11 000 rrr | BYTE     = SETAY   ( 2 bytes)
+11 cc rrrr | BYTE    = SETAYR  (R0-R13) = BYTE     (2 B)
+11 cc 1110 | MASK|...= AYPDATE (a partial "frame") (3-10 B)
+11 cc 1111 | ..14B...= DUMPAY  (a full "frame")    (15 B)
 
-maybe just need a:
+   SETAYR will be special for R1,R3,R5 hi-pitch A,B,C
+   Optimization: if the 4 high-bits are !=0
+     it's used to set the volume for that channel.
 
- 11 cc rrrr | BYTE       = SETAYR (R0-R13) = BYTE
- 11 cc 1110 | MASK | ... = AYDATE (a partial "frame")
- 11 cc 1111 | ..14 byte..= DUMPAY (a full "frame")
+   "90% of your updates in a song are just these 8 registers."
+
+   AYPDATE is optimized for running update deltas with
+   fine adjustments. It's using a MASK of bits to tell which
+   byte values to set.
+
+```
+   MASK-bit:   
+   - 0:  R0= Fine Pitch A
+   - 1:  R2= Fine Pitch B
+   - 2:  R4= Fine Pitch C
+   - 3:  R6= Noise Period (Global)
+   - 4:  R7= Mixer
+   - 5:  R8= Volume A
+   - 6:  R9= Volume B
+   - 7: R10= Volume C
+```
+
+**NOTE:** AYUPDATE and DUMPAY will do an implict "YIELD", so either DUMPAY all registers, or make sure to first do SETAYR for singular register updates followed by AYUPDATE for the others more efficiently. If used for a YM style-stream, your program can optimize each frame encoding.
 
 
 (TODO: reconsider/implement)
