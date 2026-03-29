@@ -2,6 +2,8 @@
 
 *Oric AntVM65 - a 24-TET Sound Virtual Machine for the 6502*
 
+**Status: in progress**
+
 AntVM65 is a high-performance, 24-TET micro-synth designed for elite 8-bit music, organic speech synthesis, and custom FX. It’s a specialized VM that interprets "in-band" command streams alongside quarter-note data.
 
 ## The Architecture:
@@ -82,6 +84,82 @@ nnnnn oct = NOTE...
 11 010 iii = WAIT 1s/ 1-8 x TPV (ticks per VALUE)
 11 011 iii = SUSTAIN/ whole/half/quarter/...32th /LEGATO
  
+
+=======================
+NEW:
+
+11 000 iii = WAIT
+
+11 001 iii = VALUE (SUSTAIN...LEGATO)
+
+11 100 pnm = CALL pnm (0-7 => local 1-8)
+
+11 101 000 = RETURN
+11 101 001 = CHANNEL A
+11 101 010 = CHANNEL B
+11 101 011 = CHANNEL C
+
+11 101 100 = YIELD
+11 101 101 = ? SILENCE
+11 101 110 = ? STOP
+11 101 111|... = EXTEND !
+
+= with parameter(s)
+
+11 11 0rrr
+
+11 11 1rrr
+11 11 rrrr|BYTE.. = SETAY
+
+11 110 lng|PNM  = CALL.lng PNM
+
+11 111 0ii|BYTE = DRUM
+
+-- TODO: not verty common
+11 111 100|CTRL|... = ? TAILCALL
+                    = ? GOTO
+                    = ? BEQ/BNE
+                    = 
+                    = ? BEGIN LANGUAGE
+11 111 110|CMD|...  = EXTEND
+
+
+http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
+
+11 111 101|Reg BYTE = WRITE BYTE "reg"
+11 111 110|Reg WROD = WRITE WORD "reg"
+
+11 111 111 = RETURN
+
+## "Registers"
+
+-- deltas
+                    = DELTA
+                    = SPEED
+                    = STEPS
+-- global
+                    = TPR (ticks/rows)
+                    = TPS (ticks/second)
+
+                    = BPM
+                    = VALUE
+                    = REST
+
+http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
+
+String       : " by "
+	$42 - $62 : 32 bytes : Author       : Author of the module.
+	$63       :  1 byte  : Frequency table (from 0 to 3)
+	$64       :  1 byte  : Speed/Delay
+	$65       :  1 byte  : Number of patterns+1  (Max Patterns)
+	$66       :  1 byte  : LPosPtr      : Pattern Loop Pointer
+	$67 - $68 :  2 bytes : PatsPtrs     : Pointers to the patterns
+	$69 - $A8 : 64 bytes : SamPtrs[32]  : Pointers to the samples
+	$A9 - $C8 : 32 bytes : OrnPtrs[16]  : Pointers to the ornaments
+	$C9 - ??? :          : Patterns[]   : $FF terminated, More on this below
+
+
+
 ---  with argument(s)
 11 100 ppp|? = RETURN/CALL local (TODO: not take byte) (dispatch)
 11 101 lng|P = CALL lang:Phonem

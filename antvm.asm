@@ -41,6 +41,7 @@ note:
         rts
 
 
+;;; TODO: interpret here is replace by a faster/smaller more integrated version in notes.asm
 
 interpret:
         ;; Get command byte
