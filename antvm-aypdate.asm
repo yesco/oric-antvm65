@@ -12,34 +12,33 @@ cmdAYUPDATE:
 
 @pitch_loop:
     lsr tmp_mask            ; Shift Channel bit (A, B, or C) into Carry
-    
-    ; --- Pitch Lo (R0, 2, 4) ---
-    jsr step_ay             ; Update Lo if C=1. (C is preserved/set on exit)
+    jsr step_ay             ; Pitch Lo (R0, 2, 4) - pulls if C=1. Returns C=1 if pull.
 
-    ; --- Pitch Hi (R1, 3, 5) ---
-    ; C still reflects the Channel Bit. We only pull if Coarse is also set.
-    bit ay_coarse           ; Check Bit 7 (Coarse Flag)
-    bmi @do_hi              ; If Coarse=1, keep the current Carry (the Ch Bit)
+    ; --- Pitch Hi Filter ---
+    bcc @skip_hi            ; If Ch bit was 0, skip Pitch Hi entirely
+    bit ay_coarse           ; Is Coarse bit (Bit 7) set?
+    bmi @do_hi              ; If Coarse=1, we keep C=1 and pull Pitch Hi
     clc                     ; If Coarse=0, KILL Carry to skip Pitch Hi pull
 @do_hi:
     jsr step_ay             ; Pitch Hi (R1, 3, 5) - pulls if C=1, else skips
     
-    cmp #6                  ; A = ay_reg
+@skip_hi:
+    cmp #6                  ; A = ay_reg from step_ay
     bcc @pitch_loop
 
     ; --- R6: Noise (Bit 4) ---
     lsr tmp_mask
-    jsr step_ay
+    jsr step_ay             ; A = 7
 
     ; --- R7: Mixer (Bit 5) ---
     lsr tmp_mask
-    jsr step_ay
+    jsr step_ay             ; A = 8
 
     ; --- R8-10: Volume Block (Bit 6) ---
     lsr tmp_mask
     bcc @done
 @vol_loop:
-    sec                     ; Force pull for Volume registers
+    sec                     ; Force pull for all 3 volume registers
     jsr step_ay
     cmp #11                 ; A = ay_reg
     bcc @vol_loop
@@ -51,23 +50,19 @@ cmdAYUPDATE:
 ; step_ay
 ; Carry 1 = Pull byte from stream & Update AY register [ay_reg]
 ; Carry 0 = Just Increment Index (Skip data pull)
-; ALWAYS: Increments ay_reg, Returns A = new ay_reg, PRESERVES Carry if 1
+; ALWAYS: Increments ay_reg, Returns A = new ay_reg
 ; ---------------------------------------------------------------------------
 step_ay:
     bcc @only_inc
-    
-    php                     ; Save Carry (the "sticky" decision)
     ldy ipy
     lda (stream),y
     inc ipy
     ; TODO: Guard against ipy page-wrap (inc stream+1) if needed here.
-    
     ldy ay_reg
-    jsr setayr              ; Update AY chip
-    
-    plp                     ; Restore Carry
-    sec                     ; Ensure C=1 if we came through here
+    jsr setayr              ; Update AY chip (Assumes X is preserved)
+    sec                     ; Set Carry for the caller (Pitch Hi check)
 @only_inc:
     inc ay_reg
     lda ay_reg              ; Return current index in A
     rts
+
