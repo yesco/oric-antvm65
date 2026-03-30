@@ -76,62 +76,121 @@ It's important to set volume and other parameters "before" the note commences. M
 
 ## Groups of commands
  
---- no arguments
-nnnnn oct = NOTE...
- 
-11 000 rrr = SETAY / YUPDATE / DUMPAY ("rrrr": 14 regs) 
-11 001 rrr =             - " -
-11 010 iii = WAIT 1s/ 1-8 x TPV (ticks per VALUE)
-11 011 iii = SUSTAIN/ whole/half/quarter/...32th /LEGATO
- 
+Here is a rough overview of how the bit-patterns define commands
 
-=======================
-NEW:
+```
+nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
-11 000 iii = WAIT
+11 000 000 = STOP wait for even/sync/spawn
+11 000 www = WAIT 1-10 ticks: iii*20ms (32th,16th)
+11 000 ppp = WAIT 11-15 8th/quarter/half/whole/wait (240,500,1s,2s,4s)
 
-11 001 iii = VALUE (SUSTAIN...LEGATO)
+11 001 iii = VALUE: SUSTAIN/ whole/half/quarter/...32th /LEGATO
 
-11 100 pnm = CALL pnm (0-7 => local 1-8)
+11 010 pnm = CALL pnm (0-7 => local 1-8)
 
-11 101 000 = RETURN
-11 101 001 = CHANNEL A
-11 101 010 = CHANNEL B
-11 101 011 = CHANNEL C
 
-11 101 100 = YIELD
-11 101 101 = ? SILENCE
-11 101 110 = ? STOP
-11 101 111|... = EXTEND !
+11 011 000 = CHANNEL A - select
+11 011 001 = CHANNEL B - select
+11 011 010 = CHANNEL C - select
+11 011 011 = NOISE N - select
 
-= with parameter(s)
+11 011 100|... = EXTENDED command
+11 011 101     = YIELD (almost same as WAIT 1?)
+11 011 110     = ? SILENCE (not common - make extended?)
+11 011 111     = ? CANCEL ALL (not common - make extended?)
 
-11 11 0rrr
 
-11 11 1rrr
-11 11 rrrr|BYTE.. = SETAY
+**with parameter(s):**
+
+11 10 rrrr|BYTE.. = SETAY / AYPDATE / DUMPAY (rrrr: 14 regs)
+11 100 lng|PNM    =                -  ''   -
+11 101 lng|PNM    =                -  ''   -
 
 11 110 lng|PNM  = CALL.lng PNM
 
-11 111 0ii|BYTE = DRUM
 
--- TODO: not verty common
-11 111 100|CTRL|... = ? TAILCALL
+11 111 0dd|BYTE     = DRUM kick/snare/hihat(closed)/(open) s/sh/ch/ts
+
+11 111 100|CTRL|... = EXTENDED commands
+11 111 101|PAR|BYTE = WRITE BYTE "param"
+11 111 110|PAR|WORD = WRITE WORD "param"
+11 111 111          = RETURN ($ff - as "expected")
+```
+
+
+## PARAMETER / EXTENDED commands
+
+Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
+
+
+```
+*A Parameter Block:*
+  -- HEADER
+  $00: stuff todo (bitmask)/8-bit, 0=nothing to do (STOPped)
+    - bit 0: vol deltas
+    - bit 1: pitch deltas 
+    - bit 2: 
+    - bit 3: 
+    - bit 4: 
+    - bit 5: 
+    - bit 6: (easy to test!)
+    - bit 7: (easy to test!)
+
+  $01: delay timer/8-bit
+  $02: speed (delay between ticks)
+  $03: last command (?)
+  $04:
+  $05: 
+  ...
+
+  -- VOLUME ENV DELTAS
+  $10: speed
+  $11: delta
+  $12-13: bitmap delta/16-bit
+
+  -- PITCH ENV DELTAS
+  $14: speed
+  $15: delta
+  $16-17: bitmap delta/16-bit
+
+
+  -- ??? DELTAS
+  $18: speed
+  $19: delta
+  $1a-1b: bitmap delta/16-bit
+
+  -- ??? DELTAS
+  $1c: speed
+  $1d: delta
+  $1e-1f: bitmap delta/16-bit
+
+*B Parameter Block:*
+  ...
+
+*C Parameter Block:*
+
+*D Parameter Block:*
+
+
+
+11 111 100|CTRL|... = EXTENDED commands
+11 111 101|PAR|BYTE = WRITE BYTE "param"
+11 111 110|PAR|WORD = WRITE WORD "param"
+
+                    = ? TAILCALL
                     = ? GOTO
                     = ? BEQ/BNE
-                    = 
                     = ? BEGIN LANGUAGE
-11 111 110|CMD|...  = EXTEND
+```
 
 
-http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
 
-11 111 101|Reg BYTE = WRITE BYTE "reg"
-11 111 110|Reg WROD = WRITE WORD "reg"
 
-11 111 111 = RETURN
 
 ## "Registers"
+
+http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
 
 -- deltas
                     = DELTA
@@ -167,7 +226,6 @@ String       : " by "
 11 110 0xx|??= TAILCALL/GOTO/BEQ/BNE (dispatch)
 11 110 1xx|A = DRUM/SPEECH with noise pitch param A
  
-11 111 000|vl= YIELD/SILENCE/SUSTAINED/DURATION
 11 111 0xx|WW= DELTA vol/pit/nois (dispatch)
 
 11 111 100|?000 xxxx= SYSTEM/RESERVED
@@ -191,126 +249,35 @@ We have 5 groups of instructions that need to do internal individual dispatch on
 
 ## Commands  Details
 
-TODO: cleanup
+## WAIT
 
-## RAW AY Registers
+Standard BPM=120
 
-```
-11 cc rrrr | BYTE    = SETAYR  (R0-R13) = BYTE     (2 B)
-11 cc 1110 | MASK|...= AYPDATE (a partial "frame") (3-10 B)
-11 cc 1111 | ..14B...= DUMPAY  (a full "frame")    (15 B)
+speech and "macro" blocks for music.
 
-   SETAYR will be special for R1,R3,R5 hi-pitch A,B,C
-   Optimization: if the 4 high-bits are !=0
-     it's used to set the volume for that channel.
+This setup gives you a high-resolution "low end" for speech and rhythmic "utility" blocks for music:
 
-   "90% of your updates in a song are just these 8 registers."
-
-   AYPDATE is optimized for running update deltas with
-   fine adjustments. It's using a MASK of bits to tell which
-   byte values to set.
-
-```
-   MASK-bit:   
-   - 0:  R0= Fine Pitch A
-   - 1:  R2= Fine Pitch B
-   - 2:  R4= Fine Pitch C
-   - 3:  R6= Noise Period (Global)
-   - 4:  R7= Mixer
-   - 5:  R8= Volume A
-   - 6:  R9= Volume B
-   - 7: R10= Volume C
-```
-
-**NOTE:** AYUPDATE and DUMPAY will do an implict "YIELD", so either DUMPAY all registers, or make sure to first do SETAYR for singular register updates followed by AYUPDATE for the others more efficiently. If used for a YM style-stream, your program can optimize each frame encoding.
+|Value| Ticks| Duration| Musical| Use Case| Speech Use Case |
+|  0  |    - |    -    |  STOP  | stop till started | wait/sync |
+|  1  |    1 |   20ms  |||syncopation|
+|  2  |    2 |   40ms  |||&poneme transients|
+|  3  |    3 |   60ms  |  1/32th ||&plosives|
+|  4  |    4 |   80ms  ||||
+|  5  |    5 |  100ms  ||||
+|  6  |    6 |  120ms  |  1/16th |||
+|  7  |    7 |  140ms  ||||
+|  8  |    8 |  160ms  ||||
+|  9  |    9 |  180ms  ||||
+| 10  |   10 |  190ms  ||||
+| 11  |   12 |  240ms  |  1/8th  |||
+| 12  |   25 |  500ms  | quarter |         | Long wovels |
+| 13  |   50 |    1s   |  half   |         | Sentence break |
+| 14  |  100 |    2s   |  whole  | Measure | Full stop |
+| 15  |  200 |    4s   |  wait   | Ambient fade-out | Scene change
 
 
-(TODO: reconsider/implement)
+## TODO: cleanup all!
 
-**Too complicated and too many special "clever" cases***
-
-We will not abondon raw AY chip manipulations! But we'll take a "complicated" approach to try to optimzie the stream. We've divided updates to 4 different styles:
-
-- 15 B = DUMPAY: copies 14 bytes directly into the registers. This command have 1 byte overheadl
-- 3-10 B = AYUPDATE: fine-tuning update messages, can manipulate low byte pitch of A,B,C and their volume, as well as noise period and turn on/off tones+noise. A mask defines what elements come. This command have 2 byte overhead.
-
-These complements AYUPDATE, either by first being set followed by an AYUPDATE, or because we're updating only one thing.
-
-- 2 B = SETAYH: set "hi/unsual controls". One byte overhead per update. These are unusual updates, but complement AYUPDATE
-- 3 B = SETAYW: update 2-byte pitch values. Can be used for big change for a single Channel.
-
-(Most likely these will not be needed but are added for effects and for a possible, compressed YM-style stream. Efficiency maybe low.)
-
-```
-   - 0: R1: A hi + vol
-   - 1: R3: B hi + vol
-   - 2: R5: C hi + vol
-   - 3: R6: noise 6 bits
-   - 4: R7: mixer
-   - 5: R8: vol A+B (not C!)
-
--- DUMPAY and AYPDATE will AUTO-YIELD (if VALUE+REST set)
-   - 6: DUMPAY | ...14B...
-   - 7: AYPDATE | MASK | ...
-
- 11 010 111 | ...14B...= DUMPAY  (15 bytes)
- 11 010 110 | MASK |...= AYPDATE (3..10 bytes)
-
-   "90% of your updates in a song are just these 8 registers."
-
-   MASK:   
-   - 0:  R0= Fine Pitch A
-   - 1:  R2= Fine Pitch B
-   - 2:  R4= Fine Pitch C
-   - 3:  R6= Noise Period (Global)
-   - 4:  R7= Mixer
-   - 5:  R8= Volume A
-   - 6:  R9= Volume B
-   - 7: R10= Volume C
-```
-
-```
-
-- 0
-  R0: Channel A Tone Period, Fine Tune (low 8 bits)
-  R1: Channel A Tone Period, Coarse Tune (high 4 bits)
-  (R1: upper 4 bits != 0 copied to R8)
-
-- 1
-  R2: Channel B Tone Period, Fine Tune (low 8 bits)
-  R3: Channel B Tone Period, Coarse Tune (high 4 bits)
-  (R3: upper 4 bits != 0 copied to R9)
-
-- 2
-  R4: Channel C Tone Period, Fine Tune (low 8 bits)
-  R5: Channel C Tone Period, Coarse Tune (high 4 bits)
-  (R5: upper 4 bits != 0 copied to R10)
-
-- 3
-  R11: Envelope Period, Fine Tune (low 8 bits)
-  R12: Envelope Period, Coarse Tune (high 8 bits)
-
-- 4
-  R6: Noise Generator Period (5-bit value for noise frequency)
-  R13: Envelope Shape/Cycle (selects attack, decay, sustain, and release pattern)
-
-- 5
-  R7: Mixer Control (enables/disables Tone/Noise per channel and sets I/O port directions)
-
-- 6
-- 7
-
-
-
-### WAIT
-
-
-```
-11 010 000 = WAIT 0.5s
-11 010 www = WAIT (www+1)*20ms: 20-140ms)
-```
-
-TODO: tie 20ms to BPM 'instead' 8th or 16th note
 
 ## The GRID ("AI discussion")
 
@@ -488,181 +455,11 @@ Proposed 011 Mapping:
 11 011 101 - 111   = RESERVED deltas controls
 ```
 
+
+
+
 ## Control commands with argument
 
-```
-11 1__ ___     = command with argument(s)
-```
-
-
-## "Phonems"/"words" (subroutines)
-
-```
-11 100 000     = RETURN
-11 100 ppp     = CALL ppp (local language phonem: 1-7)
-
-11 101 000 + P = CALL Phonem (0-255: local language)
-11 101 lll + P = CALL language:1-7, Phonem: 0-255
-
-11 110 000 + P = TAILCALL Phonem (local lang)
-11 110 001 + R = GOTO Relative (rel branch)
-11 110 010 + R = BEQ Relative (if zero)
-11 110 011 + R = BNE Relative (if !zero)
-
-**TODO:**
-
-```
-????
-11 001 000 = ?RETURN
-11 001 001 = ?YIELD
-11 001 010 = ?STOP
-11 001 011 = ?QUIT-ALL
-
-11 001 100
-11 001 101
-11 001 110
-11 001 111
-```
-
-
-??? 11 ???     = PUSH/SET LANGUAGE, RETURN ENDS
-                 (but continues at next pos)
-                 (push loc 0000 meaning == current)
-```
-
-## Drum effects
-
-```
-11 110 100      = kick  / 's'  (~50-100Hz)
-11 110 101      = snare / 'sh' 
-11 110 110      = hihat closed / 'ch'
-11 110 111      = hihat open   / 'th'/'ts' (cymbal)
-```
-
-## DELTAS
-
-**TODO:**
-
-```
-- link? C follow A == Thickening Haas Effect (chorus)
-   pitch -= pitch >> S "thick" (default!)
- ( pitch += pitch >> S "thin" (little out of tune) )
-```
-
-ECHO needs a: once to R7 per tick.
-
-Echo Feedback Phase: Without an explicit "Feedback" command, your echo is a one-shot delay. Adding feedback (feeding B back into itself) would require a separate volume coefficient, which might be hard to fit into your minimal bit patterns without adding a 2nd byte to the echo command. 
-
-```
-echo? B delay A less vol
-    volume subtract
-
-    delay = 1    = Haas
-    delay = 2    = Doubling
-    delay = 5-10 = small room
-    delay = 5    = Slapback echo
-    delay = 7-10 = Physical space 
-    delay = 12+  = Rythmic echo
-
-    1-8:   buffer of 8 samples delayed and decaying
-    8-16:  every second tick update
-
-    Not clear if have "feedback"
-```
-
-## Timing/Channel modifications
-
-(also see 011 for only VALUE/length changes)
-
-```
-11 111 000 + 00 = YIELD/STOP (wait for "event")
-11 111 000 + 0l = SILENCE pause set REST rest: 1-7
-11 111 000 + v0 = SUSTAINED vol:0-15
-11 111 000 + vl = DURATION  vol:0-15 set VALUE:1-7
-11 111 001 + WW = DELTAS volume
-11 111 010 + WW = DELTAS pitch
-11 111 011 + WW = DELTAS noise
-
-  v:4 bits is initial volume
-
-  can use previous set:
-     l:4 bits as "value" (not length)
-     r:4 bits as step
-```
-
-### TODO: hmmm
-
-If you use the Rest Setting (r) to drive the Ticker Speed (Stretch) and the Duration (l) to drive the Envelope Step, you’ve essentially created a "Rhythmic Sync" engine.
-
-Here is why it works and where it gets messy:
-
-1. The "Pro" Side (The Sync)
-
-By tying Envelope Speed to your Rhythm (Rest/Duration), your sounds stay "in time" automatically.
- Faster Tempo: The note gets shorter, and the Volume Delta speeds up to match.
-
-Result: You never get "cutoff" notes. A snare hit will always finish its decay exactly when the next beat hits, regardless of the BPM. This is a "Holy Grail" for tracker music.
-
-2. The "Messy" Side (The "Side Effect")
-
-The mess happens when you want a Long Decay on a Short Note (e.g., a "reverb" tail on a 16th note).
-
-The Conflict: If you change the Duration (l) to make a fast melody, your Step increases, making the volume drop way too fast.
-
-The Sound: Your "Lush Pad" suddenly turns into a "Chirp" just because you played a faster rhythm.
-
-3. How to Clean it Up: The "Offset" Logic
-
-To stop it from being messy, use Addition instead of Replacement:
-Base Speed: Set by the Instrument/Phoneme (Language).
-
-Modifier: The Rest (r) or Duration (l) adds a "Shift" to that speed.
-
-Logic: Actual_Speed = Base_Speed + (r << 1)
-
-### The AntVM Strategy
-- Since you have the 11 111 001/010/011 DELTA blocks, use the l/r values as "Multipliers":
-- Default: If l and r are 0, the Delta Engine runs at the "Language" speed.
-- Active: if l > 0, the VM uses it to scale the 1-bit ticker.
-
-The Verdict: It's a high-level "cheat" that makes AntVM65 feel incredibly musical. It forces the synthesis to dance with the rhythm. Just ensure you have a "Manual Override" command (perhaps in the 011 block) to "Unlink Envelope from Rhythm" for those times you need a long tail on a short note.
-
-The "Pro" Move: Use r as the Ticker Stretch and l as the Gate (Duty Cycle). This lets you control "How fast it moves" vs. "How soon it cuts off" in one single state.
-
-Should the Echo (B) also inherit this "Speed-Sync," or should the echo timing stay fixed to the 50Hz clock?
-
-jsk: Echo will also have a delay parameter, and a volume adjustment. Delay can be == rest I guess.
-
-That is a massive optimization. By tying Echo Delay to the Rest/Value parameter, you’ve created an "Auto-Sync Delay"—a high-end feature usually reserved for modern VSTs.
-
-In a 50Hz tracker, manually calculating echo delays to match the BPM is a chore. If Echo Delay == Rest, the echo will always hit "on the beat" (e.g., an 8th note delay for an 8th note melody) without the user ever touching a hex calculator.
-
-**The "Sync" Logic:**
-
-- Melody A: Plays a 16th note (Rest = 2 ticks).
-- Echo B: Automatically delays by 2 ticks.
-- Result: A perfect, rhythmic 16th-note "slapback" that follows the groove of the song instantly.
-
-Potential "Messy" Conflict: The Delay Buffer. Since your buffer is 1-8 (High Res) or 9-16 (Eco/Skip-1):
-
-- Small Rest (1-8): Perfect 1:1 mapping.
-- Large Rest (9-16): If the user sets a long REST (e.g., 14 ticks), your VM needs to automatically flip into "Eco Mode" (recording every 2nd tick) to fit that delay into the 16-byte buffer.
-- The Logic: if (Rest > 8) { Use Eco_Mode; Buffer_Index = Rest; }
-
-The Volume Adjustment (The Decay). Since the Volume Adjustment is also "Sticky," you can set it once per instrument:
-
-- Echo Vol = -2: A long, trailing dub-style echo.
-- Echo Vol = -8: A single, sharp "shadow" note.
-
-**Does it make sense?**
-
-Yes, absolutely. Mapping Echo Delay to Rest is the smartest way to keep your data stream "thin." You only send the Note and the Volume/Rest byte, and the VM handles the synthesis (Delta Envelopes), the thickening (Link), and the rhythmic space (Echo) all from that one command.
-
-**The "Pro" Verdict:**
-
-It’s a "Musical Shortcut." By linking Delay to Rest, you ensure the song never sounds "cluttered" because the echoes are always tucked perfectly behind the next note's timing.
-
-(TODO: resolve) One critical detail: Should the Echo (B) "reset" its delay timer when a new REST command is sent, or only when a new NOTE is triggered?
 
 
 ## EXTENDED COMMANDS
@@ -756,6 +553,266 @@ Next Step: Define the "Gate" behavior—is it a fixed 1-tick "gap" at the end of
 A+B+C == alternating abcabcabcabcabc
 C+B+A == all same
 ```
+
+**TODO:**
+
+```
+????
+11 001 000 = ?RETURN
+11 001 001 = ?YIELD
+11 001 010 = ?STOP
+11 001 011 = ?QUIT-ALL
+
+11 001 100
+11 001 101
+11 001 110
+11 001 111
+```
+
+
+??? 11 ???     = PUSH/SET LANGUAGE, RETURN ENDS
+                 (but continues at next pos)
+                 (push loc 0000 meaning == current)
+```
+
+## Drum effects
+
+```
+11 111 000      = kick  / 's'  (~50-100Hz)
+11 111 001      = snare / 'sh' 
+11 111 010      = hihat closed / 'ch'
+11 111 011      = hihat open   / 'th'/'ts' (cymbal)
+```
+
+## DELTAS
+
+**TODO:**
+
+```
+- link? C follow A == Thickening Haas Effect (chorus)
+   pitch -= pitch >> S "thick" (default!)
+ ( pitch += pitch >> S "thin" (little out of tune) )
+```
+
+ECHO needs a: once to R7 per tick.
+
+Echo Feedback Phase: Without an explicit "Feedback" command, your echo is a one-shot delay. Adding feedback (feeding B back into itself) would require a separate volume coefficient, which might be hard to fit into your minimal bit patterns without adding a 2nd byte to the echo command. 
+
+```
+echo? B delay A less vol
+    volume subtract
+
+    delay = 1    = Haas
+    delay = 2    = Doubling
+    delay = 5-10 = small room
+    delay = 5    = Slapback echo
+    delay = 7-10 = Physical space 
+    delay = 12+  = Rythmic echo
+
+    1-8:   buffer of 8 samples delayed and decaying
+    8-16:  every second tick update
+
+    Not clear if have "feedback"
+```
+
+## Timing/Channel modifications
+
+(also see 011 for only VALUE/length changes)
+
+```
+   ???
+11 000 000 + 00 = YIELD/STOP (wait for "event")
+11 111 000 + 0l = SILENCE pause set REST rest: 1-7
+11 111 000 + v0 = SUSTAINED vol:0-15
+11 111 000 + vl = DURATION  vol:0-15 set VALUE:1-7
+11 111 001 + WW = DELTAS volume
+11 111 010 + WW = DELTAS pitch
+11 111 011 + WW = DELTAS noise
+
+  v:4 bits is initial volume
+
+  can use previous set:
+     l:4 bits as "value" (not length)
+     r:4 bits as step
+```
+
+
+## RAW AY Registers
+
+We will not abondon raw AY chip manipulations! But we'll take a "complicated" approach to try to optimzie the stream. We've divided updates to 4 different styles:
+
+- 15 B = DUMPAY: copies 14 bytes directly into the registers. This command have 1 byte overheadl
+- 3-10 B = AYUPDATE: fine-tuning update messages, can manipulate low byte pitch of A,B,C and their volume, as well as noise period and turn on/off tones+noise. A mask defines what elements come. This command have 2 byte overhead.
+
+These complements AYUPDATE, either by first being set followed by an AYUPDATE, or because we're updating only one thing.
+**NOTE:** AYUPDATE and DUMPAY will do an implict "YIELD", so either DUMPAY all registers, or make sure to first do SETAYR for singular register updates followed by AYUPDATE for the others more efficiently. If used for a YM style-stream, your program can optimize each frame encoding.
+
+```
+11 cc rrrr | BYTE    = SETAYR  (R0-R13) = BYTE     (2 B)
+11 cc 1110 | MASK|...= AYPDATE (a partial "frame") (3-10 B)
+11 cc 1111 | ..14B...= DUMPAY  (a full "frame")    (15 B)
+```
+
+`SETAYR` will be special for `R1,R3,R5` hi-pitch `A,B,C`:
+Optimization: if the 4 high-bits are `!=0`
+it's used to set the volume for that channel.
+
+    "90% of your updates in a song are just these 8 registers."
+
+`AYPDATE` is optimized for running update deltas with
+fine adjustments. It's using a MASK of bits to tell which
+byte values to are coming in stream and to be set.
+
+```
+   MASK-bit:   
+   - 0:  has COARSE values (12-bit), otherwise: 8-bit/lo
+   - 1:  has R0(1)  Channel A value (16: + 4-bit vol)
+   - 2:  has R2(3)  Channel B value (16: + 4-bit vol)
+   - 3:  has R4(5)  Channel C value (16: + 4-bit vol)
+   - 4:  has R6     Noise (6-bit)
+   - 5:  has R7     Mixer (6-bit)
+   - 6:  has R8-R10 Volume only (no low Channel/use 16)
+   - 7:  RESERVED
+```
+
+
+   "90% of your updates in a song are just these 8 registers."
+
+```
+   MASK:   
+   - 0:  R0= Fine Pitch A
+   - 1:  R2= Fine Pitch B
+   - 2:  R4= Fine Pitch C
+   - 3:  R6= Noise Period (Global)
+   - 4:  R7= Mixer
+   - 5:  R8= Volume A
+   - 6:  R9= Volume B
+   - 7: R10= Volume C
+```
+
+  **AY-chip registers:**
+```
+  R0: Channel A Tone Period, Fine Tune (low 8 bits)
+  R1: Channel A Tone Period, Coarse Tune (high 4 bits volume)
+
+  R2: Channel B Tone Period, Fine Tune (low 8 bits)
+  R3: Channel B Tone Period, Coarse Tune (high 4 bits volume)
+
+  R4: Channel C Tone Period, Fine Tune (low 8 bits)
+  R5: Channel C Tone Period, Coarse Tune (high 4 bits volume)
+
+  R6: Noise Generator Period (5-bit value for noise frequency)
+  R7: Mixer Control (enables/disables Tone/Noise)
+
+ R11: Envelope Period, Fine Tune (low 8 bits)
+ R12: Envelope Period, Coarse Tune (high 8 bits)
+ R13: Envelope Shape/Cycle (selects attack, decay, sustain, and release pattern)
+
+
+
+## "Phonems"/"words" (subroutines)
+
+TODO: update...
+
+```
+11 111 ppp     = CALL ppp (local language phonem: 1-7)
+
+11 101 000 + P = CALL Phonem (0-255: local language)
+11 101 lll + P = CALL language:1-7, Phonem: 0-255
+
+11 110 000 + P = TAILCALL Phonem (local lang)
+11 110 001 + R = GOTO Relative (rel branch)
+11 110 010 + R = BEQ Relative (if zero)
+11 110 011 + R = BNE Relative (if !zero)
+
+11 111 111     = RETURN
+
+
+
+
+
+
+
+
+
+
+
+
+### TODO: hmmm
+
+If you use the Rest Setting (r) to drive the Ticker Speed (Stretch) and the Duration (l) to drive the Envelope Step, you’ve essentially created a "Rhythmic Sync" engine.
+
+Here is why it works and where it gets messy:
+
+1. The "Pro" Side (The Sync)
+
+By tying Envelope Speed to your Rhythm (Rest/Duration), your sounds stay "in time" automatically.
+ Faster Tempo: The note gets shorter, and the Volume Delta speeds up to match.
+
+Result: You never get "cutoff" notes. A snare hit will always finish its decay exactly when the next beat hits, regardless of the BPM. This is a "Holy Grail" for tracker music.
+
+2. The "Messy" Side (The "Side Effect")
+
+The mess happens when you want a Long Decay on a Short Note (e.g., a "reverb" tail on a 16th note).
+
+The Conflict: If you change the Duration (l) to make a fast melody, your Step increases, making the volume drop way too fast.
+
+The Sound: Your "Lush Pad" suddenly turns into a "Chirp" just because you played a faster rhythm.
+
+3. How to Clean it Up: The "Offset" Logic
+
+To stop it from being messy, use Addition instead of Replacement:
+Base Speed: Set by the Instrument/Phoneme (Language).
+
+Modifier: The Rest (r) or Duration (l) adds a "Shift" to that speed.
+
+Logic: Actual_Speed = Base_Speed + (r << 1)
+
+### The AntVM Strategy
+- Since you have the 11 111 001/010/011 DELTA blocks, use the l/r values as "Multipliers":
+- Default: If l and r are 0, the Delta Engine runs at the "Language" speed.
+- Active: if l > 0, the VM uses it to scale the 1-bit ticker.
+
+The Verdict: It's a high-level "cheat" that makes AntVM65 feel incredibly musical. It forces the synthesis to dance with the rhythm. Just ensure you have a "Manual Override" command (perhaps in the 011 block) to "Unlink Envelope from Rhythm" for those times you need a long tail on a short note.
+
+The "Pro" Move: Use r as the Ticker Stretch and l as the Gate (Duty Cycle). This lets you control "How fast it moves" vs. "How soon it cuts off" in one single state.
+
+Should the Echo (B) also inherit this "Speed-Sync," or should the echo timing stay fixed to the 50Hz clock?
+
+jsk: Echo will also have a delay parameter, and a volume adjustment. Delay can be == rest I guess.
+
+That is a massive optimization. By tying Echo Delay to the Rest/Value parameter, you’ve created an "Auto-Sync Delay"—a high-end feature usually reserved for modern VSTs.
+
+In a 50Hz tracker, manually calculating echo delays to match the BPM is a chore. If Echo Delay == Rest, the echo will always hit "on the beat" (e.g., an 8th note delay for an 8th note melody) without the user ever touching a hex calculator.
+
+**The "Sync" Logic:**
+
+- Melody A: Plays a 16th note (Rest = 2 ticks).
+- Echo B: Automatically delays by 2 ticks.
+- Result: A perfect, rhythmic 16th-note "slapback" that follows the groove of the song instantly.
+
+Potential "Messy" Conflict: The Delay Buffer. Since your buffer is 1-8 (High Res) or 9-16 (Eco/Skip-1):
+
+- Small Rest (1-8): Perfect 1:1 mapping.
+- Large Rest (9-16): If the user sets a long REST (e.g., 14 ticks), your VM needs to automatically flip into "Eco Mode" (recording every 2nd tick) to fit that delay into the 16-byte buffer.
+- The Logic: if (Rest > 8) { Use Eco_Mode; Buffer_Index = Rest; }
+
+The Volume Adjustment (The Decay). Since the Volume Adjustment is also "Sticky," you can set it once per instrument:
+
+- Echo Vol = -2: A long, trailing dub-style echo.
+- Echo Vol = -8: A single, sharp "shadow" note.
+
+**Does it make sense?**
+
+Yes, absolutely. Mapping Echo Delay to Rest is the smartest way to keep your data stream "thin." You only send the Note and the Volume/Rest byte, and the VM handles the synthesis (Delta Envelopes), the thickening (Link), and the rhythmic space (Echo) all from that one command.
+
+**The "Pro" Verdict:**
+
+It’s a "Musical Shortcut." By linking Delay to Rest, you ensure the song never sounds "cluttered" because the echoes are always tucked perfectly behind the next note's timing.
+
+(TODO: resolve) One critical detail: Should the Echo (B) "reset" its delay timer when a new REST command is sent, or only when a new NOTE is triggered?
+
+
 
 ## Notes and Octave limitations
 
