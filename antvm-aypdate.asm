@@ -1,85 +1,91 @@
-; --- Optimized Stream Puller ---
-pull_byte:
-    ldy ipy
-    lda (stream),y
-    inc ipy
-    rts
-
+; ===========================================================================
+; cmdAYUPDATE
+; A = Mask ("Baseball" Header)
+; ===========================================================================
 cmdAYUPDATE:
-    sta tmp_mask            ; Header in A
-    
-    ; --- Bits 1, 2, 3: Pitch Updates ---
-    ldx #0                  ; X = Channel (0, 1, 2)
+    sta tmp_mask            ; Store header
+    ldx #0                  ; Start at AY Register 0 (Pitch Lo A)
+
 @pitch_loop:
-    lda tmp_mask
-    and bit_table,x         ; Check bits 1, 2, or 3
-    beq @skip_pitch
-    
-    ; Pull Pitch Lo
-    jsr pull_byte
-    pha                     ; Save Pitch Lo value
-    txa
-    asl                     ; A = 0, 2, 4
-    tay                     ; Y = Target Reg
-    pla                     ; Restore Pitch Lo value
-    jsr setayr
+    lsr tmp_mask            ; Shift Bits 1, 2, 3 (A, B, C) into Carry
+    bcc @skip_channel       ; If bit 1-3 not set, no pitch update for this ch
 
-    ; Check Coarse Flag (Bit 0)
-    lda tmp_mask
-    lsr                     ; Bit 0 -> Carry
-    bcc @skip_pitch         ; If Coarse=0, Pitch Hi is NOT in stream
-
-    ; Pull Pitch Hi + Vol (Coarse Update)
-    jsr pull_byte
-    pha
+    ; --- Pitch Lo ---
     txa
-    asl
+    tay                     ; Y = Target Register (0, 2, or 4)
+    jsr pull_setayr
+
+    ; --- Check Coarse (Bit 0) ---
+    lda tmp_mask
+    bit #%00000001          ; Check original Bit 0 (now at bit 0 of shifted)
+    beq @skip_channel       ; Bit 0=0: Step 2 (Skip Pitch Hi)
+
+    ; --- Pitch Hi (Coarse Update) ---
+    txa
     clc
-    adc #1                  ; A = 1, 3, 5
-    tay                     ; Y = Target Reg
-    pla
-    jsr setayr
+    adc #1                  ; Target 1, 3, or 5
+    tay
+    jsr pull_setayr
 
-@skip_pitch:
+@skip_channel:
     inx
-    cpx #3
+    inx                     ; Step by 2 (Registers 0, 2, 4)
+    cpx #6
     bne @pitch_loop
 
-    ; --- Bit 4: Global Volume Update ---
+    ; --- Bit 4: Volume (Global) ---
     lda tmp_mask
-    and #%00010000          ; Vol bit set?
+    and #%00010000          ; Bit 4 (was 5, shifted right once)
     beq @mixer_check
     
-    ldx #8                  ; Volume Registers start at 8
+    ldy #8                  ; Start Volume at R8
 @vol_loop:
-    jsr pull_byte
-    tay                     ; Y = 8, 9, 10
-    jsr setayr
-    inx
-    txa
-    tay                     ; Prep Y for next loop/setayr
-    cpx #11
+    jsr pull_setayr
+    iny                     ; Next Vol Register
+    cpy #11
     bne @vol_loop
 
 @mixer_check:
-    ; --- Bit 5: Mixer (R7) ---
     lda tmp_mask
-    and #%00100000
+    and #%00100000          ; Bit 5 (was 6)
     beq @noise_check
-    jsr pull_byte
     ldy #7
-    jsr setayr
+    jsr pull_setayr
 
 @noise_check:
-    ; --- Bit 6: Noise (R6) ---
     lda tmp_mask
-    and #%01000000
+    and #%01000000          ; Bit 6 (was 7)
     beq @done
-    jsr pull_byte
     ldy #6
-    jsr setayr
+    jsr pull_setayr
 
 @done:
     rts
 
-bit_table: .byte %00000010, %00000100, %00001000
+; ---------------------------------------------------------------------------
+; pull_setayr
+; Helper: Pulls byte from stream, calls setayr with register Y
+; ---------------------------------------------------------------------------
+pull_setayr:
+    stx tmp_x               ; Save X (6502A has no PHX)
+    ldy ipy
+    lda (stream),y
+    inc ipy
+    ldy tmp_y_target        ; We need to pass the target reg in Y
+    jsr setayr
+    ldx tmp_x               ; Restore X
+    rts
+
+; ---------------------------------------------------------------------------
+; Note: Since pull_setayr needs Y for the register index AND the 
+; (stream),y indirect access, we'll swap them via a temp variable.
+; ---------------------------------------------------------------------------
+
+pull_setayr:
+    sty tmp_reg             ; Save the target AY register
+    ldy ipy
+    lda (stream),y
+    inc ipy
+    ldy tmp_reg             ; Load target AY register for setayr
+    jsr setayr
+    rts
