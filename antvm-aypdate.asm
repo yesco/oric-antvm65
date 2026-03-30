@@ -4,10 +4,10 @@
 ;; EVOLUTION HISTORY:
 ;; ;; ~115B  Initial draft
 ;; ;; ...
-;; ;; 64B    Moved index to X for step_ay tail-call
-;; ;; 61B    Integrated step_ay into setayr header (Saved 3 bytes)
+;; ;; 61B    Integrated step_ay into setayr header
+;; ;; 58B    Combined CPY #7 logic for Mixer and Pitch Hi (Saved 3 bytes)
 ;; ---------------------------------------------------------------------------
-;; TOTAL: 61 Bytes (Main) + setayr (Helper)
+;; TOTAL: 58 Bytes (Main) + setayr (Helper)
 ;; ===========================================================================
 
 cmdAYUPDATE:
@@ -16,10 +16,10 @@ cmdAYUPDATE:
     sta tmp_mask            ; [Spare, Vol, Mix, Noise, ChC, ChB, ChA]
     
     lda #$FF
-    sta ay_reg              ; Start at -1 so first INC hits 0
+    sta ay_reg              ; Start at -1 for first INC
 
 @pitch_loop:
-    lsr tmp_mask            ; Shift Ch bit into Carry
+    lsr tmp_mask            ; Shift Channel bit into Carry
     jsr step_ay             ; Pitch Lo (R0, 2, 4)
 
     bit ay_coarse           ; Check Coarse Flag (N)
@@ -29,7 +29,7 @@ cmdAYUPDATE:
     jsr step_ay             ; Pitch Hi (R1, 3, 5)
     
     lda ay_reg
-    cmp #5                  ; CMP with 5 because we're at R5 after 3 loops
+    cmp #5                  ; CMP with 5 (Registers 0-5)
     bcc @pitch_loop
 
     lsr tmp_mask            ; Bit 4: Noise (R6)
@@ -55,62 +55,60 @@ cmdAYUPDATE:
 ; ---------------------------------------------------------------------------
 step_ay:
     inc ay_reg              ; Move to next register index
-    bcc @only_inc           ; If Carry=0, we are just skipping the data pull
+    bcc @only_inc           ; If Carry=0, skip data pull
     
     ldy ipy
     lda (stream),y          ; Pull value from stream
     inc ipy
     ; TODO: Guard against ipy page-wrap
-    
-    ; --- Fall through to setayr ---
-setayr:
-    pha                     ; Save Value
-    ldy ay_reg              ; Y = Register Index
-    
-    ; --- Volume Extraction for Coarse Hi-bytes (R1, 3, 5) ---
-    cpy #6
-    bcs @not_pitch_hi
-    tya
-    lsr                     ; Is it odd? (1, 3, or 5)
-    bcc @not_pitch_hi
-    
-    pla                     ; Get Value
-    pha                     ; Keep copy
-    lsr : lsr : lsr : lsr   ; Extract Vol bits (4-7)
-    tax                     ; X = Volume Value
-    tya                     ; A = 1, 3, or 5
-    lsr                     ; A = 0, 1, or 2
-    clc : adc #8            ; A = 8, 9, or 10
-    tay                     ; Y = Target Volume Register
-    txa                     ; A = Volume Value
-    jsr @write_phys         ; Write Volume
-    
-    pla                     ; Get original value
-    and #$0F                ; Keep Pitch bits (0-3)
-    pha
-    ldy ay_reg              ; Restore original Register Index
 
-@not_pitch_hi:
-    pla                     ; Final Value to write
-    cpy #7                  ; Mixer?
-    bne @write_phys
-    ora #64                 ; Bit 6 Patch
+setayr:
+    ldy ay_reg              ; Y = Register Index
+    cpy #7                  ; --- ONE COMPARE TO RULE THEM ALL ---
+    beq @is_mixer           ; If Y=7, patch bit 6
+    bcs @write_phys         ; If Y > 7 (Noise/Vol), skip extraction
+
+    ; --- Volume Extraction (R1, 3, 5) ---
+    tya
+    lsr                     ; Check if Register is ODD (1, 3, 5)
+    bcc @write_phys         ; Even? Just write Pitch Lo.
+    
+    tax                     ; Save original A (Packed) in X
+    lsr : lsr : lsr : lsr   ; A = Volume (Bits 4-7)
+    pha                     ; Save Volume Value
+    txa                     ; A = Packed
+    and #$0F                ; A = Pitch Hi (Bits 0-3)
+    pha                     ; Save Pitch Hi Value
+    
+    tya : lsr : clc : adc #8 ; Map R1,3,5 -> R8,9,10
+    tay                     ; Y = Volume Register
+    pla                     ; A = Pitch Hi
+    tax                     ; X = Pitch Hi
+    pla                     ; A = Volume
+    jsr @write_phys         ; Write Volume first
+    
+    ldy ay_reg              ; Restore original Register Index
+    txa                     ; Restore Pitch Hi Value to A
+    jmp @write_phys         ; Write Pitch Hi and exit
+
+@is_mixer:
+    ora #64                 ; Bit 6 Patch for Oric hardware
 
 @write_phys:
-    tax                     ; X = Value
+    tax                     ; X = Value to write
     lda #$FF
     sta $0303               ; DDRA = Output
     sty $030F               ; Port A = Address
     lda #$FF : sta $030C    ; Latch Address
     lda #$DD : sta $030C    ; Inactive
     
-    stx $030F               ; Port A = Value
+    stx $030F               ; Port A = Data Value
     lda #$FD : sta $030C    ; Latch Data
     lda #$DD : sta $030C    ; Inactive
     
     lda #0
     sta $0303               ; DDRA = Input
-    sec                     ; PRESERVE CARRY for the caller!
+    sec                     ; Set Carry for sticky logic
 @only_inc:
-    lda ay_reg              ; Return index in A for CMPs
+    lda ay_reg              ; Return index in A
     rts
