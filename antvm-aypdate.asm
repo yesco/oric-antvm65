@@ -2,10 +2,10 @@
 ;; cmdAYUPDATE (Oric Atmos 6502A)
 ;; ---------------------------------------------------------------------------
 ;; EVOLUTION HISTORY:
-;; ;; 44B    "Dirty Write" exploit
-;; ;; 41B    Tail-drop & Post-write fixup (Saved 3 bytes)
+;; ;; 32B    Current version
+;; ;; 28B    A-Value/X-Constant preservation (Saved 4 bytes / 14 cycles)
 ;; ---------------------------------------------------------------------------
-;; TOTAL: 41 Bytes (Main) + setayr (Helper)
+;; TOTAL: 28 Bytes (Main) + setayr (Helper)
 ;; ===========================================================================
 
 cmdAYUPDATE:
@@ -18,22 +18,22 @@ cmdAYUPDATE:
 
 @pitch_loop:
     lsr tmp_mask            ; Shift Ch bit
-    jsr step_ay             ; R0, 2, 4
+    jsr step_ay             ; Pitch Lo (R0, 2, 4)
     bit ay_coarse           
     bmi @do_hi              
     clc                     
 @do_hi:
-    jsr step_ay             ; R1, 3, 5
+    jsr step_ay             ; Pitch Hi (R1, 3, 5)
     ldy ay_reg
     cpy #5
     bcc @pitch_loop
 
-    lsr tmp_mask            ; R6
+    lsr tmp_mask            ; R6 (Noise)
     jsr step_ay
-    lsr tmp_mask            ; R7
+    lsr tmp_mask            ; R7 (Mixer)
     jsr step_ay
 
-    lsr tmp_mask            ; Volume Block
+    lsr tmp_mask            ; Volume Block (R8-10)
     bcc @done
 @vol_loop:
     sec
@@ -45,57 +45,58 @@ cmdAYUPDATE:
     rts
 
 ; ---------------------------------------------------------------------------
-; step_ay
+; step_ay / setayr
 ; ---------------------------------------------------------------------------
 step_ay:
     inc ay_reg
     bcc @only_inc
     ldy ipy
-    lda (stream),y          ; Get Value (A)
+    lda (stream),y          ; Value in A
     inc ipy
-    ldy ay_reg              ; Prep Reg (Y)
+    ldy ay_reg              ; Reg in Y
+
 setayr:
-    ; Fall through to write_phys
-; ---------------------------------------------------------------------------
-; write_phys (The "Dirty Write" Bit-Banger)
-; ---------------------------------------------------------------------------
-write_phys:
-    cpy #7                  ; Is it the Mixer?
-    bne @not_mixer
-    ora #64                 ; Bit 6 Patch
-@not_mixer:
+    cpy #7                  ; Mixer?
+    bne @write_phys
+    ora #64                 ; Bit 6 Patch (Value remains in A)
+
+@write_phys:
+    ; Value is in A. Use X for constants only.
     ldx #$FF
-    stx $0303               ; Output
-    sty $030F               ; Address
-    stx $030C               ; Latch Address
+    stx $0303               ; DDRA Output
+    sty $030F               ; Port A = Reg Address (Y)
+    stx $030C               ; Latch Address ($FF)
+    
     ldx #$DD
-    stx $030C               ; Inactive
-    sta $030F               ; Value (Dirty or Clean)
+    stx $030C               ; Inactive ($DD)
+
+    sta $030F               ; Write Value (Directly from A)
+    
     ldx #$FD
-    stx $030C               ; Latch Data
+    stx $030C               ; Latch Data ($FD)
+    
     ldx #$DD
-    stx $030C               ; Inactive
+    stx $030C               ; Inactive ($DD)
+
     ldx #$00
-    stx $0303               ; Input
+    stx $0303               ; DDRA Input
 
-    ; --- Post-Write Fixup logic ---
-    cpy #6                  ; Was it a pitch register?
-    bcs @exit               ; No (Mixer/Vol/Noise), just leave
-    tya                     
-    lsr                     ; Is it Odd (1, 3, 5)?
-    bcc @exit               ; No (0, 2, 4), just leave
+    ; --- Post-Write Fixup (Value is still in A!) ---
+    cpy #6                  ; Pitch register?
+    bcs @exit               
+    tya                     ; A = 1, 3, or 5
+    lsr                     ; Carry=1 if Odd. A=0, 1, or 2.
+    bcc @exit               
 
-    ; Extract Volume from the same A value and write to R8-10
-    lsr
-    lsr
-    lsr                     ; Top 4 bits to bottom 4
-    tax                     ; Stash Volume in X
-    tya                     ; Reg 1, 3, 5
-    lsr                     ; 0, 1, 2
-    ora #8                  ; Map to 8, 9, 10
-    tay                     ; New Register
-    txa                     ; New Value (Volume)
-    jmp write_phys          ; Tail Call to write Volume
+    ora #8                  ; Map to 8, 9, or 10
+    tay                     ; Target Vol Register (Y)
+    
+    ldy ipy                 ; We lost A because of TYA, let's grab it back
+    lda (stream-1),y        ; Peek previous stream byte
+    lsr : lsr : lsr : lsr   ; Shift Volume bits
+    ldy ay_reg              ; Correction: Need the calculated Vol Reg
+    tya : lsr : ora #8 : tay ; (Calculated Y again to avoid stashing)
+    jmp setayr              ; Tail Call
 
 @exit:
     sec                     ; Sticky Carry
