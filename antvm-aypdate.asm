@@ -1,91 +1,62 @@
-; ---------------------------------------------------------------------------
-; cmdAYUPDATE
-; A = Mask (The "Baseball" Header)
-; X, Y = Trashed
-; ---------------------------------------------------------------------------
 cmdAYUPDATE:
-    sta tmp_mask            ; Save header to check bits later
-    
-    ; --- Handle Channels A (X=0), B (X=2), C (X=4) ---
-    ldx #0                  ; Start with Channel A (R0/R1)
-@channel_loop:
-    lsr tmp_mask            ; Shift bit 1, 2, 3 into Carry (Upd A, B, C)
-    bcc @next_ch            ; If Carry=0, this channel isn't in the stream
+    sta tmp_mask            ; Store the "Baseball" header
+    ldx #0                  ; X = Channel offset (0, 2, 4)
 
-    ; Read Pitch Lo (always present if channel bit is set)
-    ldy ipy
-    lda (stream),y
-    inc ipy
-    
-    ; Update Pitch Lo (X is 0, 2, or 4)
-    txy                     ; Y = Register index
-    jsr setayr
-    
-    ; Check Bit 0 (Coarse Flag) from original mask
+@channel_loop:
     lda tmp_mask
-    bit #%00000001          ; We check bit 0 (Coarse)
-    beq @low_update         ; Bit 0 = 0: Low Update logic
+    bit bit_table,x         ; Check if Channel A, B, or C bit is set (Bits 1,2,3)
+    beq @next_ch            ; Skip if bit not set
+
+    ; --- Pitch Low ---
+    txy                     ; Y = 0, 2, or 4 (Pitch Lo Reg)
+    jsr pull_setayr
+
+    ; --- High Update vs Low Update ---
+    lda tmp_mask
+    lsr                     ; Shift Bit 0 (Coarse) into Carry
+    bcc @low_update
 
 @high_update:
-    ; Read Pitch Hi + Vol byte
-    ldy ipy
-    lda (stream),y
-    inc ipy
-    iny                     ; Y = X + 1 (Pitch Hi register)
-    tya                     ; Transfer index to Y for setayr
-    ldy #0                  ; Dummy clear or setup for setayr if needed
-    txy                     ; Restore X-based index
-    iny                     ; Target R1, R3, or R5
-    jsr setayr              ; setayr handles the High/Vol split internally
+    txy
+    iny                     ; Y = 1, 3, or 5 (Pitch Hi/Vol Reg)
+    jsr pull_setayr
     jmp @next_ch
 
 @low_update:
-    ; Check Bit 4 (Volume Flag)
     lda tmp_mask
-    and #%00010000          ; Check bit 4
-    beq @next_ch            ; No volume update
+    and #%00010000          ; Check Bit 4 (Volume Flag)
+    beq @next_ch
     
-    ldy ipy
-    lda (stream),y          ; Read Volume byte
-    inc ipy
-    
-    ; Map X (0,2,4) to Vol Reg (8,9,10) -> (X/2) + 8
+    ; Map X(0,2,4) to Y(8,9,10) for Volume
     txa
-    lsr                     ; 0, 1, 2
+    lsr                     ; A = 0, 1, 2
     clc
-    adc #8                  ; 8, 9, 10
-    tay                     ; Y = Target Volume Register
-    jsr setayr
+    adc #8                  ; A = 8, 9, 10
+    tay
+    jsr pull_setayr
 
 @next_ch:
     inx
-    inx                     ; Move to next channel registers
-    cpx #6                  ; Done with A, B, and C?
+    cpx #3                  ; Loop 3 times (for bits 1, 2, 3)
     bne @channel_loop
 
-    ; --- Bit 5: Mixer (R7) ---
+    ; --- Mixer (Bit 5) ---
     lda tmp_mask
     and #%00100000
     beq @check_noise
-    ldy ipy
-    lda (stream),y
-    inc ipy
     ldy #7
-    jsr setayr
+    jsr pull_setayr
 
 @check_noise:
-    ; --- Bit 6: Noise (R6) ---
+    ; --- Noise (Bit 6) ---
     lda tmp_mask
     and #%01000000
     beq @done
-    ldy ipy
-    lda (stream),y
-    inc ipy
     ldy #6
-    jsr setayr
+    jsr pull_setayr
 
 @done:
     rts
 
-.bss
-tmp_mask: .res 1
+; Table to check bits 1, 2, 3 (A, B, C) based on X=0,1,2
+bit_table: .byte %00000010, %00000100, %00001000
