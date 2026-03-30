@@ -12,17 +12,16 @@ cmdAYUPDATE:
 
 @pitch_loop:
     lsr tmp_mask            ; Shift Channel bit (A, B, or C) into Carry
-    jsr step_ay             ; Pitch Lo (R0, 2, 4) - pulls if C=1. Returns C=1 if pull.
+    jsr step_ay             ; Pitch Lo (R0, 2, 4). Pulls if C=1. Sets C=1 if pull.
 
     ; --- Pitch Hi Filter ---
-    bcc @skip_hi            ; If Ch bit was 0, skip Pitch Hi entirely
-    bit ay_coarse           ; Is Coarse bit (Bit 7) set?
-    bmi @do_hi              ; If Coarse=1, we keep C=1 and pull Pitch Hi
-    clc                     ; If Coarse=0, KILL Carry to skip Pitch Hi pull
+    ; If Ch was 0, C is 0. If Ch was 1, C is 1.
+    bit ay_coarse           ; Check Coarse Flag (N)
+    bmi @do_hi              ; If Coarse=1, keep current Carry (the Ch status)
+    clc                     ; If Coarse=0, KILL Carry to skip Pitch Hi data pull
 @do_hi:
-    jsr step_ay             ; Pitch Hi (R1, 3, 5) - pulls if C=1, else skips
+    jsr step_ay             ; Pitch Hi (R1, 3, 5). Pulls if C=1, else just INCs.
     
-@skip_hi:
     cmp #6                  ; A = ay_reg from step_ay
     bcc @pitch_loop
 
@@ -38,7 +37,7 @@ cmdAYUPDATE:
     lsr tmp_mask
     bcc @done
 @vol_loop:
-    sec                     ; Force pull for all 3 volume registers
+    sec                     ; Force pull for Volume block
     jsr step_ay
     cmp #11                 ; A = ay_reg
     bcc @vol_loop
@@ -60,9 +59,8 @@ step_ay:
     ; TODO: Guard against ipy page-wrap (inc stream+1) if needed here.
     ldy ay_reg
     jsr setayr              ; Update AY chip (Assumes X is preserved)
-    sec                     ; Set Carry for the caller (Pitch Hi check)
+    sec                     ; Set Carry for sticky logic (Pitch Hi check)
 @only_inc:
     inc ay_reg
     lda ay_reg              ; Return current index in A
     rts
-
