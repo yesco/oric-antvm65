@@ -1,3 +1,24 @@
+# ant-lang: AntVM textual notation
+
+We will base the format mostly on the ABC-notation, but when possibly add from MML, and some stuff from Vortex Tracker when we can.
+
+| ABC | MML | Vortex | Description |
+|---|---|---|---|
+| C c | c C | C-4 C-5 | Normal C vs. High C (Octave shift) |
+| _B | b- | A#3 | Flats / Sharps (Note modification) |
+| C2 | c2 | --- | Duration: Double length (Half note) |
+| C/2 | c8 | --- | Duration: Half length (Eighth note) |
+| [K:Gmin] | o? | (Header) | Global Octave or Key signature |
+| (none) | v? | 0..F | Volume / Amplitude (0-15) |
+| z | r | RST | Rest (Silence/Pause) |
+| !...! | @? | 01.. | Instrument / Patch selection |
+| (none) | t? | F?? | Tempo (BPM or Ticks-per-row) |
+
+
+
+
+# AI discussion
+
 While many trackers use unique binary formats, there isn't one single "standard" text notation. However, the most widely recognized text-based system for representing tracker-style music is ABC Notation. [1, 2] 
 Common Textual Notations
 
@@ -30,3 +51,34 @@ What's next? Should we define the BPM to Tick conversion formula or look at Volu
 [7] [https://github.com](https://github.com/zserge/1bitr)
 [8] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Music_tracker)
 [9] [https://www.youtube.com](https://www.youtube.com/watch?v=KxNfc8YDIjI&t=28)
+
+Here is the completed summary table comparing the three most common text-based music systems. For your 6502 Atmos engine, a hybrid of MML (for speed) and Vortex (for register control) is usually the most powerful way to write data.
+Music Notation Summary
+
+How these map to your 6502 Player:
+
+   1. Vortex Style (Note-Octave): This maps 1:1 to your nnnnn ooo byte. C-4 becomes a single byte in your stream.
+   2. MML Style (Lengths): This determines the value you load into your wait_timer. If a "Whole Note" is 32 ticks, c8 (eighth note) tells your code to LDA #4 : STA wait_timer.
+   3. ABC Style (Case Sensitivity): Using C vs c is just a text-parser trick to increment or decrement your ooo (octave) bits before packing the byte.
+
+The "Popcorn" Staccato Effect:
+In Vortex, you would use an Instrument (like @01) that contains a volume macro:
+
+* Tick 0: Vol 15
+* Tick 1: Vol 8
+* Tick 2: Vol 0 (The "Pop")
+
+Would you like the full G-Minor text sequence for Popcorn using one of these notations (like MML) so you can begin converting it to your hex format?
+What's next? Shall we define the Instrument Macro for that "pop" or the Wait Timer logic for the note lengths?
+
+
+Summary of various notations
+| ABC | MML | Vortex  | Description |
+|-----|-----|---------|-------------|
+| C c |     | C-4 C-3 | normal C, high c |
+| Bb3 |     |         | half note |
+|     | c8  |         | length: note |
+|     | o?  |         | octave |
+|     | v?  |         | volume |
+|     |     |         | rest |
+
