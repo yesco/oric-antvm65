@@ -185,10 +185,45 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
 ```
 
 
+## EFFECTS: Pulse Width, Glissando, Chorus, Sidechain
+
+TODO: look into 
+
+Since you have a 1-bit delta engine and independent cursors, you have some unique "6502-friendly" opportunities. Beyond LINK (A+C) and ECHO (A $\rightarrow$ B), here are three ideas that leverage your specific architecture:
+
+1. The "Pulse Width" Simulation (Virtual PWM)
+Since the AY-3-8910 doesn't have native PWM, but you have a high-speed delta engine:
+
+* Idea: Rapidly toggle the Noise bit on/off for a Tone channel at the ticker rate, or alternate between two close pitches.
+* Use Case: This gives your Oric that "fat" Commodore 64 sound. In your Extended Commands, you could have a SET_MOD that defines the speed of this toggle.
+
+2. "Glissando" (Auto-Slide)
+
+Since you already have a PITCH ENV, a dedicated GLIDE flag is powerful.
+
+* Idea: When a new NOTE command arrives, instead of snapping the AY frequency immediately, the cursor "walks" from the old frequency to the new one at a speed defined by a parameter.
+* Speech Use: Essential for the "rising" inflection at the end of a question or the "falling" tone in vowels.
+
+3. "Chorus" (Micro-Detune LINK)
+Since you have LINK where C mirrors A:
+
+* Idea: Instead of just a large pitch shift, allow for a Variable Detune (e.g., +/- 1 to 4 units of your 24-TET scale).
+* Use Case: This creates a massive, lush "Unison" sound. It turns a thin 8-bit lead into a "Super Saw" style synth lead.
+
+4. "Sidechain" Noise (The Ducking Effect)
+
+* Idea: A command that tells the Noise (N) channel to automatically s
+cale its volume based on the volume of Channel A.
+* Use Case: Great for "breathy" speech sounds or "distorted" guitar-style music where the grit follows the note's intensity.
+
+Technical Note on the ECHO:
+
+For your ECHO (A $\rightarrow$ B), since you are on a 6502 with limited RAM, if you use a 16-step buffer at 50Hz, you only need 16 bytes to store the Volume or Pitch history. If you want a "Deep Echo," you can store every second tick to get 32 ticks of delay (640ms) for the same 16 bytes.
+How are you planning to trigger the "2-tick cheat" for the deep rhythmic repeats in the ECHO buffer? Would that be a bit-flag in the Extended Command?
 
 
 
-## "Registers"
+## GLOBAL "Registers"
 
 http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
 
@@ -618,6 +653,12 @@ echo? B delay A less vol
 ## Timing/Channel modifications
 
 (also see 011 for only VALUE/length changes)
+
+
+TODO: ???
+
+11 011 110 (SILENCE): Instead of making this extended, use it as a "Note-Off" or "Gate-Kill". In speech, this is the "silent gap" before a plosive like 'P'. In music, it's the difference between a Legato note and a Staccato 
+
 
 ```
    ???
