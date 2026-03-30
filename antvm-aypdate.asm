@@ -1,7 +1,18 @@
-; ===========================================================================
-; cmdAYUPDATE (Oric Atmos 6502A)
-; Header Mask: [7:Spare, 6:Vol, 5:Mix, 4:Noise, 3:ChC, 2:ChB, 1:ChA, 0:Coarse]
-; ===========================================================================
+;; ===========================================================================
+;; cmdAYUPDATE (Oric Atmos 6502A)
+;; ---------------------------------------------------------------------------
+;; EVOLUTION HISTORY:
+;; ;; ~115B  Initial draft (Separate logic for A, B, C channels, many JMPs)
+;; ;; 102B   Switched to X-index loop (Saved ~13 bytes)
+;; ;; 94B    Replaced Bit-Table with LSR mask-shifting (Saved 8 bytes)
+;; ;; 82B    Unified Pitch Lo/Hi calls via step_ay helper (Saved 12 bytes)
+;; ;; 76B    Streamlined Mask bit-order (Noise -> Mixer -> Vol) (Saved 6 bytes)
+;; ;; 72B    Refined "Sticky Carry" logic (Removed PHP/PLP) (Saved 4 bytes)
+;; ;; 68B    Final linearized flow (Removed manual inc/lda/jmp) (Saved 4 bytes)
+;; ---------------------------------------------------------------------------
+;; TOTAL: 68 Bytes (plus helper)
+;; ===========================================================================
+
 cmdAYUPDATE:
     lsr                     ; Bit 0 (Coarse) -> Carry
     ror ay_coarse           ; Bit 0 into N flag (Bit 7) of ay_coarse
@@ -15,7 +26,6 @@ cmdAYUPDATE:
     jsr step_ay             ; Pitch Lo (R0, 2, 4). Pulls if C=1. Sets C=1 if pull.
 
     ; --- Pitch Hi Filter ---
-    ; If Ch was 0, C is 0. If Ch was 1, C is 1.
     bit ay_coarse           ; Check Coarse Flag (N)
     bmi @do_hi              ; If Coarse=1, keep current Carry (the Ch status)
     clc                     ; If Coarse=0, KILL Carry to skip Pitch Hi data pull
@@ -46,7 +56,7 @@ cmdAYUPDATE:
     rts
 
 ; ---------------------------------------------------------------------------
-; step_ay
+; step_ay (16 Bytes)
 ; Carry 1 = Pull byte from stream & Update AY register [ay_reg]
 ; Carry 0 = Just Increment Index (Skip data pull)
 ; ALWAYS: Increments ay_reg, Returns A = new ay_reg
