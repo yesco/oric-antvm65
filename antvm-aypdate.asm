@@ -4,43 +4,35 @@
 ; ===========================================================================
 cmdAYUPDATE:
     lsr                     ; Bit 0 (Coarse) -> Carry
-    ror ay_coarse           ; Bit 0 now in Bit 7 (N Flag)
+    ror ay_coarse           ; Bit 0 into N flag (Bit 7) of ay_coarse
     sta tmp_mask            ; [Spare, Vol, Mix, Noise, ChC, ChB, ChA]
     
     lda #0
     sta ay_reg              ; Start at R0
 
 @pitch_loop:
-    lsr tmp_mask            ; Shift ChA, B, or C into Carry
-    jsr step_ay             ; Update R0, 2, or 4 (or skip)
+    lsr tmp_mask            ; Shift Ch bit (A, B, or C) into Carry
+    php                     ; SAVE CARRY (The "Update this Channel" decision)
+    
+    ; --- Pitch Lo (R0, 2, 4) ---
+    jsr step_ay             ; Uses Carry, updates R0/2/4, INCs ay_reg
 
-    bit ay_coarse           ; Check Coarse Flag (N)
-    bpl @skip_hi            ; If 0, Pitch Hi is NEVER in the stream
+    ; --- Pitch Hi (R1, 3, 5) ---
+    plp                     ; RESTORE CARRY (Was this channel updated?)
+    bcc @skip_hi            ; If Ch bit was 0, skip Pitch Hi
     
-    ; If Coarse=1, the Carry from the *same* Ch bit still applies
-    sec                     ; Re-set carry based on the channel bit
-    ; (Wait, we need to preserve the Carry from the Ch shift for the Hi byte)
-    ; Let's use a temp to hold the Ch bit Carry for the Hi update.
+    bit ay_coarse           ; Is Coarse bit set?
+    bpl @skip_hi            ; If Coarse=0, skip Pitch Hi
     
-    ; Simplified: If Coarse is on, Pitch Hi follows Pitch Lo IF Ch bit was set.
-    ; Since we just did LSR, let's grab the Carry before it's gone.
-    php 
-    plp                     ; (Wait, 6502A Carry logic...)
-    
-    ; Let's just use the BIT trick for the Ch bits to keep it clean.
-    ; On second thought, if Coarse is off, we ALWAYS skip R1, 3, 5.
-    ; If Coarse is on, we update R1, 3, 5 only if the Ch bit was 1.
-    ; Let's stick to the cleanest logic:
-    
-    ; (Re-checking Pitch Hi logic...)
-    ; If Ch Bit was 1 AND Coarse is 1 -> pull byte for R1/3/5.
-    ; Otherwise -> just inc ay_reg.
+    sec                     ; Both Ch bit and Coarse are 1: Pull Pitch Hi
+    jsr step_ay             ; Updates R1/3/5, INCs ay_reg
+    jmp @next_ch
 
 @skip_hi:
-    inc ay_reg              ; Always skip to next even register
+    inc ay_reg              ; Manual skip to next Even register
 
 @next_ch:
-    lda ay_reg
+    lda ay_reg              ; Loaded by step_ay or manually here
     cmp #6
     bcc @pitch_loop
 
@@ -56,10 +48,9 @@ cmdAYUPDATE:
     lsr tmp_mask
     bcc @done
 @vol_loop:
-    sec                     ; Force pull for all 3 volume regs
+    sec                     ; Force pull for Volume block
     jsr step_ay
-    lda ay_reg
-    cmp #11
+    cmp #11                 ; A is already ay_reg from step_ay
     bne @vol_loop
 
 @done:
@@ -67,16 +58,17 @@ cmdAYUPDATE:
 
 ; ---------------------------------------------------------------------------
 ; step_ay
-; If Carry=1: Pull byte from stream, set AY register [ay_reg], inc ay_reg
-; If Carry=0: Just inc ay_reg
+; Carry 1 = Pull & Update. Carry 0 = Skip.
+; Returns: A = ay_reg (for easy CMP testing)
 ; ---------------------------------------------------------------------------
 step_ay:
-    bcc @skip
+    bcc @only_inc
     ldy ipy
     lda (stream),y
     inc ipy
     ldy ay_reg
-    jsr setayr
-@skip:
+    jsr setayr              ; Update AY chip
+@only_inc:
     inc ay_reg
+    lda ay_reg              ; Prepare A for caller's CMP check
     rts
