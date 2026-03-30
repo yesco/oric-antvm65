@@ -113,8 +113,8 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 11 111 0dd|BYTE     = DRUM kick/snare/hihat(closed)/(open) s/sh/ch/ts
 
 11 111 100|CTRL|... = EXTENDED commands
-11 111 101|PAR|BYTE = WRITE BYTE "param"
-11 111 110|PAR|WORD = WRITE WORD "param"
+11 111 101|PAR|BYTE = PARAM BYTE "param"
+11 111 110|PAR|WORD = PARAM WORD "param"
 11 111 111          = RETURN ($ff - as "expected")
 ```
 
@@ -125,11 +125,29 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
 
 
 ```
-*A Parameter Block:*
+**Zero Page BLOCK/16 B**
+(offset)
+  $00: bitmap: ENVELOP: ABCNabcn (PTCHvolu) ???
+  $01: bitmap: EFFECTS: LinkEcho543210
+
+  -- A
+    (maybe just one with "min"? and keep counters in block)
+    $03: delay
+
+  -- B
+    ...
+  -- C
+    ...
+  -- N
+    ...
+
+**A Parameter Block/16 B:**
   -- HEADER
   $00: stuff todo (bitmask)/8-bit, 0=nothing to do (STOPped)
+    (these bits already coveredc in ZP: block?)
     - bit 0: vol deltas
-    - bit 1: pitch deltas 
+    - bit 1: pitch deltas
+
     - bit 2: 
     - bit 3: 
     - bit 4: 
@@ -142,36 +160,50 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
   $03: last command (?)
   $04:
   $05: 
+  $06: 
+  $07: 
   ...
 
-  -- VOLUME ENV DELTAS
-  $10: speed
-  $11: delta
-  $12-13: bitmap delta/16-bit
+  -- VOLUME ENV DELTAS/4 B
+  $f8: speed
+  $f9: delta
+  $fa-fb: bitmap delta/16-bit
 
-  -- PITCH ENV DELTAS
-  $14: speed
-  $15: delta
-  $16-17: bitmap delta/16-bit
+  -- PITCH ENV DELTAS/4 B
+  $fc: speed
+  $fd: delta
+  $fe-ff: bitmap delta/16-bit
 
 
-  -- ??? DELTAS
-  $18: speed
-  $19: delta
-  $1a-1b: bitmap delta/16-bit
+**B Parameter Block/16 B**
+  $20: ...
 
-  -- ??? DELTAS
-  $1c: speed
-  $1d: delta
-  $1e-1f: bitmap delta/16-bit
 
-*B Parameter Block:*
-  ...
+**C Parameter Block/16 B**
+  $40: ...
 
-*C Parameter Block:*
 
-*D Parameter Block:*
+**N Parameter Block/16 B:**
+  $60: ...
 
+
+**EFFECTS Block/16 B**
+  $80: ...
+
+  -- LINK Block/16 B--
+  $80: detune fixed pitch/note ???
+
+
+(this one doesn't have to be fixed, push ahead/after last)
+**ECHO BUFFER Block:**
+  $a0: 16*WORD (pitch:12 + vol:4)
+
+
+```
+
+
+
+```
 
 
 11 111 100|CTRL|... = EXTENDED commands
@@ -184,6 +216,12 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
                     = ? BEGIN LANGUAGE
 ```
 
+
+## Tick processing
+
+
+
+```
 
 ## EFFECTS: Pulse Width, Glissando, Chorus, Sidechain
 
@@ -1172,6 +1210,37 @@ We encode it as follows, we construct a value to add to the cycle pitch. The bas
 
 
 # Effects
+
+You’re right—if you store the raw frequency and volume, it eats RAM fast. On a 6502, every byte counts. To fit ECHO into a 16-byte buffer (1 byte per "step"), you have to store the Index or the Delta, not the absolute 16-bit register values.
+Here are three ways to pull off that "1-byte per value" trick:
+1. The "Semantic" Buffer (Store the Note ID)
+Since you are a 24-TET VM, you only have 192 possible notes (8 octaves $\times$ 24).
+
+* Store: 1 Byte = Note ID (0–191).
+* Volume: Use a "Global Echo Attenuation" constant (e.g., Echo Vol = Main Vol $>>$ 1).
+* Reconstruction: When Channel B reads the buffer, it just looks up the frequency for that Note ID.
+* Bonus: This handles the 24-TET math for you automatically.
+
+2. The "Register History" Buffer (Pitched Noise/FX)
+If you want to echo custom FX (like pitch slides), you can't just store Note IDs.
+
+* Store: 1 Byte = High 8 bits of Frequency OR A Change Flag.
+* The Cheat: Most AY music doesn't change the "Fine Tune" (low byte) frequency every single tick. You can store just the "Coarse" byte in the buffer. The human ear rarely notices a slight "de-tuning" in an echo tail.
+
+3. The "Delta" Buffer (Extreme Compression)
+Since you already have a Delta Engine:
+
+* Store: 1 Byte = [4 bits Pitch Delta] | [4 bits Volume].
+* Logic: Channel B acts like a "Slave" that applies the same deltas Channel A did, just $X$ ticks later.
+
+The "2-Tick Cheat" Implementation
+To get that deep rhythmic repeat (32 ticks / 640ms) while keeping the buffer small:
+
+* Logic: Only push to the 16-byte circular buffer every even tick (LDA TICKER, AND #$01, BNE SKIP_PUSH).
+* Result: You double your delay time for free, and it creates a "lo-fi" Aliasing effect on the echo that sounds very "8-bit authentic."
+
+How much RAM are you allocating for the Language stack? With 4 levels of language + pos, you could potentially use the same stack space to "shadow" these echo values if a channel isn't using its full call depth.
+Would you like a memory map suggestion for the circular ECHO buffer to keep the 6502 X/Y indexing fast?
 
 
 ## Note A: Link: C follows A
