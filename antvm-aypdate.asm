@@ -4,59 +4,71 @@
 ; ===========================================================================
 cmdAYUPDATE:
     sta tmp_mask            ; Store header
-    ldx #0                  ; Start at AY Register 0 (Pitch Lo A)
+    lda #0
+    sta ay_reg              ; Start at AY Register 0 (Pitch Lo A)
 
 @pitch_loop:
     lsr tmp_mask            ; Shift Bits 1, 2, 3 (A, B, C) into Carry
-    bcc @skip_channel       ; If bit 1-3 not set, no pitch update for this ch
+    bcc @skip_channel       ; If bit 1-3 not set, no pitch update
 
     ; --- Pitch Lo ---
-    txa
-    tay                     ; Y = Target Register (0, 2, or 4)
-    jsr pull_setayr
+    jsr pull_setayr         ; Uses ay_reg, then INCs ay_reg
 
     ; --- Check Coarse (Bit 0) ---
     lda tmp_mask
-    bit #%00000001          ; Check original Bit 0 (now at bit 0 of shifted)
-    beq @skip_channel       ; Bit 0=0: Step 2 (Skip Pitch Hi)
-
+    lsr                     ; Shift Bit 0 into Carry
+    bcc @skip_hi            ; Bit 0=0: Low Update (skip Pitch Hi)
+    
     ; --- Pitch Hi (Coarse Update) ---
-    txa
+    jsr pull_setayr         ; Register is already ay_reg (1, 3, or 5)
+    
+    ; Since we shifted Bit 0 out to check it, we must put it BACK
+    ; so the next channel in the loop can see it!
+    sec                     ; Set carry to put Bit 0 back
+    ror tmp_mask            ; Rotate it back into position
+    jmp @next_ch
+
+@skip_hi:
+    inc ay_reg              ; Skip the Pitch Hi register index
     clc
-    adc #1                  ; Target 1, 3, or 5
-    tay
-    jsr pull_setayr
+    ror tmp_mask            ; Put a 0 back into Bit 0 for next channel
 
 @skip_channel:
-    inx
-    inx                     ; Step by 2 (Registers 0, 2, 4)
-    cpx #6
-    bne @pitch_loop
+    inc ay_reg              ; Move past Pitch Lo
+    inc ay_reg              ; Move past Pitch Hi
+
+@next_ch:
+    lda ay_reg
+    cmp #6                  ; Done with Pitch A, B, and C?
+    bcc @pitch_loop
 
     ; --- Bit 4: Volume (Global) ---
     lda tmp_mask
-    and #%00010000          ; Bit 4 (was 5, shifted right once)
+    and #%00010000          ; Check original Bit 4 (now shifted)
     beq @mixer_check
     
-    ldy #8                  ; Start Volume at R8
+    lda #8
+    sta ay_reg              ; Volume Registers 8, 9, 10
 @vol_loop:
     jsr pull_setayr
-    iny                     ; Next Vol Register
-    cpy #11
+    lda ay_reg
+    cmp #11
     bne @vol_loop
 
 @mixer_check:
     lda tmp_mask
-    and #%00100000          ; Bit 5 (was 6)
+    and #%00100000          ; Bit 5
     beq @noise_check
-    ldy #7
+    lda #7
+    sta ay_reg
     jsr pull_setayr
 
 @noise_check:
     lda tmp_mask
-    and #%01000000          ; Bit 6 (was 7)
+    and #%01000000          ; Bit 6
     beq @done
-    ldy #6
+    lda #6
+    sta ay_reg
     jsr pull_setayr
 
 @done:
@@ -64,28 +76,14 @@ cmdAYUPDATE:
 
 ; ---------------------------------------------------------------------------
 ; pull_setayr
-; Helper: Pulls byte from stream, calls setayr with register Y
+; Helper: Pulls byte using IPY, updates AY register in ay_reg, then INCs ay_reg
 ; ---------------------------------------------------------------------------
 pull_setayr:
-    stx tmp_x               ; Save X (6502A has no PHX)
-    ldy ipy
-    lda (stream),y
-    inc ipy
-    ldy tmp_y_target        ; We need to pass the target reg in Y
-    jsr setayr
-    ldx tmp_x               ; Restore X
+    ldy ipy                 ; Current stream offset
+    lda (stream),y          ; Get data
+    inc ipy                 ; Advance stream
+    ldy ay_reg              ; Get target AY register
+    jsr setayr              ; Update chip
+    inc ay_reg              ; Point to next AY register
     rts
 
-; ---------------------------------------------------------------------------
-; Note: Since pull_setayr needs Y for the register index AND the 
-; (stream),y indirect access, we'll swap them via a temp variable.
-; ---------------------------------------------------------------------------
-
-pull_setayr:
-    sty tmp_reg             ; Save the target AY register
-    ldy ipy
-    lda (stream),y
-    inc ipy
-    ldy tmp_reg             ; Load target AY register for setayr
-    jsr setayr
-    rts
