@@ -2,12 +2,10 @@
 ;; cmdAYUPDATE (Oric Atmos 6502A)
 ;; ---------------------------------------------------------------------------
 ;; EVOLUTION HISTORY:
-;; ;; ~115B  Initial draft
-;; ;; ...
-;; ;; 58B    Combined CPY #7 logic
-;; ;; 52B    Constant-X optimization in setayr (Saved 6 bytes)
+;; ;; 52B    Constant-X optimization
+;; ;; 49B    X-Stash & ORA #8 optimization (Saved 3 bytes / 10+ cycles)
 ;; ---------------------------------------------------------------------------
-;; TOTAL: 52 Bytes (Main) + setayr (Helper)
+;; TOTAL: 49 Bytes (Main) + setayr (Helper)
 ;; ===========================================================================
 
 cmdAYUPDATE:
@@ -16,10 +14,10 @@ cmdAYUPDATE:
     sta tmp_mask            ; [Spare, Vol, Mix, Noise, ChC, ChB, ChA]
     
     lda #$FF
-    sta ay_reg              ; Start at -1
+    sta ay_reg              ; Start cursor at -1
 
 @pitch_loop:
-    lsr tmp_mask            ; Shift Channel bit -> Carry
+    lsr tmp_mask            ; Shift Ch bit -> Carry
     jsr step_ay             ; Pitch Lo (R0, 2, 4)
 
     bit ay_coarse           ; Check Coarse Flag (N)
@@ -28,7 +26,6 @@ cmdAYUPDATE:
 @do_hi:
     jsr step_ay             ; Pitch Hi (R1, 3, 5)
     
-    lda ay_reg
     cmp #5                  ; Loop R0-R5
     bcc @pitch_loop
 
@@ -43,7 +40,6 @@ cmdAYUPDATE:
 @vol_loop:
     sec                     ; Force pull
     jsr step_ay
-    lda ay_reg
     cmp #10
     bcc @vol_loop
 
@@ -58,7 +54,7 @@ step_ay:
     bcc @only_inc
     
     ldy ipy
-    lda (stream),y          ; Value in A
+    lda (stream),y          ; Packed Value in A
     inc ipy
     ; TODO: Guard against ipy page-wrap
 
@@ -69,41 +65,42 @@ setayr:
     bcs @write_phys         ; Jump if R6, R8, R9, R10
 
     ; --- Volume Extraction (R1, 3, 5) ---
-    tya
-    lsr                     ; Odd? (1, 3, 5)
-    bcc @write_phys         ; No, write Pitch Lo
+    tax                     ; STASH packed value in X
+    tya                     ; Reg index (1, 3, 5)
+    lsr                     ; Carry=1 if odd. A=0, 1, or 2.
+    bcc @restore_and_write  ; Even? Restore A from X and write Pitch Lo
     
-    ; Split A (Packed) into Pitch (X) and Volume (A)
-    pha                     ; Save Packed
-    and #$0F                ; A = Pitch Hi
-    tax                     ; X = Pitch Hi
-    pla                     ; A = Packed
-    lsr : lsr : lsr : lsr   ; A = Volume
-    pha                     ; Save Volume
-    
-    tya : lsr : clc : adc #8 ; Map to R8,9,10
+    ; Calculate Vol Reg (8, 9, 10)
+    ora #8                  ; A = 8, 9, or 10. (ORA saves 1 byte over CLC/ADC)
     tay                     ; Y = Volume Register
-    pla                     ; A = Volume
-    jsr @write_phys         ; Recursive write
     
-    ldy ay_reg              ; Restore R1, 3, or 5
-    txa                     ; A = Pitch Hi
+    txa                     ; Get packed back
+    lsr : lsr : lsr : lsr   ; A = Volume bits (4-7)
+    jsr @write_phys         ; Write Volume to R8, 9, or 10
+    
+    ldy ay_reg              ; Restore original Register (1, 3, or 5)
+    txa                     ; Get packed back
+    and #$0F                ; A = Pitch Hi (0-3)
+    jmp @write_phys         ; Write Pitch Hi and exit
+
+@restore_and_write:
+    txa                     ; Restore original value from X
     jmp @write_phys
 
 @is_mixer:
     ora #64                 ; Bit 6 Patch
 
 @write_phys:
-    ; Value is in A. Use X for constants to save bytes.
+    ; Value is in A.
     ldx #$FF
-    stx $0303               ; Port A to Output
-    sty $030F               ; Port A = Address
+    stx $0303               ; DDRA Output
+    sty $030F               ; Port A = Reg Address
     stx $030C               ; Latch Address ($FF)
     
     ldx #$DD                ; Inactive state
     stx $030C               
 
-    sta $030F               ; Port A = Value (from A)
+    sta $030F               ; Port A = Value
     
     ldx #$FD                ; Latch Data
     stx $030C               
@@ -112,8 +109,8 @@ setayr:
     stx $030C               
 
     ldx #$00
-    stx $0303               ; Port A to Input
+    stx $0303               ; DDRA Input
     sec                     ; Sticky Carry
 @only_inc:
-    lda ay_reg              ; For CMP
+    lda ay_reg              ; Return index in A
     rts
