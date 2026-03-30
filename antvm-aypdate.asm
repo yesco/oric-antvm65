@@ -1,62 +1,85 @@
+; --- Optimized Stream Puller ---
+pull_byte:
+    ldy ipy
+    lda (stream),y
+    inc ipy
+    rts
+
 cmdAYUPDATE:
-    sta tmp_mask            ; Store the "Baseball" header
-    ldx #0                  ; X = Channel offset (0, 2, 4)
-
-@channel_loop:
-    lda tmp_mask
-    bit bit_table,x         ; Check if Channel A, B, or C bit is set (Bits 1,2,3)
-    beq @next_ch            ; Skip if bit not set
-
-    ; --- Pitch Low ---
-    txy                     ; Y = 0, 2, or 4 (Pitch Lo Reg)
-    jsr pull_setayr
-
-    ; --- High Update vs Low Update ---
-    lda tmp_mask
-    lsr                     ; Shift Bit 0 (Coarse) into Carry
-    bcc @low_update
-
-@high_update:
-    txy
-    iny                     ; Y = 1, 3, or 5 (Pitch Hi/Vol Reg)
-    jsr pull_setayr
-    jmp @next_ch
-
-@low_update:
-    lda tmp_mask
-    and #%00010000          ; Check Bit 4 (Volume Flag)
-    beq @next_ch
+    sta tmp_mask            ; Header in A
     
-    ; Map X(0,2,4) to Y(8,9,10) for Volume
+    ; --- Bits 1, 2, 3: Pitch Updates ---
+    ldx #0                  ; X = Channel (0, 1, 2)
+@pitch_loop:
+    lda tmp_mask
+    and bit_table,x         ; Check bits 1, 2, or 3
+    beq @skip_pitch
+    
+    ; Pull Pitch Lo
+    jsr pull_byte
+    pha                     ; Save Pitch Lo value
     txa
-    lsr                     ; A = 0, 1, 2
+    asl                     ; A = 0, 2, 4
+    tay                     ; Y = Target Reg
+    pla                     ; Restore Pitch Lo value
+    jsr setayr
+
+    ; Check Coarse Flag (Bit 0)
+    lda tmp_mask
+    lsr                     ; Bit 0 -> Carry
+    bcc @skip_pitch         ; If Coarse=0, Pitch Hi is NOT in stream
+
+    ; Pull Pitch Hi + Vol (Coarse Update)
+    jsr pull_byte
+    pha
+    txa
+    asl
     clc
-    adc #8                  ; A = 8, 9, 10
-    tay
-    jsr pull_setayr
+    adc #1                  ; A = 1, 3, 5
+    tay                     ; Y = Target Reg
+    pla
+    jsr setayr
 
-@next_ch:
+@skip_pitch:
     inx
-    cpx #3                  ; Loop 3 times (for bits 1, 2, 3)
-    bne @channel_loop
+    cpx #3
+    bne @pitch_loop
 
-    ; --- Mixer (Bit 5) ---
+    ; --- Bit 4: Global Volume Update ---
+    lda tmp_mask
+    and #%00010000          ; Vol bit set?
+    beq @mixer_check
+    
+    ldx #8                  ; Volume Registers start at 8
+@vol_loop:
+    jsr pull_byte
+    tay                     ; Y = 8, 9, 10
+    jsr setayr
+    inx
+    txa
+    tay                     ; Prep Y for next loop/setayr
+    cpx #11
+    bne @vol_loop
+
+@mixer_check:
+    ; --- Bit 5: Mixer (R7) ---
     lda tmp_mask
     and #%00100000
-    beq @check_noise
+    beq @noise_check
+    jsr pull_byte
     ldy #7
-    jsr pull_setayr
+    jsr setayr
 
-@check_noise:
-    ; --- Noise (Bit 6) ---
+@noise_check:
+    ; --- Bit 6: Noise (R6) ---
     lda tmp_mask
     and #%01000000
     beq @done
+    jsr pull_byte
     ldy #6
-    jsr pull_setayr
+    jsr setayr
 
 @done:
     rts
 
-; Table to check bits 1, 2, 3 (A, B, C) based on X=0,1,2
 bit_table: .byte %00000010, %00000100, %00001000
