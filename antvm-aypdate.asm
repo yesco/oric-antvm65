@@ -11,28 +11,25 @@ cmdAYUPDATE:
     sta ay_reg              ; Start at R0
 
 @pitch_loop:
-    lsr tmp_mask            ; Shift Ch bit (A, B, or C) into Carry
-    php                     ; SAVE CARRY (The "Update this Channel" decision)
+    lsr tmp_mask            ; Shift Ch bit into Carry (1=Update, 0=Skip)
     
     ; --- Pitch Lo (R0, 2, 4) ---
-    jsr step_ay             ; Uses Carry, updates R0/2/4, INCs ay_reg
+    jsr step_ay             ; Updates if Carry=1. PRESERVES CARRY.
 
     ; --- Pitch Hi (R1, 3, 5) ---
-    plp                     ; RESTORE CARRY (Was this channel updated?)
-    bcc @skip_hi            ; If Ch bit was 0, skip Pitch Hi
+    bcc @skip_hi            ; If Ch bit was 0, skip Pitch Hi entirely
+    bit ay_coarse           ; Is Coarse bit (Bit 7) set?
+    bpl @skip_hi            ; If Coarse=0, skip Pitch Hi data pull
     
-    bit ay_coarse           ; Is Coarse bit set?
-    bpl @skip_hi            ; If Coarse=0, skip Pitch Hi
-    
-    sec                     ; Both Ch bit and Coarse are 1: Pull Pitch Hi
-    jsr step_ay             ; Updates R1/3/5, INCs ay_reg
+    sec                     ; Ch=1 and Coarse=1: Force Carry for data pull
+    jsr step_ay             ; Updates Pitch Hi (R1, 3, 5)
     jmp @next_ch
 
 @skip_hi:
-    inc ay_reg              ; Manual skip to next Even register
+    inc ay_reg              ; Increment past the Pitch Hi register index
 
 @next_ch:
-    lda ay_reg              ; Loaded by step_ay or manually here
+    lda ay_reg              ; Loaded by step_ay or inc ay_reg
     cmp #6
     bcc @pitch_loop
 
@@ -50,7 +47,7 @@ cmdAYUPDATE:
 @vol_loop:
     sec                     ; Force pull for Volume block
     jsr step_ay
-    cmp #11                 ; A is already ay_reg from step_ay
+    cmp #11                 ; A = ay_reg
     bne @vol_loop
 
 @done:
@@ -58,16 +55,23 @@ cmdAYUPDATE:
 
 ; ---------------------------------------------------------------------------
 ; step_ay
-; Carry 1 = Pull & Update. Carry 0 = Skip.
-; Returns: A = ay_reg (for easy CMP testing)
+; Carry 1 = Pull & Update. Carry 0 = Just Increment Index.
+; RETURNS: A = ay_reg, PRESERVES CARRY FLAG
 ; ---------------------------------------------------------------------------
 step_ay:
     bcc @only_inc
+    
+    ; Save Carry (on 6502A, we'll use the Processor Status push/pull)
+    php 
+    
     ldy ipy
     lda (stream),y
     inc ipy
     ldy ay_reg
     jsr setayr              ; Update AY chip
+    
+    plp                     ; Restore Carry for the caller
+    
 @only_inc:
     inc ay_reg
     lda ay_reg              ; Prepare A for caller's CMP check
