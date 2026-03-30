@@ -1,0 +1,12 @@
+When we write code keep all the code together in a BLOCK. This includes data definitions.
+
+When code is given, don't change comments without good reason. Comments should not be removed unless no longer relevant, better to fix them to be correct. Don't apply continous smaller changes to existing lines where logic doesn't change.
+
+For each change, add a line at the head of the BLOCK with a "painstakenly correct byte-count" attached, and when appropriate a cycle range. If it dpends on a variable, Add that to the formula. End the comment with a "succintly phrased" description of relevant changes. Top comment is oldest, add at the bottom of the list.
+
+Use the following format:
+
+;;; 42B 23c+A*12..186c: Added loop per value
+;;; 17B 33c..42c: optimzed by table lookup
+
+
