@@ -1,51 +1,44 @@
 ; ===========================================================================
-; cmdAYUPDATE
+; cmdAYUPDATE (Oric Atmos 6502A)
 ; A = Mask ("Baseball" Header)
 ; ===========================================================================
 cmdAYUPDATE:
     lsr                     ; Shift Bit 0 (Coarse) into Carry
     ror ay_coarse           ; Bit 0 is now in Bit 7 of ay_coarse (N Flag)
-    sta tmp_mask            ; Store remaining bits (A, B, C, Vol, Mix, Noise)
+    sta tmp_mask            ; Store remaining bits
     
     lda #0
-    sta ay_reg              ; Start at AY Register 0 (Pitch Lo A)
+    sta ay_reg              ; Start at R0
 
 @pitch_loop:
-    lsr tmp_mask            ; Shift next bit (A, then B, then C) into Carry
-    bcc @skip_channel       ; If Carry=0, no pitch update for this channel
+    lsr tmp_mask            ; Shift Bit 1, 2, or 3 into Carry
+    bcc @skip_pitch         ; If 0, don't pull from stream
 
     ; --- Pitch Lo ---
-    jsr pull_setayr         ; Updates R0, 2, or 4. INCs ay_reg.
+    jsr pull_setayr         ; Updates R0, R2, or R4
 
-    ; --- Check Coarse (N flag of ay_coarse) ---
-    bit ay_coarse           ; Test Bit 7
-    bpl @skip_hi            ; If Bit 7=0 (Low Update), skip Pitch Hi
-
-    ; --- Pitch Hi (Coarse Update) ---
-    jsr pull_setayr         ; Updates R1, 3, or 5. INCs ay_reg.
-    jmp @next_ch
+    ; --- Pitch Hi Check ---
+    bit ay_coarse           ; Check Bit 7 (Coarse Flag)
+    bpl @skip_hi            ; If 0, only Lo was in stream
+    jsr pull_setayr         ; Updates R1, R3, or R5
+    jmp @next_ch            ; Already at next even reg
 
 @skip_hi:
-    inc ay_reg              ; Skip Pitch Hi register index
+    inc ay_reg              ; Manual skip to next even reg
+    jmp @next_ch
 
-@skip_channel:
-    ; We need to ensure ay_reg points to the NEXT Pitch Lo (0->2, 2->4)
-    ; Since pull_setayr and skip_hi might have moved it, we force alignment.
-    lda ay_reg
-    clc
-    adc #1
-    and #%11111110          ; Force to next even register (0, 2, 4)
-    sta ay_reg
+@skip_pitch:
+    inc ay_reg              ; Skip Lo
+    inc ay_reg              ; Skip Hi
 
 @next_ch:
     lda ay_reg
-    cmp #6                  ; Done with Pitch A, B, and C?
+    cmp #6                  ; Loop for Channels A, B, C
     bcc @pitch_loop
 
-    ; --- Bit 4: Volume (Global) ---
-    lsr tmp_mask            ; Shift Bit 4 (Volume) into Carry
+    ; --- Global Volume (Bit 4) ---
+    lsr tmp_mask
     bcc @mixer_check
-    
     lda #8
     sta ay_reg
 @vol_loop:
@@ -55,14 +48,14 @@ cmdAYUPDATE:
     bne @vol_loop
 
 @mixer_check:
-    lsr tmp_mask            ; Shift Bit 5 (Mixer) into Carry
+    lsr tmp_mask            ; Bit 5
     bcc @noise_check
     lda #7
     sta ay_reg
     jsr pull_setayr
 
 @noise_check:
-    lsr tmp_mask            ; Shift Bit 6 (Noise) into Carry
+    lsr tmp_mask            ; Bit 6
     bcc @done
     lda #6
     sta ay_reg
@@ -78,8 +71,8 @@ cmdAYUPDATE:
 pull_setayr:
     ldy ipy
     lda (stream),y
-    inc ipy                 ; Oric: Add page-cross check here if needed!
+    inc ipy                 ; (Oric Atmos page-cross check here if needed)
     ldy ay_reg
-    jsr setayr
+    jsr setayr              ; X is assumed saved by setayr or not used
     inc ay_reg
     rts
