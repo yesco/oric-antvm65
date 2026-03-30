@@ -38,6 +38,116 @@
 ;;; 
 ;;; COMMAND: 26c + 3c(go next)
 
+.ifdef SUPERFAST
+
+;;; BIGLUT:   BYTES=768 DECODE=30c CMD= 0c NOTE=16c
+;;; SMALLLUT: BYTES=448 DECODE=20c CMD=14c NOTE=16c
+
+.ifdef BIGLUT
+
+
+;;; Use LUT for everything!
+;;; (In this case older command bit pattern
+;;;  use less LUT tables!)
+
+hifreq:         .res 256
+lofreq:         .res 256
+
+cmdaddr:        .res 256
+        ;; TODO: populate with:
+        ;; .byte note-jmpcmd-2
+        ;; .byte cmdWAIT-jmpcmd-2
+        ;; ...
+        ;; .byte cmdWAIT-jmpcmd-2
+
+
+interpret:
+;;; 27c+3c(jmp next)
+        ldy ipy
+        lda (stream),y
+        inc ipy
+        
+        tax
+        lda cmdaddr,x
+        sta dispatch+1
+dispatch:       
+        sec
+        bcs dispatch            ; LOL
+        
+note:   
+;;; 1+15c
+        ;; Play channel A, lol
+        ldy #0                  ; TODO: fix
+        lda lofreq,x
+        jsr setAYR
+
+        iny
+        lda hifreq,x
+        jsr setAYR
+
+        jmp interpret
+
+cmdWAIT:        
+
+.else ; SMALLLUT (!BIGLUT)
+
+;;; Use LUT for everything!
+;;; (In this case older command bit pattern
+;;;  use less LUT tables!)
+
+hifreq:         .res 192
+lofreq:         .res 192
+
+cmdaddr:        .res 64
+
+        ;; TODO: populate with:
+        ;; .byte note-jmpcmd-2
+        ;; .byte cmdWAIT-jmpcmd-2
+        ;; ...
+        ;; .byte cmdWAIT-jmpcmd-2
+
+
+;;; DECODE=17c+3c COMMAND=14C  NOTES=16c
+
+interpret:
+;;; 17c+3c(jmp next)
+        ldy ipy
+        lda (stream),y
+        inc ipy
+        
+        cmp #%11000000
+        bcc note
+;;; 14c
+        ;; COMMAN
+        tax
+        lda cmdaddr,x
+        sta dispatch+1
+dispatch:       
+        sec
+        bcs dispatch            ; LOL
+        
+note:   
+;;; 1+15c
+        ;; Play channel A, lol
+        ldy #0                  ; TODO: fix
+        lda lofreq,x
+        jsr setAYR
+
+        iny
+        lda hifreq,x
+        jsr setAYR
+
+        jmp interpret
+
+cmdWAIT:        
+
+        
+.endif ; !BIGLUT = SMALLLUT
+
+
+
+.else ; SUPERFAST
+
 interpret:
 ;;; 33c
         ldy ipy             ; 3B | Load stream index
@@ -153,3 +263,5 @@ pitch_done:
         tax                 ; 2
         tya                 ; 2
         rts                 ; 6
+
+.endif ; !SUPERFAST
