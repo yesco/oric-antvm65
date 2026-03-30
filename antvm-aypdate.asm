@@ -14,9 +14,10 @@ cmdAYUPDATE:
     lsr tmp_mask            ; Shift Ch bit into Carry (1=Update, 0=Skip)
     
     ; --- Pitch Lo (R0, 2, 4) ---
-    jsr step_ay             ; Updates if Carry=1. PRESERVES CARRY.
+    jsr step_ay             ; Updates if Carry=1. RE-SETS CARRY ON EXIT.
 
     ; --- Pitch Hi (R1, 3, 5) ---
+    ; We check the same bit we just used for Lo (now restored in C)
     bcc @skip_hi            ; If Ch bit was 0, skip Pitch Hi entirely
     bit ay_coarse           ; Is Coarse bit (Bit 7) set?
     bpl @skip_hi            ; If Coarse=0, skip Pitch Hi data pull
@@ -26,7 +27,7 @@ cmdAYUPDATE:
     jmp @next_ch
 
 @skip_hi:
-    inc ay_reg              ; Increment past the Pitch Hi register index
+    inc ay_reg              ; Skip Pitch Hi register index
 
 @next_ch:
     lda ay_reg              ; Loaded by step_ay or inc ay_reg
@@ -56,23 +57,18 @@ cmdAYUPDATE:
 ; ---------------------------------------------------------------------------
 ; step_ay
 ; Carry 1 = Pull & Update. Carry 0 = Just Increment Index.
-; RETURNS: A = ay_reg, PRESERVES CARRY FLAG
+; RETURNS: A = ay_reg, C = 1 (Forces carry for "sticky" decisions)
 ; ---------------------------------------------------------------------------
 step_ay:
     bcc @only_inc
-    
-    ; Save Carry (on 6502A, we'll use the Processor Status push/pull)
-    php 
-    
     ldy ipy
     lda (stream),y
     inc ipy
     ldy ay_reg
     jsr setayr              ; Update AY chip
-    
-    plp                     ; Restore Carry for the caller
-    
+    sec                     ; RE-SET CARRY for the caller (Pitch Hi check)
 @only_inc:
     inc ay_reg
     lda ay_reg              ; Prepare A for caller's CMP check
     rts
+
