@@ -29,7 +29,17 @@
 ;;;   nnnnn ooo (Note 0-23, Octave 0-7)
 ;;;   11pgg iii (P=Param flag, gg=Group, iii=instr/data)
 ;;; 
+;;; 
+;;; DECODE: 33c -> NOTES/COMMAND
+;;; 
+;;; NOTES: 26c-78c
+;;;   Oct 0: 42c | Oct 1: 54c | Oct 2: 66c | Oct 3: 78c
+;;;   Oct 4: 36c | Oct 5: 47c | Oct 6: 58c | Oct 7: 69c
+;;; 
+;;; COMMAND: 26c + 3c(go next)
+
 interpret:
+;;; 33c
         ldy ipy             ; 3B | Load stream index
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
@@ -48,6 +58,7 @@ interpret:
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
+;;; 26c
         eor #48             ; A = 0000PCC0
         lsr                 ; A = 00000PCC (0-7)
         tax
