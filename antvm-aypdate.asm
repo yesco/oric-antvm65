@@ -11,11 +11,12 @@
 ;;;  68 + 15? Final linear flow (no manual inc/lda/jmp) (Saved 4)
 ;;;  68 + 15? Unified step_ay
 ;;; --- combined with SETAYR (cmdAYPDATE + pull_ay + setay)
-;;;  64 + 15 + 20 =  99B Tail-call & moved index to X (naive setay)
-;;;  52 + 10 + 44 = 106B hi pitchy vol, hw "Dirty Write" + Fixup
-;;;  52 + 10 + 41 = 103B Constant-X & ORA #8 optimizations
+;;;  64 + 15 + 43 Tail-call & moved index to X (naive setay)
+;;;  52 + 10 + 75 hi pitchy vol, hw "Dirty Write" + Fixup
+;;;  52 + 10 + 70 Constant-X & ORA #8 optimizations
+;;;  52 + 15 + 66 Constant-X & ORA #8 optimizations
 ;;; --------------------------------------------------------------
-;;; CURRENT: 52B (cmd) + 10B (pull) + 41B (set) = 103 Bytes Total
+;;; CURRENT: 133 Bytes
 ;;; ==============================================================
 
 cmdAYPDATE:
@@ -55,7 +56,7 @@ cmdAYPDATE:
         rts                     ; 1 (52 Bytes)
 
 ;;; ----------------------------------------------------------------
-;;; pull_ay (10 Bytes)
+;;; pull_ay (15 Bytes)
 ;;; ----------------------------------------------------------------
 pull_ay:
         inc ay_reg              ; 2
