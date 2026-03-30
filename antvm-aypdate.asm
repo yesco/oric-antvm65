@@ -1,10 +1,11 @@
 ; ===========================================================================
 ; cmdAYUPDATE (Oric Atmos 6502A)
 ; A = Mask ("Baseball" Header)
+; Bit 0: Coarse, Bit 1-3: A,B,C, Bit 4: Vol, Bit 5: Noise (R6), Bit 6: Mixer (R7)
 ; ===========================================================================
 cmdAYUPDATE:
     lsr                     ; Shift Bit 0 (Coarse) into Carry
-    ror ay_coarse           ; Bit 0 is now in Bit 7 of ay_coarse (N Flag)
+    ror ay_coarse           ; Bit 0 now in Bit 7 (N Flag)
     sta tmp_mask            ; Store remaining bits
     
     lda #0
@@ -12,24 +13,21 @@ cmdAYUPDATE:
 
 @pitch_loop:
     lsr tmp_mask            ; Shift Bit 1, 2, or 3 into Carry
-    bcc @skip_pitch         ; If 0, don't pull from stream
+    bcc @skip_pitch         ; No update for this channel
 
-    ; --- Pitch Lo ---
-    jsr pull_setayr         ; Updates R0, R2, or R4
-
-    ; --- Pitch Hi Check ---
-    bit ay_coarse           ; Check Bit 7 (Coarse Flag)
+    jsr pull_setayr         ; Updates Pitch Lo (R0, R2, or R4)
+    bit ay_coarse           ; Check Coarse Flag (N)
     bpl @skip_hi            ; If 0, only Lo was in stream
-    jsr pull_setayr         ; Updates R1, R3, or R5
-    jmp @next_ch            ; Already at next even reg
+    jsr pull_setayr         ; Updates Pitch Hi (R1, R3, or R5)
+    jmp @next_ch
 
 @skip_hi:
-    inc ay_reg              ; Manual skip to next even reg
+    inc ay_reg              ; Manual skip to next even reg index
     jmp @next_ch
 
 @skip_pitch:
-    inc ay_reg              ; Skip Lo
-    inc ay_reg              ; Skip Hi
+    inc ay_reg              ; Skip Lo index
+    inc ay_reg              ; Skip Hi index
 
 @next_ch:
     lda ay_reg
@@ -38,7 +36,7 @@ cmdAYUPDATE:
 
     ; --- Global Volume (Bit 4) ---
     lsr tmp_mask
-    bcc @mixer_check
+    bcc @noise_check        ; Skip volume block
     lda #8
     sta ay_reg
 @vol_loop:
@@ -47,32 +45,29 @@ cmdAYUPDATE:
     cmp #11
     bne @vol_loop
 
-@mixer_check:
-    lsr tmp_mask            ; Bit 5
-    bcc @noise_check
-    lda #7
-    sta ay_reg
-    jsr pull_setayr
-
 @noise_check:
-    lsr tmp_mask            ; Bit 6
-    bcc @done
-    lda #6
+    lda #6                  ; Start at Noise (R6)
     sta ay_reg
-    jsr pull_setayr
+    lsr tmp_mask            ; Bit 5 (Noise)
+    bcc @mixer_check
+    jsr pull_setayr         ; Updates R6, ay_reg becomes 7
+
+@mixer_check:
+    lsr tmp_mask            ; Bit 6 (Mixer)
+    bcc @done
+    jsr pull_setayr         ; Updates R7
 
 @done:
     rts
 
 ; ---------------------------------------------------------------------------
 ; pull_setayr
-; Helper: Pulls byte from stream, calls setayr with reg Y, then INCs ay_reg
 ; ---------------------------------------------------------------------------
 pull_setayr:
     ldy ipy
     lda (stream),y
-    inc ipy                 ; (Oric Atmos page-cross check here if needed)
+    inc ipy
     ldy ay_reg
-    jsr setayr              ; X is assumed saved by setayr or not used
+    jsr setayr              ; Write A to Register Y
     inc ay_reg
     rts
