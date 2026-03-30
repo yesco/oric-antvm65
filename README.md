@@ -1243,6 +1243,106 @@ How much RAM are you allocating for the Language stack? With 4 levels of languag
 Would you like a memory map suggestion for the circular ECHO buffer to keep the 6502 X/Y indexing fast?
 
 
+A speed/time-compression feature for the ECHO would actually be incredible for speech and FX, though maybe less so for standard music.
+If you add a Speed Parameter to the Echo playback (e.g., playback pointer moves at $0.5x$ or $2x$ the speed of the recording pointer), you get two very specific "8-bit" sounds:
+1. The "Monstrous" / "Chipmunk" Pitch Shift
+In a standard delay, if you read the buffer back faster or slower than you wrote it, you're essentially doing primitive Granular Synthesis.
+
+* Speed 0.5x: The echo is twice as long and sounds deeper/ghastly (perfect for "alien" speech or "boss" voices).
+* Speed 2.0x: The echo is a high-pitched "chirp" or "shimmer" (great for crystalline FX or "robotic" doubling).
+
+2. The "Tape Speed" Effect
+If you allow the Speed to be modulated by a Delta Engine, you get Wow and Flutter.
+
+* In music, this creates a "chorus" effect where the echo slightly drifts in and out of tune.
+* In speech, it makes the "voice" sound unstable or glitched, which is very popular in "cyberpunk" style 8-bit soundtracks.
+
+Implementation Tip (The 6502 way):
+Since you already have a Ticker Engine, instead of a complex fractional pointer, use a Modulo/Mask approach:
+
+* Normal: INC BUFFER_PTR every tick.
+* Slow (0.5x): INC BUFFER_PTR only when TICKER & 0x01 == 0.
+* Fast (2.0x): LDA PTR : CLC : ADC #2 : STA PTR.
+
+Would "Speed" be useful for the Delta Engine too?
+Absolutely. Since your PITCH deltas have a speed (delay between updates), you can use it to create Non-Linear Slides.
+
+* Start with speed=1 for a fast snap.
+* Slow down to speed=5 as it reaches the target note.
+* Result: A "natural" slide that mimics how a human voice or a physical instrument (like a trombone) settles into a pitch.
+
+For your ECHO buffer, are you going to use a fixed page in RAM ($0xXX00) so you can use LDA (BASE), Y for the fastest possible indexing?
+What's the next instruction you're planning to bit-pack into those "EXTENDED" slots?
+
+You're right—on the AY-3-8910, the Noise (N) is mixed into the channels via the mixer register ($07), but it shares the amplitude envelope of whichever channel (A, B, or C) has its noise-enable bit flipped.
+Does it make sense to enable Noise on more than one channel?
+Rarely for music, but often for Speech and FX.
+
+   1. For Music (The "Drums" Problem): Usually, you only enable Noise on one channel (often B or C) to handle the Snare or Hi-hat. If you enable it on A and B simultaneously, they share the same noise frequency ($06), so you just get a louder version of the same static. It’s better to keep one channel "Clean" for the melody.
+   2. For Speech (The "Sibilance" Benefit): This is where it gets interesting. To get a rich "S" or "SH" sound, enabling noise on two channels with different volume envelopes creates a much more organic, "phased" white noise. It sounds less like a chip and more like a human throat.
+   3. For Pulse Width (PWM): Since you mentioned PWM, that is far more valuable for "fat" chiptune leads than multi-channel noise.
+
+The "Virtual PWM" (The 6502 Hack)
+Since the AY doesn't do PWM, the "Standard" 6502 trick is Rapid Phase/Pitch Shifting:
+
+* The Logic: Your ticker toggles the pitch of Channel A between Note and Note + 1 (or a small delta) every 1 or 2 ticks.
+* The Result: It creates a "thick" chorused sound that mimics the C64’s SID chip.
+
+Revised EFCT Flags (The "Power Trio")
+If you drop Chorus (since Pitch Deltas handle it), your bitmap becomes much more powerful for a 6502 engine:
+
+| Bit | Flag | Name | Function |
+|---|---|---|---|
+| 7 | E | Echo | Ch B follows A with Delay Buffer. |
+| 6 | F | Follow | Ch C mirrors A (Detuned/Linked). |
+| 5 | P | PWM | Toggles pitch/phase for "fat" leads. |
+| 4 | G | Gliss | Auto-slide to the next Note command. |
+
+Implementation Note for the Ticker:
+Since E and F are "Routing" flags, you can save a massive amount of CPU cycles. If E is set, the interpreter skips the fetch/decode for Channel B entirely. You're basically running a 4-channel synth for the CPU cost of a 2-channel synth.
+How many bytes of Zero-Page are you using per channel state? (If you can fit a channel's "active" variables into 8 bytes, you can use ASL and LDX to index them lightning-fast).
+
+In the AY-3-8910 architecture, "Noise" is a bit of a nomad. It has its own 5-bit period (pitch) register ($06), but it has no volume of its own—it must "borrow" the VCA (Voltage Controlled Amplifier) from Channel A, B, or C.
+To make this programmable in your AntVM65 without melting the 6502’s cycles, here is the most efficient way to "tie" them:
+1. The "Mixer" Byte Strategy
+Instead of complex logic, use your Channel Selection commands to update a "Shadow Mixer" byte in RAM.
+
+* When you select Channel N (Noise), your subsequent VOL or DELTA commands should actually target a specific "Noise-Host" channel (A, B, or C).
+* The Best Approach: Most 6502 engines use a "Priority" system. If Noise is active, it "takes over" the amplitude envelope of Channel C by default, as C is usually the "FX/Percussion" channel in 3voice music.
+
+2. Is 16-bit Noise Pitch useful?
+The AY chip only has a 5-bit register ($06) for noise period (0–31).
+
+* The Reality: High values (31) = Deep rumble/thunder. Low values (0) = High-pitched "hiss" or "static."
+* The Hack: Since you have a 16-bit DELTA engine, you can "sweep" that 5-bit register. Even though it's only 32 steps, sweeping it rapidly with a delta creates "Filtered Noise" effects—perfect for the "S" to "SH" transition in speech or a "Zap" drum sound.
+
+3. The "Tie" Command Logic
+In your 11 011 011 (CHANNEL N) command, you could use the following byte to define the "Tie":
+
+* 00 = Noise OFF (Mixer $07 = %x x 1 1 1 x x x)
+* 01 = Tie to A
+* 10 = Tie to B
+* 11 = Tie to C (Standard)
+
+4. Implementation in the Ticker
+Since you are minimizing overhead:
+
+   1. Ticker calculates the Volume Delta for the "Host" channel.
+   2. Ticker writes that volume to the AY Channel Reg ($08, $09, or $0A).
+   3. The Result: The Noise "rides" that volume curve automatically.
+
+Does your current "Ticker Skeleton" handle the Mixer ($07) register update every frame? (This is usually where 8-bit engines "click" or "pop" if not handled carefully).
+How do you plan to handle Note-Off (Silence)—will it be a specific VOL 0 command or a dedicated bit in your EFCT map?
+
+
+
+
+
+
+
+
+
+
 ## Note A: Link: C follows A
 
 By "slaving" Channel C to Channel A, you create a "Lead/Resonance Pair" perfect for speech formants (F2/F3) or thickened musical leads.

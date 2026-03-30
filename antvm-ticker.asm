@@ -108,8 +108,6 @@ tickFOLLOW:
 tickPULSEWIDTH: 
 ;;; TODO:
 
-tickPULSEWIDTH:
-;;; TODO:
 
 tickCHORUS:
         ;; TODO: is this on all channels
