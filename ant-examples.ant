@@ -1,63 +1,77 @@
+% --- Basic Melody & Multi-Channel Test ---
 $ode_to_joy:
-  K:4 |ABC 
-  E E F G | G F E D | C C D E | E2 D2
-  E E F G | G F E D | C C D E | D2 C2
+  K:4 |ABC           % Set base octave 4 and enable channels A, B, and C
+  E E F G | G F E D  % Test standard notes and bar line alignment
+  C C D E | E2 D2    % Test absolute durations (Wait: 2.00)
+  E E F G | G F E D 
+  C C D E | D2 C2
 RET
 
+% --- Timing & Manual Command Test ---
 $mario_intro:
   K:5 |ABC
-  E1 E1 WAIT1 E1 WAIT1 C1 E2 G2 
-  |ABC K:4 G2 RET
+  E1 E1 WAIT1 E1     % Test explicit WAIT command mixed with notes
+  WAIT1 C1 E2 G2     % Ensure WAIT doesn't break the Note Eater
 
-$star_wars:
-  K:4 |A
-  G,4 D4 | C B, A, G4 | d4 C B, A, G4 | d4 C B, C A,4 
+  |ABC K:4 G2        % Mid-procedure channel and octave reset
 RET
 
+% --- Lower Octave & Subroutine Logic ---
+$star_wars:
+  K:4 |A
+  G,4 D4             % Test octave-down shift (,) and long duration (4)
 
-% test commenting
+  | C B, A, G4       % Test bar line following a duration
+  | d4 C B, A, G4    % Test octave-up (d) vs base (C)
+  | d4 C B, C A,4 
+RET
 
+% --- Stress Tests & Microtones ---
 $tests:
-  |A C/4 C1/4 C'/4.
-
+  % 1. Rhythmic Fractions & Concatenation
+  |A C/4 C1/4 C'/4.  % Test /4, 1/4, and dotted rhythm (Wait: 0.38)
+  
+  % 2. Procedure Calls (No 'CALL' prefix)
   $star_wars
   $ode_to_joy
   $mario_intro
-  $star_wars
 
-TPS:50
-BPM:120
+  % 3. Global Metadata (Should align to columns)
+  TPS:50             % Ticks Per Second TODO
+  BPM:120            % Beats Per Minute TODO
 
-K:4
-C
-K:3
-C
-K:2
-C
+  % 4. Sticky Octave & Scale Shifts
+  K:4 C              % Base 4
+  K:3 C              % Base 3
+  K:2 C              % Base 2
+  K:4
+  OCT+ C             % Shifts to 5
+  OCT- C             % Shifts back to 4
+  OCT- C             % Shifts to 3
 
-K:4
-OCT+ C OCT- C OCT- C
+  % 5. Dynamics & Volume
+  C !fff! C !p! C    % Test volume TODOs (15 and 6)
 
-K:4
-C !fff! C !p! C
-
-[ABC]
-
-
-A>C C<A
-
-C C. C.
+  % 6. Chords & Broken Rhythms
+  [ABC]              % Test chord cycling (Note Eater inside brackets)
+  A>C C<A            % Test broken rhythm markers (TODO: implementation)
+  
+  % 7. Staccato & Ties
+  C-C                % Test Tie logic (SUSTAIN ON/OFF)
+  .C .C              % Test Staccato logic (Short note TODO)
 
 RET
 
+% --- 24-TET Microtonal Scale Test ---
+% This hits indices 0 through 23 in perfect binary increments
 $TET_scale:
   C ^/C ^C _/D D ^/D ^D _/E E ^/E F ^/F ^F _/G G ^/G ^G _/A A ^/A ^A _/B B ^/B
   c ^/c ^c ^/d d ^/d ^d _/e e ^/e f ^/f ^f _/g g ^/g ^g _/a a ^/a ^a _/b b ^/b
-  RET
+RET
 
-$TET_scale:
+% --- Empty Procedure Test ---
+$empty:
+RET
 
-  RET
-
-
-fail
+% --- Error Handling Test ---
+ThisShouldFail        % Test the STDERR %filename.line output
