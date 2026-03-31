@@ -235,11 +235,14 @@ cmd_char:
         .byte "language"
         .byte "kscoXBWR"
 
+
+;;; JSK-notation, LOL: ABC-notation uses ^/C and _/C !
+
 note_char1:      
         ;;     0123456789012345678901234
-        .byte "C...D...E.F...G...A...B.."
+        .byte "CCCDDDDEEEFFFFGGGGAAAABBB"
 note_char2:      
-        .byte " -#+ -#+ + -#+ -#+ -#+ -#
+        .byte " -#+ -#+ + -#+ -#+ -#+ -#"
 
 .endif ; ANTTRACE
 
@@ -324,13 +327,18 @@ interpret:
         and #%00111110      ; 2B | Mask for Note*2 or CmdBits*2
         tax                 ; 1B | X = index
 
-        cpx #48             ; 2B | Check if Note index >= 48
+        cpx #%00110000      ; 2B | Check if Note index >= 48
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
 .ifdef ANTTRACE
         ;; print CMD char
         pha
+        asl
+        asl
+        sty savey
+        ora savey
+        and #%111111
         tay
         lda cmd_char,Y
         jsr putchar
@@ -349,8 +357,8 @@ command:
         lda (stream),y      ; Fetch Parameter into A
         inc ipy
 .ifdef ANTTRACE
-        jsr put2h
         SPC
+        jsr put2h
 .endif ; ANTTRACE
 
 no_param:
@@ -390,7 +398,25 @@ cmdCALLlang:
         ;; ...
         jmp interpret
 
-cmdDRUMEXTEND:  
+cmdDRUMEXTEND:
+        cpx #%111
+        bne :+
+        ;; RETURN
+
+;;; TODO: pop if have left or make zero/disable
+        lda #0
+        sta stream+1
+
+        ;; YIELD 
+        ;; -- LOL?
+;        pla
+;        pla
+
+        rts
+:       
+        
+        
+
         ;; ...
         jmp interpret
 
@@ -409,7 +435,31 @@ cmdDRUMEXTEND:
 ;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
 .ifdef ANTTRACE
-        PUTC 'N'
+        SAVEAXY
+        putc 'N'
+        SPC
+
+        ;; Show note 2 char
+        lda savex
+        lsr
+        pha
+        tax
+        lda note_char1,x
+        jsr putchar
+
+        pla
+        tax
+        lda note_char2,x
+        jsr putchar
+
+        SPC
+        putc 'o'
+        lda savey
+        clc
+        adc #'0'
+        jsr putchar
+
+        LOADAXY
 .endif ; ANTTRACE
         cpy #4              ; 2
         bcs @high_oct       ; 2/3 | Branch to 8-bit logic

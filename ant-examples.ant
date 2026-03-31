@@ -54,11 +54,15 @@ $tests:
 
   % 6. Chords & Broken Rhythms
   [ABC]              % Test chord cycling (Note Eater inside brackets)
-  A>C C<A            % Test broken rhythm markers (TODO: implementation)
+  [^/C_D^/E]         % TEST: Microtonal Chord (Indices 1, 6, 9)
+  A>C C<A            % TEST: Broken rhythm markers (TODO: implementation)
   
   % 7. Staccato & Ties
   C-C                % Test Tie logic (SUSTAIN ON/OFF)
   .C .C              % Test Staccato logic (Short note TODO)
+
+  % 8. Concatenated Microtonal Run
+  ^/C^C_/DD^/D^D     % TEST: No-space microtonal run (Indices 1,2,3,4,5,6)
 
 RET
 

@@ -8,8 +8,26 @@
 .import _putchar
 
 .zeropage
+
+savea:          .res 1
+savex:          .res 1
+savey:          .res 1
+
 tmp_putchar:    .res 1
+
 .code
+
+.macro SAVEAXY
+        sta savea
+        stx savex
+        sty savey
+.endmacro
+
+.macro LOADAXY
+        lda savea
+        ldx savex
+        ldy savey
+.endmacro
 
 ;;; Safe: prints A
 ;;; Retains A,X,Y
@@ -148,27 +166,31 @@ _main:
         ldy #0
         sty ipy
 
+@loop:       
         jsr interpret
-        jsr interpret
-        jsr interpret
-        jsr interpret
-        
+        ;; hi-byte=0 done! (no music on ZP!)
+        ldx stream+1
+        bne @loop
+
 
         NL
-        putc '\'
+        putc '.'
         NL
+
 halt2:  
         jmp halt2
 
 
 langauge:       
 phonem: 
-        .byte $00
-        .byte $01
-        .byte $02
-        .byte $03
-        .byte $04
-        .byte $05
+        .byte %00000100
+        .byte %00001100
+        .byte %00010100
+        .byte %00011100
+        .byte %00100100
+        .byte %00101100
+        .byte %00110100
+        .byte %00110100
         
         .byte $ff
 
