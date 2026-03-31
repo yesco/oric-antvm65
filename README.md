@@ -1043,6 +1043,7 @@ byte values to are coming in stream and to be set.
  R12: Envelope Period, Coarse Tune (high 8 bits)
  R13: Envelope Shape/Cycle (selects attack, decay, sustain, and release pattern)
 
+**NOTE:** there is no special volume command as this can be done using SETAY.R8=15 (C: full blast, highest volume)
 
 
 ## "Phonems"/"words" (subroutines)

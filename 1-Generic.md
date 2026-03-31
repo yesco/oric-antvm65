@@ -1,3 +1,5 @@
+TODO: add volum and pauses! (at end)
+
 To make this truly professional for your Ant-VM65, I have filled all 127 slots (129–255). I’ve organized them into strict 8 or 16-byte boundaries. This allows you to use AND #$07 or AND #$0F in ca65 to quickly find the "Local Index" within a category.
 The Ant-VM65 Master Semantic Map (129–255)
 
@@ -130,6 +132,8 @@ The Ant-VM65 Master Semantic Map (129–255)
 | 253 | 4 | | - | FREE SLOT |
 | 254 | 5 | | - | FREE SLOT |
 | 255 | 6 | | - | FREE SLOT |
+
+TODO: add volum and pauses!
 
 Implementation Note for ca65:
 I used Aliasing for many IDs (e.g., ID 202 is an alias for ID 92). This ensures that your Tracker can use "Group-based" IDs for consistency, but the VM only needs to store the actual phoneme sequence once in memory.

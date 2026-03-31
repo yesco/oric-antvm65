@@ -1,3 +1,7 @@
+TODO: add pauses!!! fixed length ("WAIT")
+TODO: maybe also some volume macros in 1-General
+
+
 To accommodate 11 languages (English, Swedish, Norwegian, Spanish, Japanese, German, Dutch, Italian, Chinese, Korean, Thai) without a "parameter explosion," we use 64 IDs.
 
 IDs 1–8 are 1-byte "Cheap Calls" for the most frequent global sounds.
@@ -208,7 +212,7 @@ These are words that are phonetically similar in many of your target 11 language
 | 94 | MICRO | 12, 9, 16, 13, 27, $FF | M + I + K + R + OH |
 | 95 | TELE | 3, 33, 28, 33, $FF | T + E + L + E |
 
-| 96 | - not used - |
+| 96 | - not used - | maybe TODO: word "OR"
 
 
 

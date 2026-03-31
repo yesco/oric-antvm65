@@ -15,6 +15,144 @@ We will base the format mostly on the ABC-notation, but when possibly add from M
 | (none) | t? | F?? | Tempo (BPM or Ticks-per-row) |
 
 
+# Commands recognized
+
+```
+Notes:        B/H AGFEDC agfdedc A' a, a" a,, a# C-4 C#4 
+Duration:     C/2 
+Octave:       K:4  (default)
+              K:+  K:-
+              o4
+              v11
+Lyrics-line   w: hello baby, baby, baby.
+Channel:      A: B: C: N: ABN: (3 selected)
+
+label:        $foo:
+
+calling:      $foo
+
+
+
+
+CALL       _foo
+CALL       _bar
+
+```
+
+
+
+# ABC notation free characters
+
+PDF reference chart 2 pages
+
+
+https://michaeleskin.com/documents/ABCquickRefv0_6.pdf
+
+
+
+Summary: @ $ ?  --- free to use!
+
+@ $ ? 
+
+
+Actually, both # and ; have specific, though limited, roles in ABC notation. [1] 
+
+* # (Hash/Sharp): Primarily used in headers (like K:F#) to define the key signature. While the music body uses ^ for sharps, some modern software allows # within chord symbols (e.g., "C#m") to display a sharp sign.
+* ; (Semicolon): Primarily used to separate multiple lines of chord symbols or annotations that apply to the same note. [2, 3, 4, 5, 6] 
+
+## ABC-Notation: One-Line Command Summary
+Here is a concise guide to the core syntax for your AntVM65 toolchain:
+
+| Syntax [2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] | Description |
+|---|---|
+| X:1 | Reference Number: Marks the start of a new tune. |
+| T:Title | Title: The name of the song or piece. |
+| M:4/4 | Meter: Sets the time signature (beats per measure). |
+| L:1/8 | Default Length: Defines what a single letter (e.g., C) represents in ticks. |
+| K:G | Key: Sets sharps/flats for the scale (must be the last header). |
+| C D E | Notes (Low): Uppercase letters for the middle/lower octave. |
+| c d e | Notes (High): Lowercase letters for the upper octave. |
+| z / x | Rests: z is a visible rest; x is an invisible/silent rest. |
+| C2 / C/2 | Duration: Numbers multiply the default length; slashes divide it. |
+| ^ / _ / = | Accidentals: Sharp (^), Flat (_), or Natural (=) before a note. |
+| , / ' | Octave Shifts: Comma lowers an octave; apostrophe raises it. |
+| | / |: / :| | Structure: Bar line (|), start repeat (|:), and end repeat (:|). |
+| [CEG] | Chords: Plays multiple notes simultaneously. |
+| (3abc | Tuplets: Groups notes into irregular rhythms (e.g., triplets). |
+| {g}C | Grace Notes: Tiny decorative notes played quickly before the main note. |
+| "Am" | Guitar Chords: Text in quotes above the staff. |
+| % | Comments: Ignores everything following it on that line. |
+
+Since you're using $ for your VM labels, it's a perfect choice—it's one of the few standard ASCII characters that standard ABC notation doesn't use for music logic!
+Would you like a sample of an ABC file converted to your AntVM65 bit-stream format?
+
+[1] [https://thecelticroom.org](https://thecelticroom.org/abc-music-notation/abc-notation-read-and-write.html)
+[2] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Letter_notation)
+[3] [https://trillian.mit.edu](https://trillian.mit.edu/~jc/music/abc/doc/ABC.html)
+[4] [https://trillian.mit.edu](https://trillian.mit.edu/~jc/music/abc/doc/ABC.html)
+[5] [https://justsolve.archiveteam.org](http://justsolve.archiveteam.org/wiki/ABC_%28musical_notation%29)
+[6] [https://moinejf.free.fr](http://moinejf.free.fr/abcm2ps-doc/features.html)
+[7] [https://folkworks.org](https://folkworks.org/article/all-about-abc-notation/#:~:text=Lines%20in%20the%20first%20part%20of%20the,using%20one%20of%20the%20ABC%20conversion%20tools.)
+[8] [https://folkworks.org](https://folkworks.org/article/all-about-abc-notation/#:~:text=Lines%20in%20the%20first%20part%20of%20the,using%20one%20of%20the%20ABC%20conversion%20tools.)
+[9] [https://en.wikibooks.org](https://en.wikibooks.org/wiki/ABC_notation/Notes)
+[10] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/ABC_notation#:~:text=ABC%20notation%20is%20a%20shorthand%20form%20of,musical%20notation%20%28bar%20lines%2C%20tempo%20marks%2C%20etc.%29)
+[11] [https://notabc.app](https://notabc.app/abc/basics/)
+[12] [https://thecelticroom.org](https://thecelticroom.org/abc-music-notation/abc-notation-read-and-write.html#:~:text=Under%20the%20headers%20we%20type%20the%20code,to%20lower%20it%20an%20octave%20so:%20C%2CD%2CE%2CF%2CG%2CA%2CB%2C)
+[13] [https://www.biteyourownelbow.com](https://www.biteyourownelbow.com/abcnotation.htm)
+[14] [https://intmus.github.io](https://intmus.github.io/abc-tutorial.html)
+[15] [https://trillian.mit.edu](https://trillian.mit.edu/~jc/music/abc/doc/ABCtut_Repeats.html)
+[16] [https://www.lesession.co.uk](http://www.lesession.co.uk/abc/abc_extensions.htm)
+[17] [https://www.youtube.com](https://www.youtube.com/watch?v=u6_tjcKE42A&t=1)
+[18] [https://www.facebook.com](https://www.facebook.com/groups/498671610282070/posts/3093154600833745/)
+
+
+
+To define and call labels in a way that remains compatible with ABC notation, you need characters that do not interfere with note letters (A-G, a-g), accidentals (^, _, =), durations (numbers), or structural symbols (|, [, ]). [1] 
+The following characters are generally safe for your purpose because they are either unused in the music body or reserved specifically for "user-defined" extensions:
+## 1. The @ (At) Symbol
+The @ character is not part of the standard ABC note syntax. It is widely used in other languages for decorators or pointers, making it intuitive for labels. [2, 3] 
+
+* Definition: @foo:
+* Call: @foo
+* Pros: Highly visible; zero clashing with standard accidentals or note names.
+
+## 2. The $ (Dollar) Symbol
+Similar to @, the $ is not used for notes or standard ornaments. [3] 
+
+* Definition: $foo:
+* Call: $foo
+* Pros: Familiar "variable" or "macro" notation in many scripting environments. [4] 
+
+## 3. The ? (Question Mark) Symbol
+Standard ABC does not use ? in the music body. [3, 5] 
+
+* Definition: ?foo:
+* Call: ?foo
+* Pros: Short and distinct; unlikely to be confused with any duration or octave marker.
+
+## 4. The & (Ampersand) Symbol
+While & is sometimes used for voice overlays in multi-voice tunes, it is less common in single-track or simple music bodies. However, to be safest, avoid it if you plan to support polyphony. [1, 6] 
+## Recommendation for AntVM65:
+I recommend using @ or $. These are the "cleanest" because they don't look like any musical accidental (unlike _, -, or ^) and aren't used for ornaments (like . or !). [7, 8] 
+Avoid These (Common Clashes):
+
+* _ (Underscore): Used for flat accidentals and lyrics extension.
+* ^ (Caret): Used for sharp accidentals.
+* = (Equals): Used for natural accidentals.
+* : (Colon): Usually follows a letter in headers (like K:, L:). Using it mid-line for labels might confuse some parsers unless it follows your unique prefix. [3, 4, 5, 6] 
+
+Would you like a sample of how a label-based loop would look in this notation for your 6502 interpreter?
+
+[1] [https://help.sap.com](https://help.sap.com/saphelp_em92/helpdata/en/4e/37f5e8dfbe3822e10000000a42189c/content.htm)
+[2] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/ABC_notation#:~:text=ABC%20notation%20is%20a%20shorthand%20form%20of,musical%20notation%20%28bar%20lines%2C%20tempo%20marks%2C%20etc.%29)
+[3] [https://folkworks.org](https://folkworks.org/article/all-about-abc-notation/)
+[4] [https://abcnotation.com](https://abcnotation.com/wiki/abc:standard:v2.1#:~:text=Table_title:%203.%20Information%20fields%20Table_content:%20header:%20%7C,notes:%20N:see%20also%20O%27Neills%20%2D%20234%20%7C)
+[5] [https://trillian.mit.edu](https://trillian.mit.edu/~jc/music/abc/doc/ABC.html)
+[6] [https://www.lesession.co.uk](http://www.lesession.co.uk/abc/abc_extensions.htm)
+[7] [https://www.lesession.co.uk](http://www.lesession.co.uk/abc/abc_extensions.htm)
+[8] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/ABC_notation#:~:text=ABC%20notation%20is%20a%20shorthand%20form%20of,musical%20notation%20%28bar%20lines%2C%20tempo%20marks%2C%20etc.%29)
+
+
 
 
 # AI discussion
