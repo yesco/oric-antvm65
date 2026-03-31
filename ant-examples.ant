@@ -1,5 +1,7 @@
 % --- Basic Melody & Multi-Channel Test ---
+
 $ode_to_joy:
+
   K:4 |ABC           % Set base octave 4 and enable channels A, B, and C
   E E F G | G F E D  % Test standard notes and bar line alignment
   C C D E | E2 D2    % Test absolute durations (Wait: 2.00)
@@ -8,7 +10,9 @@ $ode_to_joy:
 
   @RET
 
+
 % --- Timing & Manual Command Test ---
+
 $mario_intro:
   K:5 |ABC
   E1 E1 WAIT1 E1     % Test explicit WAIT command mixed with notes
@@ -18,7 +22,9 @@ $mario_intro:
 
   @RET
 
+
 % --- Lower Octave & Subroutine Logic ---
+
 $star_wars:
   K:4 |A
   G,4 D4             % Test octave-down shift (,) and long duration (4)
@@ -29,7 +35,9 @@ $star_wars:
 
   @RET
 
+
 % --- Stress Tests & Microtones ---
+
 $tests:
   % 1. Rhythmic Fractions & Concatenation
   |A C/4 C1/4 C'/4.  % Test /4, 1/4, and dotted rhythm (Wait: 0.38)
@@ -69,22 +77,29 @@ $tests:
 
   @RET
 
+
 % --- 24-TET Microtonal Scale Test ---
 % This hits indices 0 through 23 in perfect binary increments
+
 $TET_scale:
+
   C ^/C ^C _/D D ^/D ^D _/E E ^/E F ^/F ^F _/G G ^/G ^G _/A A ^/A ^A _/B B ^/B
   c ^/c ^c ^/d d ^/d ^d _/e e ^/e f ^/f ^f _/g g ^/g ^g _/a a ^/a ^a _/b b ^/b
 
   @RET
 
+
 $timing_test:
+
   |A C/2 C/4 C/8 C/16 C/32   % Should generate ppp: 1, 2, 3, 4, 5
   |B [CEG]/16                % Chord with 1/16th timing
   |C C-C/32                  % Tie with 1/32nd timing
 
   @RET
 
+
 $legato_test:
+
   (C D E F)          % Start slur: VALUE 0. Notes have no Auto-Wait.
                      % End slur:   VALUE 2.
   
@@ -98,6 +113,7 @@ $legato_test:
 
 
 $wait_test:
+
   @STOP
   @WAIT/1
   @WAIT/2
@@ -118,7 +134,9 @@ $wait_test:
 
   @RET  
 
+
 $value_test:
+
   @SUSTAIN
   @VALUE/1
   @VALUE/2
@@ -139,9 +157,12 @@ $value_test:
 
   @RET  
 
+
 % --- Empty Procedure Test ---
+
 $empty:
   @RET
+
 
 $vol_test:
    !ppp!
