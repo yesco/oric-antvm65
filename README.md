@@ -81,17 +81,13 @@ Here is a rough overview of how the bit-patterns define commands
 ```
 nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
-11 000 000 = STOP wait for even/sync/spawn
-
-TODO: squeezed 0-15 into 3 bits? LOL wtf?
-
-11 000 www = WAIT 1-10 ticks: iii*20ms (32th,16th)
-11 000 ppp = WAIT 11-15 8th/quarter/half/whole/wait (240,500,1s,2s,4s)
+11 000 000 = STOP wait for event/sync/spawn
+11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
+11 000 ppp = WAIT.music:  VALUE>>(ppp+1) /2 /4 /8 /16 relative VALUE
 
 11 001 iii = VALUE: SUSTAIN/ whole/half/quarter/...32th /LEGATO
 
 11 010 pnm = CALL pnm (0-7 => local 1-8)
-
 
 11 011 000 = CHANNEL A - select
 11 011 001 = CHANNEL B - select
@@ -207,7 +203,7 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
 
 
 ```
-
+### EXTENDED COMMANDS
 
 11 111 100|CTRL|... = EXTENDED commands
 11 111 101|PAR|BYTE = WRITE BYTE "param"
@@ -217,6 +213,13 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
                     = ? GOTO
                     = ? BEQ/BNE
                     = ? BEGIN LANGUAGE
+
+11 111 100|$xx|lng|pnm = SPAWN on current selectd CH: CALL lng:pnm
+
+11 111 101|$8x|ticks   = WAIT ticks (write ZP register! 0-255)
+
+
+
 ```
 
 
@@ -569,6 +572,40 @@ Defines the note's base length (Total_Ticks)
 
        Use code with caution. LOL
 ```
+
+That is a mathematically elegant way to handle swing and articulation without needing more bits. By using a Bit-Shift Relative Rest, you turn your REST parameter into a "Gate" or "Staccato" control.
+## How the "Shift-Rest" Logic Works:
+If your current VALUE (sustain) is, say, 24 ticks (a Quarter Note):
+
+| Parameter | Logic (VALUE >> n) | Rest Duration | Note Duration (Active) | Musical Effect |
+|---|---|---|---|---|
+| 0 | 24 >> 1 (50%) | 12 ticks | 12 ticks | Standard Portato |
+| 1 | 24 >> 2 (25%) | 6 ticks | 18 ticks | Standard Detached |
+| 2 | 24 >> 3 (12%) | 3 ticks | 21 ticks | Normal Articulation |
+| 3 | 24 >> 4 (6%) | 1-2 ticks | 22 ticks | Legato (Tiny gap) |
+
+## Why this is a "6502 Power Move":
+
+   1. Zero Overhead: A LSR (Logical Shift Right) is only 2 cycles. Calculating a relative rest on the fly is faster than fetching a second byte from memory.
+   2. Automatic Scaling: If you change the BPM (Master Tempo), all your rests scale perfectly. You don't have to re-calculate every "dash" in the song.
+   3. Speech Synthesis: This is perfect for Consonants. You can set a long VALUE for a vowel but use a Shift-Rest to create a tiny "stop" (silence) before the next phoneme, making the speech much clearer.
+
+## The "WAIT" vs "Relative REST" Synergy:
+
+* Relative REST: Use this for Note Articulation (staccato, legato, etc.). It lives "inside" the note's time-slot.
+* WAIT Command: Use this for Structural Silence (the dash in music notation, or the pause between sentences). It lives "between" time-slots.
+
+## One Implementation Detail:
+Since you have a 3-bit budget, you could use the 8 values (0–7) as:
+
+* 0-3: The VALUE >> (n+1) relative shifts.
+* 4-7: Fixed Tick values (1, 2, 4, 8 ticks) for when you need absolute precision regardless of the BPM.
+
+This "Hybrid Rest" gives you the musicality of a tracker and the precision of a speech synth in a single byte.
+Does your Ticker currently have the "Elapsed" vs "Target" registers ready to handle this dynamic split between Note and Rest?
+Next Step: Define the Bit-Pattern for this Hybrid Rest?
+
+
 
 ## VALUE/REST: Articulation Presets (note+rest lengths)
 *realtive* idea
