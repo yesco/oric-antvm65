@@ -16,23 +16,22 @@ my %vol_map = (
 print ";;; AntVM65 Generated Assembly\n\n";
 
 while (<>) {
-    s/%.*//; # Strip comments
+    s/%.*//; 
     chomp;
     my $line_num = $.;
     my $filename = $ARGV || "stdin";
     s/^\s+|\s+$//g; 
     next if /^$/;
 
-    # 1. Procedures / Labels
+    # 1. Procedures / Labels ($label:)
     if (/^\$([a-zA-Z0-9_]+):/) {
         print ".proc $1\n";
         next;
     }
 
-    # 2. Tokenize (Handles Chords, Channels, and standard tokens)
-    my @tokens = split(/(\[.+?\](?:\d*(?:\/\d+)?\.?)?|\|[ABCN]+|\s+)/, $_);
-    foreach my $token (@tokens) {
-        next if $token =~ /^\s*$/;
+    # 2. Tokenize on whitespace
+    foreach my $token (split(/\s+/, $_)) {
+        next if $token eq "";
 
         # CASE: Channel Select (|ABC)
         if ($token =~ /^\|([ABCN]+)$/) {
@@ -44,54 +43,22 @@ while (<>) {
             next;
         }
 
-        # CASE: Dynamics (!fff!)
+        # CASE: Call ($label)
+        if ($token =~ /^\$([a-zA-Z0-9_]+)$/) {
+            printf "  .byte %%11110000 ;; %-14s (CALL %s)\n", $token, $1;
+            next;
+        }
+
+        # CASE: Dynamics (!f!)
         if ($token =~ /^!([a-z]+)!$/i) {
             my $v = $vol_map{lc($1)} || 7;
             printf "  .byte %%10111%03b ;; TODO: VOL %-7d (from %s)\n", $v & 0x07, $v, $token;
             next;
         }
 
-        # CASE: Chords [CEG]
-        if ($token =~ /^\[(.+?)\](\d*(?:\/\d+)?\.?)$/) {
-            my ($notes_raw, $chord_dur) = ($1, $2);
-            printf "  %-18s ;; TODO: %-10s (CHORD START)\n", "", $token;
-            my @chord_notes = ($notes_raw =~ /([_^=]?[A-Ga-g][,']*)/g);
-            foreach my $n (@chord_notes) {
-                parse_note($n . "0", $n, 1); # 1 = No wait inside chord
-            }
-            my $final_dur = parse_duration($chord_dur) * $base_len;
-            printf "  .byte %%11000%03b ;; %-14s (Wait Chord: %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
-            printf "  %-18s ;; TODO: %-10s (CHORD END)\n", "", "";
-            next;
-        }
-
-        # CASE: Headers, Octave Shifts, and Metadata
+        # CASE: Headers/Metadata
         if ($token =~ /^(K|L|Q|TPS|BPM):(.+)$/i || $token =~ /^(bass|treble|OCT[+-])$/i) {
             handle_metadata($token);
-            next;
-        }
-
-        # CASE: Ties (C-C)
-        if ($token =~ /-/ && $token =~ /^[A-G^=_]/i) {
-            my @parts = split(/-/, $token);
-            foreach my $i (0..$#parts) {
-                if ($i > 0) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 1, "ON"; }
-                parse_note($parts[$i], $token, 0);
-                if ($i == $#parts && $#parts > 0) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 0, "OFF"; }
-            }
-            next;
-        }
-
-        # CASE: Single Note
-        if ($token =~ /^([_^=]?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?)(\.?)$/) {
-            parse_note($token, $token, 0);
-            next;
-        }
-
-        # CASE: Rests (z, x)
-        if ($token =~ /^([zx]+)(\d*(?:\/\d+)?)$/i) {
-            my $total = length($1) * parse_duration($2) * $base_len;
-            printf "  .byte %%11000%03b ;; %-14s (Wait: %.2f)\n", int($total) & 0x07, $token, $total;
             next;
         }
 
@@ -99,15 +66,43 @@ while (<>) {
         if ($token =~ /^(WAIT|VALUE|VOL)(\d+)$/) {
             my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
             printf "  .byte %%%s%03b ;; %-14s (Value: %d)\n", $pre{$1}, $2 & 0x07, $token, $2;
+            next;
         }
-        elsif ($token =~ /^CALL:([a-zA-Z0-9_]+)$/) {
-            printf "  .byte %%11110000 ;; CALL %-11s (Subroutine)\n", $1;
-        }
-        elsif ($token eq "RET") {
+        if ($token eq "RET") {
             printf "  .byte %%11111111 ;; %-14s\n.endproc\n\n", $token;
+            next;
         }
-        else {
-            printf STDERR "%%%s.%d: FAIL: \"%s\"\n", $filename, $line_num, $token;
+
+        # CASE: Note/Rest/Chord "Eater" (Handles CDEFG or [CEG] concatenated)
+        my $working = $token;
+        while ($working ne "") {
+            # Chord Eater
+            if ($working =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
+                my ($notes_raw, $chord_dur) = ($1, $2);
+                printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "", $notes_raw;
+                my @chord_notes = ($notes_raw =~ /([_^=]?[A-Ga-g][,']*)/g);
+                foreach my $n (@chord_notes) { parse_note($n . "0", $n, 1); }
+                my $final_dur = parse_duration($chord_dur) * $base_len;
+                printf "  .byte %%11000%03b ;; %-14s (Wait Chord: %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
+                printf "  %-18s ;; TODO: %-14s (CHORD END)\n", "", "";
+            }
+            # Note Eater (including Ties)
+            elsif ($working =~ s/^([_^=]?[A-Ga-g][,']*(?:\d*(?:\/\d+)?\.?|(?=-)))//) {
+                my $n = $1;
+                my $tie = ($working =~ s/^-//) ? 1 : 0;
+                if ($tie) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 1, "ON"; }
+                parse_note($n, $n, 0);
+                if ($tie && $working !~ /^[A-G^=_]/i) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 0, "OFF"; }
+            }
+            # Rest Eater
+            elsif ($working =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
+                my $total = length($1) * parse_duration($2) * $base_len;
+                printf "  .byte %%11000%03b ;; %-14s (Wait: %.2f)\n", int($total) & 0x07, $1 . ($2||""), $total;
+            }
+            else {
+                printf STDERR "%%%s.%d: FAIL: \"%s\" (remains: \"%s\")\n", $filename, $line_num, $token, $working;
+                last;
+            }
         }
     }
 }
@@ -123,11 +118,7 @@ sub handle_metadata {
     }
     elsif ($token =~ /^OCT([+-])$/) {
         my $dir = $1 eq '+' ? 1 : -1;
-        foreach my $ch (@active_ch) { 
-            $octave_map[$ch] += $dir;
-            $octave_map[$ch] = 0 if $octave_map[$ch] < 0;
-            $octave_map[$ch] = 7 if $octave_map[$ch] > 7;
-        }
+        foreach my $ch (@active_ch) { $octave_map[$ch] += $dir; }
         printf "  %-18s ;; %-14s (Octave now: %d)\n", "", $token, $octave_map[$active_ch[0]];
     }
     else {
@@ -142,18 +133,14 @@ sub parse_note {
     my ($note_token, $orig, $no_wait) = @_;
     $note_token =~ /^([_^=]?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?)(\.?)$/;
     my ($acc, $n_char, $oct_mod, $dur_str, $dot) = ($1, $2, $3, $4, $5);
-    
     my $note = $note_map{uc($n_char)};
     $note += 2 if ($acc && $acc eq '^'); $note -= 2 if ($acc && $acc eq '_');
-
     my $oct = $octave_map[$active_ch[0]]; 
     $oct++ if $n_char =~ /[a-z]/;
     $oct += length($oct_mod) if ($oct_mod && $oct_mod =~ /'/);
     $oct -= length($oct_mod) if ($oct_mod && $oct_mod =~ /,/);
     $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
-
     printf "  .byte %%%05b%03b ;; %-14s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $orig, $note, $oct;
-
     unless ($no_wait) {
         my $final_dur = parse_duration($dur_str) * $base_len;
         $final_dur *= 1.5 if ($dot && $dot eq ".");
