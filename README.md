@@ -219,6 +219,50 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
 11 111 101|$8x|ticks   = WAIT ticks (write ZP register! 0-255)
 
 
+## Volume commands?
+
+While your 16-bit Delta Engine handles the "movement" of sound (crescendos, decays), you still need Discrete Dynamic Levels to set the base intensity for different sections of music or speech.
+
+## How many levels?
+
+Four levels is the absolute minimum, but 8 levels is the "sweet spot" for 8-bit systems.
+
+* Why 4 is tight: With only 4 levels, you only have Quiet, Medium, Loud, and Max. This makes it hard to distinguish between a "Lead" melody and "Background" accompaniment without one burying the other.
+* Why 8 is ideal: 8 levels (3 bits) map perfectly to standard musical terminology and provide enough "headroom" to balance a 3-channel mix (e.g., Lead at level 6, Bass at level 4, Arpeggio at level 3).
+
+## Recommended 8-Level "Dynamic" Budget
+Mapping your volume to these terms makes the VM intuitive for both musicians and "Language" designers:
+
+| Level [1, 2, 3] | Music Term | Use Case |
+|---|---|---|
+| 0 | Silence | Note-off / Mute |
+| 1 | pp (Pianissimo) | Very soft background "ghost" notes |
+| 2 | p (Piano) | Soft accompaniment / Whispering |
+| 3 | mp (Mezzo-piano) | Standard background filler |
+| 4 | mf (Mezzo-forte) | Standard conversational speech |
+| 5 | f (Forte) | Loud / Lead melody line |
+| 6 | ff (Fortissimo) | Very loud / Emphasized words |
+| 7 | fff (Sforzando) | Maximum "cranked" output / Percussion hits |
+
+## Speech vs. Music Needs:
+
+* Music: Needs these levels to create Sectional Contrast (e.g., a quiet Verse vs. a loud Chorus). Even with envelopes, a "Loud" envelope starting at base level 2 sounds completely different than a "Loud" envelope starting at base level 7.
+* Speech: Uses these levels for Emphasis. In natural speech, important words are slightly louder. Having 8 levels allows you to tag specific "Word Indices" in your Language 1 table with a dynamic level (e.g., Level 6 for "Stop!") while the rest of the sentence sits at Level 4.
+
+## The "6502 Hack" for Volume:
+Since the AY-3-8910 has 16 internal volume levels (0-15), you can easily map your 3-bit (0-7) VM levels to the AY hardware using a simple Shift or Lookup Table:
+
+* AY_VOL = VM_LEVEL << 1 (Simple, but 0 stays 0 and 7 becomes 14).
+* Recommended: Use a 8-byte LUT to map them logarithmically (e.g., 0, 2, 4, 7, 9, 11, 13, 15) to better match how human ears perceive loudness.
+
+Would you like to reserve the 3 bits in your VALUE command to act as this "Dynamic Level" for the next note?
+Next Step: Decide if the Envelope Speed should also be tied to these dynamic levels for "harder" attacks at higher volumes?
+
+[1] [https://www.sfu.ca](https://www.sfu.ca/sonic-studio-webdav/handbook/Dynamics.html#:~:text=Table_content:%20header:%20%7C%20pp%20%7C%20pianissimo%20%28very,pianissimo%20%28very%20soft%29:%20fortissimo%20%28very%20loud%29%20%7C)
+[2] [https://www.sfu.ca](https://www.sfu.ca/sonic-studio-webdav/handbook/Dynamics.html#:~:text=Table_content:%20header:%20%7C%20pp%20%7C%20pianissimo%20%28very,pianissimo%20%28very%20soft%29:%20fortissimo%20%28very%20loud%29%20%7C)
+[3] [https://www.masterclass.com](https://www.masterclass.com/articles/guide-to-dynamics-in-music#:~:text=How%20to%20Indicate%20Dynamics%20in%20Music%20Notation.,abbreviation%20of%20fortississimo%20meaning%20%22very%2C%20very%20loud%22)
+
+
 
 ```
 
