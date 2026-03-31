@@ -70,6 +70,40 @@ putdigit:
 .endmacro
 
 
+putb:   
+        ldx #8
+@loop:       
+        cpx #3
+        beq @spc
+        cpx #6
+        bne :+
+@spc:
+        pha
+        txa
+        pha
+        PUTC '_'
+        pla
+        tax
+        pla
+:       
+        asl
+
+        pha
+        txa
+        pha
+
+        lda #0
+        adc #'0'
+        jsr putdigit
+
+        pla
+        tax
+        pla
+
+        dex
+        bne @loop
+
+        rts
 
 
 
@@ -96,8 +130,14 @@ _main:
         sty ipy
 
         jsr interpret
+
+        ;; TODO: RETURN doesn't stop... 
+        jsr interpret
         
 
+        NL
+        putc '\'
+        NL
 halt2:  
         jmp halt2
 

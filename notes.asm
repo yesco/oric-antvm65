@@ -40,6 +40,8 @@
 
 .zeropage
 
+ticks:          .res 2
+
 ;;; IP for interpration
 ;;; TODO: ABCN
 stream:         .res 2
@@ -220,8 +222,16 @@ offset_table:
 
 interpret:
 ;;; 20 B  33c
+        ;; move ticks forward
+        inc ticks
+        bne :+
+        inc ticks+1
+:       
 .ifdef ANTTRACE
         NL
+        LDAX ticks
+        jsr puth
+        SPC
         LDAX stream
         jsr puth
         putc '.'
@@ -234,8 +244,14 @@ interpret:
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
 .ifdef ANTTRACE
+        pha
         jsr put2h
         SPC
+        pla
+        pha
+        jsr putb
+        SPC
+        pla
 .endif ; ANTTRACE
         tax                 ; 1B | X = raw byte
         and #%00000111      ; 2B | Isolate III (Index or Octave)
