@@ -44,7 +44,10 @@ C !fff! C !p! C
 [ABC]
 
 
+A>C C<A
 
+C C. C.
 
 RET
 
+fail

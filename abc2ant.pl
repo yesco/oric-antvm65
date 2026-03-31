@@ -5,7 +5,7 @@ use warnings;
 # --- Configuration & State ---
 my %note_map   = (C=>0, D=>4, E=>8, F=>10, G=>14, A=>18, B=>22); 
 my @octave_map = (4, 4, 4, 4); 
-my @active_ch  = (0); 
+my @active_ch  = (0);          
 my $base_len   = 1.0; 
 
 my %vol_map = (
@@ -43,7 +43,7 @@ while (<>) {
         }
         # CASE: Standard Bar Lines (|, |:, :|, ::, etc.)
         elsif ($token =~ /^([:|\][\|]+)$/) {
-            printf "  %-18s ;; %-14s (Bar line)\n", "", $token;
+            printf "  %-18s ;; %-14s (Bar line)\n", "  ", $token;
         }
         # CASE: Call ($label)
         elsif ($token =~ /^\$([a-zA-Z0-9_]+)$/) {
@@ -68,40 +68,41 @@ while (<>) {
         }
 
         # --- CONCATENATED NOTE/REST RUNS ---
-        elsif ($token =~ /^[A-Ga-gzx\[]/) {
+        elsif ($token =~ /^[A-Ga-gzx\[\.]/) {
             my $working = $token;
             while ($working ne "") {
-                # Chord [CEG]
+                # Staccato Eater (leading dot)
+                my $staccato = ($working =~ s/^\.//) ? 1 : 0;
+                if ($staccato) {
+                    printf "  %-18s ;; TODO: STACCATO ON  (Next note short)\n", "  ";
+                }
+
+                # Chord Eater
                 if ($working =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
                     my ($notes_raw, $chord_dur) = ($1, $2);
-                    printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "", $notes_raw;
+                    printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "  ", $notes_raw;
                     my @chord_notes = ($notes_raw =~ /([_^=]?[A-Ga-g][,']*)/g);
                     foreach my $n (@chord_notes) { parse_note($n, $n, 1); }
                     my $final_dur = parse_duration($chord_dur) * $base_len;
                     printf "  .byte %%11000%03b ;; %-14s (Wait Chord: %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
-                    printf "  %-18s ;; %-14s (CHORD END)\n", "", "";
+                    printf "  %-18s ;; %-14s (CHORD END)\n", "  ", "";
                 }
-                # Note (including Ties)
+                # Note Eater
                 elsif ($working =~ s/^([_^=]?[A-Ga-g][,']*(?:\d*(?:\/\d+)?\.?|(?=-)))//) {
                     my $n = $1;
                     my $tie = ($working =~ s/^-//) ? 1 : 0;
                     if ($tie) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 1, "ON"; }
                     parse_note($n, $n, 0);
                     if ($tie && $working !~ /^[A-G^=_]/i) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 0, "OFF"; }
+                    if ($staccato) { printf "  %-18s ;; TODO: STACCATO OFF\n", "  "; }
                 }
-                # Rest
+                # Rest Eater
                 elsif ($working =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
                     my $total = length($1) * parse_duration($2) * $base_len;
                     printf "  .byte %%11000%03b ;; %-14s (Wait: %.2f)\n", int($total) & 0x07, $1 . ($2||""), $total;
                 }
-                else {
-                    printf STDERR "%%%s.%d: FAIL: \"%s\" (stopped at \"%s\")\n", $filename, $line_num, $token, $working;
-                    last;
-                }
+                else { last; }
             }
-        }
-        else {
-            printf STDERR "%%%s.%d: FAIL: \"%s\"\n", $filename, $line_num, $token;
         }
     }
 }
@@ -110,10 +111,10 @@ sub handle_metadata {
     my $token = shift;
     if ($token =~ /^L:(.+)$/i) {
         $base_len = parse_duration($1);
-        printf "  %-18s ;; %-14s (Base Multiplier: %.2f)\n", "", $token, $base_len;
+        printf "  %-18s ;; %-14s (Base Multiplier: %.2f)\n", "  ", $token, $base_len;
     }
     elsif ($token =~ /^(TPS|Q|BPM):(.+)$/i) {
-        printf "  %-18s ;; TODO: %-10s (Value: %s)\n", "", $token, $2;
+        printf "  %-18s ;; TODO: %-10s (Value: %s)\n", "  ", $token, $2;
     }
     elsif ($token =~ /^OCT([+-])$/) {
         my $dir = $1 eq '+' ? 1 : -1;
@@ -122,13 +123,13 @@ sub handle_metadata {
             $octave_map[$ch] = 0 if $octave_map[$ch] < 0;
             $octave_map[$ch] = 7 if $octave_map[$ch] > 7;
         }
-        printf "  %-18s ;; %-14s (Octave now: %d)\n", "", $token, $octave_map[$active_ch[0]];
+        printf "  %-18s ;; %-14s (Octave now: %d)\n", "  ", $token, $octave_map[$active_ch[0]];
     }
     else {
         my $raw = $token; $raw =~ s/^K://i;
         my $oct = ($raw =~ /^\d+$/) ? $raw : (lc($raw) eq "bass" ? 2 : 4);
         foreach my $ch (@active_ch) { $octave_map[$ch] = $oct; }
-        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "", $token, $oct;
+        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $oct;
     }
 }
 
