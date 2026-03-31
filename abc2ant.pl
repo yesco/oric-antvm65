@@ -6,7 +6,13 @@ use warnings;
 my %note_map   = (C=>0, D=>4, E=>8, F=>10, G=>14, A=>18, B=>22); 
 my @octave_map = (4, 4, 4, 4); 
 my @active_ch  = (0);          
-my $base_len   = 1;  
+my $base_len   = 1.0; # Non-int percentage/multiplier
+
+# Volume Map: !ppp! (softest) to !fff! (loudest) 0-15 scale
+my %vol_map = (
+    'ppp' => 2, 'pp' => 4, 'p' => 6, 'mp' => 8, 
+    'mf' => 10, 'f' => 12, 'ff' => 14, 'fff' => 15
+);
 
 print ";;; AntVM65 Generated Assembly\n\n";
 
@@ -25,32 +31,51 @@ while (<>) {
         next;
     }
 
-    # 2. Tokenize the line
+    # 2. Tokenize
     my @tokens = split(/\s+/, $_);
     foreach my $token (@tokens) {
         next if $token eq "" || $token eq "|";
 
-        # CASE: Headers (K:, L:, Q:, TPS:)
-        if ($token =~ /^(K|L|Q|TPS):(.+)$/i || $token =~ /^(bass|treble)$/i) {
-            my ($type, $val) = ($1, $2);
-            
-            if (defined $type && uc($type) eq 'L') {
-                $base_len = $val;
-                printf "                     ;; L:%-10s (Base Length set)\n", $val;
+        # CASE: Headers & Octave Shifts
+        if ($token =~ /^(K|L|Q|TPS|BPM):(.+)$/i || $token =~ /^(bass|treble|OCT[+-])$/i) {
+            my $tag = $1 || "";
+            my $val = $2 || "";
+
+            if (uc($tag) eq 'L') {
+                $base_len = eval($val) || 1.0;
+                printf ";; L:%s (Base Multiplier: %.2f)\n", $val, $base_len;
             }
-            elsif (defined $type && uc($type) eq 'Q') {
-                printf "                     ;; TODO: Q:%-8s (BPM Set)\n", $val;
+            elsif (uc($tag) eq 'TPS' || uc($tag) eq 'Q' || uc($tag) eq 'BPM' || $token =~ /^BPM:/) {
+                my $v = $val || ($token =~ /:(.+)$/ ? $1 : "");
+                printf ";; TODO: %s (Value: %s)\n", $token, $v;
             }
-            elsif (defined $type && uc($type) eq 'TPS') {
-                printf "                     ;; TODO: TPS:%-6s (Ticks/Sec Set)\n", $val;
+            elsif ($token =~ /^OCT([+-])$/) {
+                my $dir = $1 eq '+' ? 1 : -1;
+                foreach my $ch (@active_ch) { 
+                    $octave_map[$ch] += $dir;
+                    $octave_map[$ch] = 0 if $octave_map[$ch] < 0;
+                    $octave_map[$ch] = 7 if $octave_map[$ch] > 7;
+                }
+                printf ";; OCT%s (Active Channel Octave: %d)\n", $1, $octave_map[$active_ch[0]];
             }
             else {
-                # Octave / Key Logic (K:4, K:bass, or just "bass")
-                my $raw = $val || $token;
-                $raw =~ s/^K://i;
+                # K:4 or "bass"
+                my $raw = $val || $token; $raw =~ s/^K://i;
                 my $oct = ($raw =~ /^\d+$/) ? $raw : (lc($raw) eq "bass" ? 2 : 4);
                 foreach my $ch (@active_ch) { $octave_map[$ch] = $oct; }
-                printf "                     ;; %-10s (Base Octave: %d)\n", $token, $oct;
+                printf ";; %-10s (Base Octave: %d)\n", $token, $oct;
+            }
+            next;
+        }
+
+        # CASE: Decorations (!fff!)
+        if ($token =~ /^!([a-z]+)!$/i) {
+            my $code = lc($1);
+            if (exists $vol_map{$code}) {
+                my $v = $vol_map{$code};
+                printf "  .byte %%10111%03b ;; TODO: VOL %d (from %s)\n", $v & 0x07, $v, $token;
+            } else {
+                printf ";; TODO: Decoration FAIL: \"%s\"\n", $token;
             }
             next;
         }
@@ -65,42 +90,35 @@ while (<>) {
             next;
         }
 
-        # CASE: Rests (z, z4, z1/4)
-        if ($token =~ /^([zx]+)(\d*(?:\/\d+)?)$/i) {
-            my $multiplier = parse_duration($2);
-            my $total = length($1) * $multiplier * $base_len;
-            printf "  .byte %%11000%03b ;; %-10s (Rest: %d)\n", int($total) & 0x07, $token, $total;
-            next;
-        }
-
-        # CASE: Notes (C, ^C, c', C1/4, C.)
-        if ($token =~ /^([_^=]?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?)(\.?)$/) {
-            my ($acc, $n_char, $oct_mod, $dur_str, $dot) = ($1, $2, $3, $4, $5);
-            my $note = $note_map{uc($n_char)};
-            $note += 2 if $acc eq '^'; $note -= 2 if $acc eq '_';
-
-            my $oct = $octave_map[$active_ch[0]]; 
-            $oct++ if $n_char =~ /[a-z]/;
-            $oct += length($oct_mod) if $oct_mod =~ /'/;
-            $oct -= length($oct_mod) if $oct_mod =~ /,/;
-            $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
-
-            printf "  .byte %%%05b%03b ;; %-10s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $token, $note, $oct;
-
-            my $mult = parse_duration($dur_str);
-            my $final_dur = $mult * $base_len;
-            $final_dur = int($final_dur * 1.5) if $dot eq ".";
-            
-            if ($final_dur > 0) {
-                printf "  .byte %%11000%03b ;; %-10s (Wait %d)\n", int($final_dur) & 0x07, "", $final_dur;
+        # CASE: Notes with TIES (C-C)
+        if ($token =~ /^([_^=]?[A-Ga-g][,']*\d*(?:\/\d+)?\.?)(-[_^=]?[A-Ga-g][,']*\d*(?:\/\d+)?\.?)+$/) {
+            my @parts = split(/-/, $token);
+            foreach my $i (0..$#parts) {
+                if ($i > 0) { printf "  .byte %%11001%03b ;; TODO: VALUE SUSTAIN ON\n", 1; }
+                parse_note($parts[$i], $token);
+                if ($i == $#parts) { printf "  .byte %%11001%03b ;; TODO: VALUE SUSTAIN OFF\n", 0; }
             }
             next;
         }
 
-        # CASE: Control Commands
+        # CASE: Single Note
+        if ($token =~ /^([_^=]?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?)(\.?)$/) {
+            parse_note($token, $token);
+            next;
+        }
+
+        # CASE: Rests
+        if ($token =~ /^([zx]+)(\d*(?:\/\d+)?)$/i) {
+            my $total = length($1) * parse_duration($2) * $base_len;
+            printf "  .byte %%11000%03b ;; %-10s (Rest: %.2f)\n", int($total) & 0x07, $token, $total;
+            next;
+        }
+
+        # CASE: Direct Commands
         if ($token =~ /^(WAIT|VALUE|VOL)(\d+)$/) {
             my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
-            printf "  .byte %%%s%03b ;; %-10s\n", $pre{$1}, $2 & 0x07, $token;
+            my $v = $2;
+            printf "  .byte %%%s%03b ;; %-10s (Value: %d)\n", $pre{$1}, $v & 0x07, $token, $v;
         }
         elsif ($token =~ /^CALL:([a-zA-Z0-9_]+)$/) {
             printf "  .byte %%11110000 ;; CALL %s\n", $1;
@@ -111,6 +129,30 @@ while (<>) {
         else {
             printf STDERR "%%%s.%d: FAIL: \"%s\"\n", $filename, $line_num, $token;
         }
+    }
+}
+
+sub parse_note {
+    my ($note_token, $orig) = @_;
+    $note_token =~ /^([_^=]?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?)(\.?)$/;
+    my ($acc, $n_char, $oct_mod, $dur_str, $dot) = ($1, $2, $3, $4, $5);
+    
+    my $note = $note_map{uc($n_char)};
+    $note += 2 if $acc eq '^'; $note -= 2 if $acc eq '_';
+
+    my $oct = $octave_map[$active_ch[0]]; 
+    $oct++ if $n_char =~ /[a-z]/;
+    $oct += length($oct_mod) if $oct_mod =~ /'/;
+    $oct -= length($oct_mod) if $oct_mod =~ /,/;
+    $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
+
+    printf "  .byte %%%05b%03b ;; %-10s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $orig, $note, $oct;
+
+    my $final_dur = parse_duration($dur_str) * $base_len;
+    $final_dur *= 1.5 if $dot eq ".";
+    
+    if ($final_dur > 0) {
+        printf "  .byte %%11000%03b ;; %-10s (Wait %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
     }
 }
 
