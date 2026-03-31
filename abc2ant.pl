@@ -55,13 +55,15 @@ while (<>) {
             elsif ($working =~ s/^(K|L|Q|TPS|BPM):([^\s!|()]+)//i || $working =~ s/^(bass|treble|OCT[+-])//i) {
                 handle_metadata($1 . ($2 ? ":$2" : ""));
             }
-            # FIXED: Extension logic for /n and direct values
+            # FIXED EXTENSION BLOCK
             elsif ($working =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
                 my ($cmd, $val_str) = ($1, $2);
                 my $val = 0;
-                if ($val_str =~ /^\/(\d+)$/) {
-                    my $denom = $1;
-                    # Map 1->0, 2->1, 3/4->2, 5/6/7/8->3, etc.
+                
+                if ($cmd eq "LEGATO") {
+                    $val = 7; # Force LEGATO to 7
+                } elsif ($val_str =~ /^\/(\d+)$/) {
+                    my $denom = $1; # Power of 2 gear: 1->0, 2->1, 4->2, 8->3...
                     $val = ($denom <= 1) ? 0 : ($denom <= 2) ? 1 : ($denom <= 4) ? 2 : ($denom <= 8) ? 3 : ($denom <= 16) ? 4 : ($denom <= 32) ? 5 : 6;
                 } elsif ($val_str =~ /^(\d+)$/) {
                     $val = $1;
@@ -124,13 +126,13 @@ sub handle_metadata {
             $octave_map[$ch] = 0 if $octave_map[$ch] < 0;
             $octave_map[$ch] = 7 if $octave_map[$ch] > 7;
         }
-        printf "  %-18s ;; %-14s (Octave now: %d)\n", "  ", $token, $octave_map[$active_ch[0]];
+        printf "  %-18s ;; %-14s (Octave now: %d)\n", "  ", $token, $octave_map[$active_ch];
     }
     else {
         my $raw = $token; $raw =~ s/^K://i;
         my $oct = ($raw =~ /^\d+$/) ? $raw : (lc($raw) eq "bass" ? 2 : 4);
         foreach my $ch (@active_ch) { $octave_map[$ch] = $oct; }
-        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $octave_map[$active_ch[0]];
+        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $octave_map[$active_ch];
     }
 }
 
@@ -141,7 +143,7 @@ sub parse_note {
     my $note = $note_map{uc($n_char)};
     if ($acc eq '^') { $note += 2; } elsif ($acc eq '^/') { $note += 1; }
     elsif ($acc eq '_') { $note -= 2; } elsif ($acc eq '_/') { $note -= 1; }
-    my $oct = $octave_map[$active_ch[0]]; 
+    my $oct = $octave_map[$active_ch]; 
     $oct++ if $n_char =~ /[a-z]/;
     $oct += length($oct_mod) if ($oct_mod && $oct_mod =~ /'/);
     $oct -= length($oct_mod) if ($oct_mod && $oct_mod =~ /,/);
