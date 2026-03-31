@@ -11,14 +11,28 @@ print ";;; AntVM65 Generated Assembly\n\n";
 
 while (<>) {
     chomp;
+    my $original_line = $_;
     s/%.*//; s/^\s+|\s+$//g; 
     next if /^$/;
 
-    # 1. Headers (Line-based)
-    if (/^K:(\d+)$/) {
+    # 1. Headers & Clef keywords (Handles "K:4", "K:bass", "bass" on its own)
+    if (/^(?:K:)?(\d+)$/ || /^(?:K:)?(bass|treble|alto)$/i) {
         my $val = $1;
-        foreach my $ch (@active_ch) { $octave_map[$ch] = $val; }
-        printf "                     ;; %-10s (Base Octave set)\n", "K:$val";
+        my $oct_val;
+        
+        if ($val =~ /^\d+$/) {
+            $oct_val = $val;
+        } elsif (lc($val) eq "bass") {
+            $oct_val = 2; # Standard bass clef offset (approx -2 octaves from mid)
+        } elsif (lc($val) eq "treble") {
+            $oct_val = 4;
+        } elsif (lc($val) eq "alto") {
+            $oct_val = 3;
+        }
+
+        # Apply to all currently active channels
+        foreach my $ch (@active_ch) { $octave_map[$ch] = $oct_val; }
+        printf "                     ;; %-10s (Base Octave set to %d)\n", $_, $oct_val;
         next;
     }
 
@@ -30,10 +44,10 @@ while (<>) {
 
     # 3. Tokens
     foreach my $token (split(/\s+/, $_)) {
-        next if $token eq "" || $token eq "|"; # Skip empty/bars
+        next if $token eq "" || $token eq "|";
 
-        # CASE: ABC Rests (z/x with numbers OR repeated zzz/xxx)
-        if ($token =~ /^([zx]+)(\d*)$/) {
+        # CASE: Rests (z, zzz, x, xxxx etc.)
+        if ($token =~ /^([zx]+)(\d*)$/i) {
             my $chars = $1;
             my $multiplier = $2 || 1;
             my $total_ticks = length($chars) * $multiplier;
@@ -53,14 +67,15 @@ while (<>) {
             }
         }
 
-        # CASE: ABC Notes (nnnnn ooo)
+        # CASE: Notes (nnnnn ooo) - Uses channel-specific octave
         elsif ($token =~ /^([_^=]?)([A-Ga-g])([,']*)(\d*)$/) {
             my ($acc, $n_char, $oct_mod, $dur) = ($1, $2, $3, $4);
             my $note = $note_map{uc($n_char)};
             $note += 2 if $acc eq '^'; 
             $note -= 2 if $acc eq '_'; 
 
-            my $oct = $octave_map[$active_ch[0]]; # Reference lead channel
+            # FIX: Use the octave assigned to the current channel
+            my $oct = $octave_map[$active_ch[0]]; 
             $oct++ if $n_char =~ /[a-z]/;
             $oct += length($oct_mod) if $oct_mod =~ /'/;
             $oct -= length($oct_mod) if $oct_mod =~ /,/;
@@ -87,11 +102,10 @@ while (<>) {
             printf "  .byte %%11111111 ;; %-10s\n.endproc\n\n", $token;
         }
 
-        # FALLBACK: Failure
+        # FALLBACK: Custom Error Format
         else {
-            my $err = ";; FAIL: $token";
-            printf "  %-18s ;; Unknown Token\n", $err;
-            print STDERR "AntVM65 Error: Unknown token '$token' at line $.\n";
+            my $filename = $ARGV || "stdin";
+            printf STDERR "%%%s.%d: FAIL: \"%s\"\n", $filename, $., $token;
         }
     }
 }
