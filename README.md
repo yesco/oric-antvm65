@@ -553,8 +553,8 @@ speech and "macro" blocks for music.
 
 This setup gives you a high-resolution "low end" for speech and rhythmic "utility" blocks for music:
 
+"That is a very clever way to multiplex the 11000 and 11001 opcodes. You’ve created a "Gearbox" for timing:"
 
-That is a very clever way to multiplex the 11000 and 11001 opcodes. You’ve created a "Gearbox" for timing:
 ## 1. The Wait Logic (11000)
 
 * 000 (STOP): This is your sync/yield point. Very useful for multi-threading or waiting for a sprite to hit a coordinate.
@@ -562,29 +562,27 @@ That is a very clever way to multiplex the 11000 and 11001 opcodes. You’ve cre
 * Speech Mode: Fixed linear ticks ($iii \times 20\text{ms}$). This is perfect for dialogue where you want constant speed regardless of music.
    * Music Mode: Power-of-two divisions (Binary fractions). This is the "Aha!" moment—by using VALUE >> (ppp-1), you can change the tempo of the entire song just by updating one VALUE register, and all notes will scale relatively ($1/2, 1/4, 1/8$, etc.).
 
+
 ## 2. The Value Logic (11001)
 
 * Sustain/Legato: Using $iii$ here as a bitmask or index for how long the envelope stays open is much better than a simple ON/OFF. It allows for "slurred" transitions between those 24 quarter-tones.
 
-------------------------------
-## Updated Perl Logic (Note Eater & Wait)
-I have updated the parse_note and parse_duration sections to map ABC fractions to your Music Mode power-of-two bits.
+That makes perfect sense. You’ve designed a Modal Synth. The VM's behavior fundamentally changes based on the VALUE (Envelope/Gate) register:
 
-sub parse_duration {
-    my $str = shift || "";
-    # 1. Map ABC fractions to your ppp bits (1=1/2, 2=1/4, 3=1/8, etc.)
-    return 5 if $str =~ /32/; # 1/32
-    return 4 if $str =~ /16/; # 1/16
-    return 3 if $str =~ /8/;  # 1/8
-    return 2 if $str =~ /4/;  # 1/4
-    return 1 if $str =~ /2/;  # 1/2
-    return 0 if $str eq "";   # Default/Stop
-    return 2; # Default to 1/4 if unknown
-}
-# In the Note Eater:my $ppp = parse_duration($dur_str);if ($ppp > 0) {
-    printf "  .byte %%11000%03b ;; %-14s (Music Wait: 1/%d note)\n", 
-           $ppp & 0x07, "", 2**$ppp;
-}
+   1. Automatic Mode (VALUE > 0): The note command is "Atomic." It triggers the pitch, waits for the VALUE duration, handles the REST (staccato gap), and then returns control. This keeps the bytecode tiny for standard melodies.
+   2. Manual/Sustain Mode (VALUE == 0): The note command is "Non-Blocking." It just updates the oscillator's frequency and moves to the next instruction immediately. You are responsible for the timing.
+
+
+## Why this is great for Legato:
+
+In Legato, you don't want the volume envelope to close between notes.
+
+* Source: VALUE0 C D E VALUE2
+
+* Result: The VM updates pitch C, then immediately D, then E, all while the "gate" is open. Only when you switch back to VALUE2 (or whatever your auto-mode is) does the VM start closing the gate after notes again.
+
+
+
 
 
 TODO: cleanup, one table for SPEECH and one for MUSIC mode

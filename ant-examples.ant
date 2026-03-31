@@ -79,6 +79,38 @@ $timing_test:
   |C C-C/32                  % Tie with 1/32nd timing
 RET
 
+$legato_test:
+  (C D E F)          % Start slur: VALUE 0. Notes have no Auto-Wait.
+                     % End slur:   VALUE 2.
+  
+  C-D-E              % Tie logic: VALUE 0 before D, VALUE 2 after E.
+  
+  @VALUE0            % Manual Mode
+  C1 @WAIT1 D1 @WAIT1  % Use explicit WAITs
+  @VALUE2             % Back to Auto Mode
+RET
+
+$value_test:
+  @SUSTAIN
+  @VALUE/1
+  @VALUE/2
+  @VALUE/3
+  @VALUE/4
+  @VALUE/5
+  @VALUE/6
+  @LEGATO
+
+  @VALUE0
+  @VALUE1
+  @VALUE2
+  @VALUE3
+  @VALUE4
+  @VALUE5
+  @VALUE6
+  @VALUE7
+
+  RET  
+
 % --- Empty Procedure Test ---
 $empty:
 RET

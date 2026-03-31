@@ -5,8 +5,9 @@ use warnings;
 # --- Configuration & State ---
 my %note_map   = (C=>0, D=>4, E=>8, F=>10, G=>14, A=>18, B=>22); 
 my @octave_map = (4, 4, 4, 4); 
-my @active_ch  = (0);          
+my @active_ch  = (0); 
 my $base_len   = 1.0; 
+my $manual_mode = 0; 
 
 my %vol_map = (
     'ppp' => 2, 'pp' => 4, 'p' => 6, 'mp' => 8, 
@@ -30,65 +31,73 @@ while (<>) {
 
     foreach my $token (split(/\s+/, $_)) {
         next if $token eq "";
-
-        if ($token =~ /^\|([ABCN]+)$/) {
-            my %ch_map = (A=>0, B=>1, C=>2, N=>3);
-            @active_ch = map { $ch_map{$_} } split //, $1;
-            foreach my $ch (@active_ch) {
-                printf "  .byte %%11011%03b ;; %-14s (Select %s)\n", $ch, $token, (qw/A B C N/)[$ch];
+        my $working = $token;
+        while ($working ne "") {
+            if ($working =~ s/^\|([ABCN]+)//) {
+                my $match = $1;
+                my %ch_map = (A=>0, B=>1, C=>2, N=>3);
+                @active_ch = map { $ch_map{$_} } split //, $match;
+                foreach my $ch (@active_ch) {
+                    printf "  .byte %%11011%03b ;; %-14s (Select %s)\n", $ch, "|$match", (qw/A B C N/)[$ch];
+                }
             }
-        }
-        elsif ($token =~ /^([:|\][\|]+)$/) {
-            printf "  %-18s ;; %-14s (Bar line)\n", "  ", $token;
-        }
-        elsif ($token =~ /^\$([a-zA-Z0-9_]+)$/) {
-            printf "  .byte %%11110000 ;; %-14s (CALL %s)\n", $token, $1;
-        }
-        elsif ($token =~ /^!([a-z]+)!$/i) {
-            my $v = $vol_map{lc($1)} || 7;
-            printf "  .byte %%10111%03b ;; TODO: VOL %-7d (from %s)\n", $v & 0x07, $v, $token;
-        }
-        elsif ($token =~ /^(K|L|Q|TPS|BPM):(.+)$/i || $token =~ /^(bass|treble|OCT[+-])$/i) {
-            handle_metadata($token);
-        }
-        elsif ($token =~ /^(WAIT|VALUE|VOL)(\d+)$/) {
-            my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
-            printf "  .byte %%%s%03b ;; %-14s (Value: %d)\n", $pre{$1}, $2 & 0x07, $token, $2;
-        }
-        elsif ($token eq "RET") {
-            printf "  .byte %%11111111 ;; %-14s\n.endproc\n\n", $token;
-        }
-        elsif ($token =~ /^[A-Ga-gzx\[\.\^\/_]/) {
-            my $working = $token;
-            while ($working ne "") {
-                my $staccato = ($working =~ s/^\.//) ? 1 : 0;
-                if ($staccato) { printf "  %-18s ;; TODO: STACCATO ON  (Next note short)\n", "  "; }
-
-                if ($working =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
-                    my ($notes_raw, $chord_dur) = ($1, $2);
-                    printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "  ", $notes_raw;
-                    my @chord_notes = ($notes_raw =~ /([_^=]*\/?(?:[A-Ga-g][,']*))/g);
-                    foreach my $n (@chord_notes) { parse_note($n, $n, 1); }
-                    my $ppp = parse_music_wait($chord_dur);
-                    printf "  .byte %%11000%03b ;; %-14s (Wait Chord: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
-                    printf "  .byte %%11000000 ;; %-14s (STOP/SYNC)\n", "" if $ppp == 0;
-                    printf "  %-18s ;; %-14s (CHORD END)\n", "  ", "";
-                }
-                elsif ($working =~ s/^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?|(?=-))//) {
-                    my $n_str = $1 . $2 . $3 . $4;
-                    my $tie = ($working =~ s/^-//) ? 1 : 0;
-                    if ($tie) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 7, "ON"; } # iii=111
-                    parse_note($n_str, $n_str, 0);
-                    if ($tie && $working !~ /^[A-G^=_]/i) { printf "  .byte %%11001000 ;; TODO: SUSTAIN %-4s (Tie logic)\n", "OFF"; }
-                    if ($staccato) { printf "  %-18s ;; TODO: STACCATO OFF\n", "  "; }
-                }
-                elsif ($working =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
-                    my $ppp = parse_music_wait($2);
-                    printf "  .byte %%11000%03b ;; %-14s (Rest: 1/%d)\n", $ppp & 0x07, $1 . ($2||""), 2**$ppp if $ppp > 0;
-                    printf "  .byte %%11000000 ;; %-14s (Rest STOP/SYNC)\n", $1 if $ppp == 0;
-                }
-                else { last; }
+            elsif ($working =~ s/^([:|\][\|]+)//) {
+                printf "  %-18s ;; %-14s (Bar line)\n", "  ", $1;
             }
+            elsif ($working =~ s/^\$([a-zA-Z0-9_]+)//) {
+                printf "  .byte %%11110000 ;; %-14s (CALL %s)\n", "\$$1", $1;
+            }
+            elsif ($working =~ s/^!([a-z]+)!//i) {
+                my $match = $1;
+                my $v = $vol_map{lc($match)} || 7;
+                printf "  .byte %%10111%03b ;; TODO: VOL %-7d (from !%s!)\n", $v & 0x07, $v, $match;
+            }
+            elsif ($working =~ s/^(K|L|Q|TPS|BPM):([^\s!|()]+)//i || $working =~ s/^(bass|treble|OCT[+-])//i) {
+                handle_metadata($1 . ($2 ? ":$2" : ""));
+            }
+            elsif ($working =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
+                my ($cmd, $val_str) = ($1, $2);
+                my $val = parse_music_wait($val_str) || ($val_str =~ /^\d+$/ ? $val_str : 0);
+                my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111", SUSTAIN=>"11001", LEGATO=>"11001");
+                $manual_mode = ($cmd eq "SUSTAIN" || $cmd eq "LEGATO" || ($cmd eq "VALUE" && $val == 0)) ? 1 : 0;
+                printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}||"11111", $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
+            }
+            elsif ($working =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
+                my ($notes_raw, $chord_dur) = ($1, $2);
+                printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "  ", $notes_raw;
+                my @chord_notes = ($notes_raw =~ /([_^=]*\/?(?:[A-Ga-g][,']*))/g);
+                foreach my $n (@chord_notes) { parse_note($n, $n, 1); }
+                my $ppp = parse_music_wait($chord_dur);
+                printf "  .byte %%11000%03b ;; %-14s (Wait Chord: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
+                printf "  %-18s ;; %-14s (CHORD END)\n", "  ", "";
+            }
+            elsif ($working =~ s/^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?|(?=-))//) {
+                my $n_str = $1 . $2 . $3 . $4;
+                my $tie = ($working =~ s/^-//) ? 1 : 0;
+                if ($tie) { 
+                    printf "  .byte %%11001000 ;; %-14s (VALUE 0: SUSTAIN ON)\n", "-";
+                    $manual_mode = 1;
+                }
+                parse_note($n_str, $n_str, 0);
+                if ($tie && $working !~ /^[A-G^=_]/i) { 
+                    printf "  .byte %%11001010 ;; %-14s (VALUE 2: SUSTAIN OFF)\n", "-";
+                    $manual_mode = 0;
+                }
+            }
+            elsif ($working =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
+                my $ppp = parse_music_wait($2);
+                printf "  .byte %%11000%03b ;; %-14s (Wait: 1/%d)\n", $ppp & 0x07, $1 . ($2||""), 2**$ppp if $ppp > 0;
+            }
+            elsif ($working =~ s/^(WAIT|VALUE|VOL)(\d+)//) {
+                my ($cmd, $val) = ($1, $2);
+                my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
+                $manual_mode = ($cmd eq "VALUE" && $val == 0) ? 1 : 0;
+                printf "  .byte %%%s%03b ;; %-14s (Value: %d)\n", $pre{$cmd}, $val & 0x07, $cmd.$val, $val;
+            }
+            elsif ($working =~ s/^RET//) {
+                printf "  .byte %%11111111 ;; %-14s\n.endproc\n\n", "RET";
+            }
+            else { $working = ""; }
         }
     }
 }
@@ -98,9 +107,6 @@ sub handle_metadata {
     if ($token =~ /^L:(.+)$/i) {
         $base_len = eval_frac($1);
         printf "  %-18s ;; %-14s (Base Multiplier: %.2f)\n", "  ", $token, $base_len;
-    }
-    elsif ($token =~ /^(TPS|Q|BPM):(.+)$/i) {
-        printf "  %-18s ;; TODO: %-10s (Value: %s)\n", "  ", $token, $2;
     }
     elsif ($token =~ /^OCT([+-])$/) {
         my $dir = $1 eq '+' ? 1 : -1;
@@ -115,7 +121,7 @@ sub handle_metadata {
         my $raw = $token; $raw =~ s/^K://i;
         my $oct = ($raw =~ /^\d+$/) ? $raw : (lc($raw) eq "bass" ? 2 : 4);
         foreach my $ch (@active_ch) { $octave_map[$ch] = $oct; }
-        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $oct;
+        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $octave_map[$active_ch[0]];
     }
 }
 
@@ -124,33 +130,24 @@ sub parse_note {
     my ($acc, $n_char, $oct_mod, $dur_str) = ($note_token =~ /^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?)$/);
     return unless defined $n_char;
     my $note = $note_map{uc($n_char)};
-    if    ($acc eq '^')  { $note += 2; } 
-    elsif ($acc eq '^/') { $note += 1; } 
-    elsif ($acc eq '_')  { $note -= 2; } 
-    elsif ($acc eq '_/') { $note -= 1; } 
+    if ($acc eq '^') { $note += 2; } elsif ($acc eq '^/') { $note += 1; }
+    elsif ($acc eq '_') { $note -= 2; } elsif ($acc eq '_/') { $note -= 1; }
     my $oct = $octave_map[$active_ch[0]]; 
     $oct++ if $n_char =~ /[a-z]/;
     $oct += length($oct_mod) if ($oct_mod && $oct_mod =~ /'/);
     $oct -= length($oct_mod) if ($oct_mod && $oct_mod =~ /,/);
     $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
-
     printf "  .byte %%%05b%03b ;; %-14s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $orig, $note, $oct;
-    unless ($no_wait) {
+    unless ($no_wait || $manual_mode) {
         my $ppp = parse_music_wait($dur_str);
-        printf "  .byte %%11000%03b ;; %-14s (Wait: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
-        printf "  .byte %%11000000 ;; %-14s (STOP/SYNC)\n", "" if $ppp == 0;
+        printf "  .byte %%11000%03b ;; %-14s (Auto-Wait: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
     }
 }
 
 sub parse_music_wait {
     my $str = shift || "";
-    return 1 if $str =~ /2/;  # 1/2
-    return 2 if $str =~ /4/;  # 1/4
-    return 3 if $str =~ /8/;  # 1/8
-    return 4 if $str =~ /16/; # 1/16
-    return 5 if $str =~ /32/; # 1/32
-    return 6 if $str =~ /64/; # 1/64
-    return 0; # Default STOP/SYNC
+    return 1 if $str =~ /2/; return 2 if $str =~ /4/; return 3 if $str =~ /8/; 
+    return 4 if $str =~ /16/; return 5 if $str =~ /32/; return 0;
 }
 
 sub eval_frac {
@@ -158,3 +155,4 @@ sub eval_frac {
     if ($str =~ /^(\d+)\/(\d+)$/) { return $1 / $2; }
     return $str || 1.0;
 }
+
