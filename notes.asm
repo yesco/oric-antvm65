@@ -289,6 +289,7 @@ interpret:
         bne :+
         inc ticks+1
 :       
+
 .ifdef ANTTRACE
         NL
         LDAX ticks
@@ -302,9 +303,11 @@ interpret:
         jsr put2h
         putc ':'
 .endif ; ANTTRACE
+
         ldy ipy             ; 3B | Load stream index
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
+
 .ifdef ANTTRACE
         ;; print CMD in hex
         pha
@@ -315,8 +318,10 @@ interpret:
         pha
         jsr putb
         SPC
+        SPC
         pla
 .endif ; ANTTRACE
+
         tax                 ; 1B | X = raw byte
         and #%00000111      ; 2B | Isolate III (Index or Octave)
         tay                 ; 1B | Y = III
@@ -331,6 +336,7 @@ interpret:
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
+
 .ifdef ANTTRACE
         ;; print CMD char
         pha
@@ -342,8 +348,10 @@ command:
         tay
         lda cmd_char,Y
         jsr putchar
+        putc ':'
         pla
 .endif ; ANTTRACE
+
 ;;; 23 B  26c
         eor #48             ; A = 0000PCC0
         lsr                 ; A = 00000PCC (0-7)
@@ -437,6 +445,7 @@ cmdNOTE:
 .ifdef ANTTRACE
         SAVEAXY
         putc 'N'
+        putc ':'
         SPC
 
         ;; Show note 2 char

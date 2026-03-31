@@ -44,6 +44,20 @@ while (<>) {
                     printf "  .byte %%11011%03b ;; %-14s (Select %s)\n", $ch, "|$match", (qw/A B C N/)[$ch];
                 }
             }
+            elsif ($t =~ s/^(\d+)hz//i) {
+                my $hz= $1+0;
+                my $pitch= int(1000000/16/$1);
+                my $hi= $pitch >> 8;
+                my $lo= $pitch & 0xff;
+                # TODO: for several use the AYPDATE command?
+                foreach my $ch (@active_ch) {
+                    my $reg= $ch*2;
+                    my $name= (qw/A B C N/)[$ch];
+#                    printf "CHANNEL= $ch REG= $reg NAME=$name\n";
+                    printf "  .byte %%1110%04b,\$%02x ;; %-14s (SETAY.R%d $%02x)\n", $reg, $lo, "|$token", $reg; #, $lo;
+                    printf "  .byte %%1110%04b,\$%02x ;; %-14s (SETAY.R%d $%02x)\n", $reg+1, $hi, "|$token", $reg+1; #, $hi;
+                }
+            }
             elsif ($t =~ s/^([:|\][\|]+)//) {
                 printf "  %-18s ;; %-14s (Bar line)\n", "  ", $1;
             }

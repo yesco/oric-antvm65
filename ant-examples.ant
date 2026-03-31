@@ -178,6 +178,23 @@ $vol_test:
 
    @RET
 
+$it_hertz:
+
+   |A    
+   220hz
+   @WAIT1
+   440Hz
+   @WAIT1
+
+   |B
+   880hZ
+   @WAIT1
+
+   |AC
+   110hz
+   @WAIT1
+
+   @RET
 
 % --- Error Handling Test ---
 ThisShouldFail        % Test the STDERR %filename.line output
