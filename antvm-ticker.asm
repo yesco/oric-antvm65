@@ -36,9 +36,34 @@ delayT:         .res 1
 
 .code
 
+;;; DISPATCH BITMASK COST:
+;;; 
+;;; a. nothing to do: 12c (incl RTI)
+;;; b. something    : 20c
+;;; 
+;;; c. 0bit: 12c
+;;; d. 1bit: 20c (delayed)
+;;; e. 1bit: 40c (triggered)
+
+;;; d. done: 10c
+
+
+;;; Ticker bitmask dispatch:
+;;; 
+;;; NOTHING:             12c
+;;; EACH leading 0 bit:  10c
+;;; EACH 1-bit
+;;;   DELAY:             20c
+;;;   TRIGGER:           40c
+;;; DONE (if had any 1): 10c
+
 
 
 startTick:
+;;; nothing to do: 12c (incl RTI)
+;;; something    : 20c
+
+;;; 20c
         ;; make a copy
         lda processmap
         beq @done
@@ -49,8 +74,13 @@ startTick:
         stx tickX
 
 nextTickBit:
+;;; 3c
         ldx tickX
 @next:
+;;; done: 10c
+;;; 0bit: 12c
+;;; 1bit: 20c (delayed)
+;;;       22c (trigger)
         inx
         ;; rotates out next bit
         rol tickermap
@@ -72,8 +102,9 @@ nextTickBit:
 ;;;  (A,B,C,N, E.F.C.T == (Echo,Follow,Chrous,Tglissado))
 ;;;
 tickerX:
+;;; 14c
         stx tickX
-        lda (ticktable),X
+        lda ticktable,X
         sta @patchbpl+1
         ;; N=0 always
 @patchbpl:

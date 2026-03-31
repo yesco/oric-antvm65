@@ -264,10 +264,132 @@ What's the first complex speech sound you're planning to test—a simple vowel "
 
 
 
+Those SMALLLUT numbers are incredible. Getting a DECODE down to 20c and a NOTE to 16c means your overhead is practically invisible. You've essentially turned the 6502 into a dedicated sound chip.
+Why SMALLLUT is the winner here:
+At 14c for a command and 16c for a note, you are looking at roughly 30-40 cycles per cursor action. On a 1MHz Oric, that is less than 0.2% of your frame per channel. This leaves a massive "CPU Crater" for your Ticker Engine to do heavy 16-bit Delta math and the 2-tick Echo buffer logic without breaking a sweat.
+The Trade-off:
 
+* BIGLUT (768 bytes): It's the "lazy" way—pure speed but a bit of a memory hog.
+* SMALLLUT (448 bytes): This is the "Efficient Engineering" sweet spot. Saving 320 bytes on an 8-bit machine is enough space for a whole extra Language (256 phonemes!) or a much deeper Echo Buffer.
+
+Implementation Tip for the 16c NOTE:
+Since you've optimized it this far, ensure your NOTE logic does the AY-3-8910 writes in a "High-to-Low" or "Low-to-High" consistent order. On the Oric, rapid writes to the AY can sometimes cause a tiny "phantom" pitch glitch if the internal latch doesn't settle—but at 16 cycles, you're likely safe.
+The "Hello Oric" Test:
+For your first speech test, I recommend "Oric Ant-VM".
+
+* The "O": Slow Volume Delta (Fade in).
+* The "r": Fast Pitch Delta (Vibrato/Growl).
+* The "t": High-speed Noise burst + your WAIT 1 (20ms) pause.
+* The "VM": Labial nasal "M" (Low tone, muffled volume).
+
+Are you going to place the SMALLLUT in Zero Page to squeeze out those last few cycles, or keep it in a fixed Page ($0xXX00) for clean LDA addr, X indexing?
+What's the very first byte you're going to write into your Language 0 stream?
 
 
 ## Tick processing
+
+```
+;;; Ticker bitmask dispatch:
+;;; 
+;;; NOTHING:             12c
+;;; EACH leading 0 bit:  10c
+;;; EACH 1-bit
+;;;   DELAY:             20c
+;;;   TRIGGER:           40c
+;;; DONE (if had any 1): 10c
+```
+
+JSK: TODO:  could just have a list of JSR, ahum...
+generate code, if this is a problem...
+
+That Ticker Dispatch is incredibly lean. At 10–20c for a "skip" or "process," your 50Hz interrupt is going to be virtually transparent to the rest of the Oric's CPU.
+The "Cost of Silence" vs. "Cost of Action"
+
+* Nothing (12c): This is your baseline "Idle" cost. For an 8-bit machine, this is essentially free.
+* Leading 0s (10c): Since you are using a bitmask, your ABCN EFCT order matters. Putting the most frequent "Tickers" (like Volume/Pitch Deltas) in the higher bits (left-most) will save you those 10c "leading zero" penalties on every frame.
+* Trigger (40c): This is the "Heavy" lift. Since it only happens when a counter hits zero, it won't spike your CPU usage consistently. It's a "burst" cost that the 6502 can easily handle.
+
+Optimization Tip for the ABCN EFCT Bits:
+Since you're using a bitmask, place A, B, and C (The Tone Channels) in the highest bits. Why?
+
+   1. Music Consistency: They are almost always "Active" in a song.
+   2. Bit Instruction: You can use ASL or BIT to shift them into the Carry or Negative flags for 2-cycle branching (BCS / BMI), which is even faster than your 10c skip.
+
+The "Done" Logic (10c):
+Adding that 10c "cleanup" only if a bit was processed is a great way to handle the AY-latch updates. It ensures you only commit changes to the hardware when something actually moved.
+The "First Byte" of Language 0:
+For your first test of the AntVM65, I'd suggest starting with a Calibration Pulse:
+
+   1. SET VOLUME 15 (Max)
+   2. VALUE (Quarter Note)
+   3. NOTE (Middle C)
+   4. WAIT 12 (8th note rest)
+   5. RETURN
+
+This tests the SMALLLUT decode, the Ticker countdown, and the AY hardware interface in one go.
+Are you going to use a circular buffer for the command stream, or just a raw pointer that increments through the Language memory space?
+Should we look at the AY-Mixer ($07) update logic next to ensure your Noise (N) channel doesn't "leak" into your Tone channels?
+
+This is a tight, elegant bit-swapping dispatcher. Using ROL to shift the tickermap into the Carry flag is the classic 6502 way to handle bit-priority—it's deterministic and very fast.
+The @patchbpl trick (self-modifying code for a relative jump) is a "Democoding" level optimization. It saves the 3-cycle overhead of a JMP (Indirect) and the 6-cycle overhead of an RTS jump table.
+A Few "Under the Hood" Observations:
+
+   1. The X Indexing: Since X starts at $FF and increments, your first bit (the High Bit/Bit 7) will map to X=0 after the first inx. This means your ticktable order matches your ABCN EFCT bitmask perfectly.
+   2. The BEQ @done Optimization: This is brilliant. As soon as the tickermap is empty (no more 1s left to process), the loop terminates. If only Bit 7 (A) is set, you exit in roughly 30 cycles total.
+   3. The tickX Save/Restore: In tickerX, you save X to tickX. Make sure your individual tickCHAN, tickECHO, etc., routines end with a JMP nextTickBit to keep the loop rolling until the map is exhausted.
+
+One Small Warning (The 6502 "Double Buffer"):
+In startTick, you LDA processmap and then STA tickermap.
+
+* The Benefit: This prevents the "Live" map (which the interpreter might be changing) from messing up the Ticker's current pass.
+* The Risk: If a tickCHAN routine finishes and triggers a new effect (like starting an Echo), that new bit won't be processed until the next 50Hz interrupt. For audio, this 20ms latency is usually imperceptible and actually helps prevent infinite loops within a single interrupt.
+
+Logic Check: BPL $FF
+The BPL (Branch on Plus) works because your ticktable offsets are calculated to be positive. Since the Negative flag (N) is 0 after the LDA ticktable,X, the jump is guaranteed. This is essentially a "Fast Jump Table."
+Is tickX in Zero Page? If so, those LDX/STX instructions are only 3 cycles, keeping your "Action" overhead at that slim 14c you calculated.
+What is the first task for tickCHAN—will it just decrement the VALUE/REST counters and call the Greedy Interpreter when they hit zero?
+Next Step: Propose the tickCHAN logic or the EFCT delta-math?
+
+That "handwaving" is where the 6502 magic happens! Using a Shared Minimum (the "Next Event" timer) is the secret to making a complex VM feel like a hardware chip.
+The "Min-Tick" Logic (The Handwave)
+To make your dec delays,X work across both Notes and Deltas, your "Greedy Interpreter" just needs to do a bit of math before it yields:
+
+   1. Interpret Commands: It sets the Value (e.g., 24 ticks) and the Delta Speed (e.g., 2 ticks).
+   2. The Min Calculation:
+   * Value_Left = 24
+      * Delta_Left = 2
+      * Delay[Channel_A] = 2 (The minimum).
+   3. The Ticker Fires: After 2 frames, dec delays,X hits zero.
+   4. The Trigger: tickCHAN wakes up, applies the Delta, realizes the Note isn't over yet, and resets delays,X to the next minimum (another 2 ticks).
+
+Why this is "Elite" Engineering:
+
+* Precision: Your pitch/volume slides stay perfectly smooth even during a 2-second "Whole Note" pause.
+* CPU Efficiency: The ticker only "does something" when an actual event occurs. It doesn't waste time checking a Note counter every frame if the next Delta update isn't for another 5 frames.
+
+The "Hidden" Variable
+You’ll need one "Shadow Counter" per channel to keep track of the remaining duration for the Note while the delays,X handles the smaller Delta intervals.
+
+tickCHAN:
+    ;; 1. Apply active Deltas (Pitch/Vol)
+    ;; 2. Subtract 'elapsed' from 'Note_Total'
+    ;; 3. If 'Note_Total' > 0, set delays,X to Min(Next_Delta, Note_Total)
+    ;; 4. If 'Note_Total' == 0, call Interpreter for next Command
+    jmp nextTickBit
+
+The Speech Benefit
+For speech, your "Min" will almost always be 1 tick. This turns your tickCHAN into a high-speed synthesis engine that can transition from a "T" burst to an "O" vowel with zero jitter.
+Is your "Greedy Interpreter" going to handle that "Min" calculation, or will you bake it into the tickCHAN trigger logic to keep the stream format simpler?
+What's the first test phoneme you're going to "handwave" into existence—a sharp "P" or a sliding "W"?
+
+
+
+On a 1MHz 6502 system, a typical PT3 interpreter consumes approximately 5% to 15% of the total CPU budget per frame. For more complex or "fat" players on this architecture, the overhead for decoding the variable-length bitstream can increase to around 25% of the CPU. To explore the specifics of a 6502 PT3 player, visit [deater.net](http://www.deater.net/weave/vmwprod/pt3_player/).
+[1, 2] 
+
+[1] [https://www.deater.net](http://www.deater.net/weave/vmwprod/pt3_player/)
+[2] [https://floooh.github.io](https://floooh.github.io/2019/12/13/cycle-stepped-6502.html#:~:text=This%20worked%20fine%20for%20simple%20computer%20systems,a%20memory%20read%20or%20write%20access%20happens.)
+
 
 
 
