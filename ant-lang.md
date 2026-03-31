@@ -2,40 +2,28 @@
 
 We will base the format mostly on the ABC-notation, but when possibly add from MML, and some stuff from Vortex Tracker when we can.
 
-| ABC | MML | Vortex | Description |
-|---|---|---|---|
-| C c | c C | C-4 C-5 | Normal C vs. High C (Octave shift) |
-| _B | b- | A#3 | Flats / Sharps (Note modification) |
-| C2 | c2 | --- | Duration: Double length (Half note) |
-| C/2 | c8 | --- | Duration: Half length (Eighth note) |
-| [K:Gmin] | o? | (Header) | Global Octave or Key signature |
-| (none) | v? | 0..F | Volume / Amplitude (0-15) |
-| z | r | RST | Rest (Silence/Pause) |
-| !...! | @? | 01.. | Instrument / Patch selection |
-| (none) | t? | F?? | Tempo (BPM or Ticks-per-row) |
+Out extension commands are `@command` and for subroutines, which we call *phonems* or *words* we use `$name:` to define them, and `$name` to call them. See below.
 
-
+```
 # Commands recognized
 
 ```
-Notes:        B/H AGFEDC agfdedc A' a, a" a,, a# C-4 C#4 
-Duration:     C/2 
+Notes:        B AGFEDC agfdedc A' a, a'' a,, 
+Duration:     C2 C/2
 Octave:       K:4  (default)
               K:+  K:-
               o4
-              v11
+              v11 TODO: ???
+
+Channel:      |A |B |C |N |ABN     (3 selected)
+
 Lyrics-line   w: hello baby, baby, baby.
-Channel:      A: B: C: N: ABN: (3 selected)
 
-label:        $foo:
+define:       $hello:
+                 $h $e $ll $o
+                 @RET
 
-calling:      $foo
-
-
-
-
-CALL       _foo
-CALL       _bar
+calling:      $hello $hello $hello
 
 ```
 
@@ -47,46 +35,64 @@ To test your AntVM65 Perl converter, here are two melodies formatted in the ABC-
 
 This test focuses on Scale Degrees and Key Tracking.
 
+```
 $ode_to_joy:
   K:4 |ABC 
   E E F G | G F E D | C C D E | E2 D2
   E E F G | G F E D | C C D E | D2 C2
 RET
+```
 
 ## 2. Super Mario Theme (Intro)
 
 This test checks Staccato Rhythms and Triple-Channel Sync.
 
+```
 $mario_intro:
   K:5 |ABC
   E1 E1 WAIT1 E1 WAIT1 C1 E2 G2 
   |ABC K:4 G2 RET
+```
 
 ## 3. Star Wars (Main Theme)
 
 A good test for Octave Jumps and Triplets.
 
+```
 $star_wars:
   K:4 |A
   G,4 D4 | C B, A, G4 | d4 C B, A, G4 | d4 C B, C A,4 
 RET
+```
 
 ## Running the Test
  You can save these into a file called test_songs.abc and run your Perl script: [1] 
 
+```
 perl convert.pl test_songs.abc > test_songs.s
+```
 
-## Expected ca65 Output (Visual Check)
-Your script should produce binary output similar to this:
-
-* Notes: %nnnnn ooo (e.g., E at Octave 4 → %01000 100).
-* Channels: %11011 000 for |A, %11011 001 for |B, etc.
-* Wait: %11000 001 for a 1-tick pause.
-* Procs: Properly wrapped .proc and .endproc blocks with matching labels.
-
-Would you like me to generate a "Language" word-list test (using the 0 prefix for speech-style commands) for your IPA phoneme layer?
 
 [1] [https://www.volkerschatz.com](https://www.volkerschatz.com/noise/abctrans.html)
+
+**Mapping from different formats:**
+
+*(these are not same as Vortex does frames/ticks?)*
+
+```
+
+
+| ABC | MML | Vortex | Description |
+|---|---|---|---|
+| C c | c C | C-4 C-5 | Normal C vs. High C (Octave shift) |
+| _B | b- | A#3 | Flats / Sharps (Note modification) |
+| C2 | c2 | --- | Duration: Double length (Half note) |
+| C/2 | c8 | --- | Duration: Half length (Eighth note) |
+| [K:Gmin] | o? | (Header) | Global Octave or Key signature |
+| (none) | v? | 0..F | Volume / Amplitude (0-15) |
+| z | r | RST | Rest (Silence/Pause) |
+| !...! | @? | 01.. | Instrument / Patch selection |
+| (none) | t? | F?? | Tempo (BPM or Ticks-per-row) |
 
 
 
