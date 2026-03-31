@@ -57,7 +57,14 @@ while (<>) {
             }
             elsif ($working =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
                 my ($cmd, $val_str) = ($1, $2);
-                my $val = parse_music_wait($val_str) || ($val_str =~ /^\d+$/ ? $val_str : 0);
+                my $val = 0;
+                if ($val_str =~ /^\/(\d+)$/) {
+                    my $denom = $1;
+                    $val = int(log($denom)/log(2)) if $denom > 0;
+                } elsif ($val_str =~ /^(\d+)$/) {
+                    $val = $1;
+                }
+                
                 my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111", SUSTAIN=>"11001", LEGATO=>"11001");
                 $manual_mode = ($cmd eq "SUSTAIN" || $cmd eq "LEGATO" || ($cmd eq "VALUE" && $val == 0)) ? 1 : 0;
                 printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}||"11111", $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
@@ -146,6 +153,10 @@ sub parse_note {
 
 sub parse_music_wait {
     my $str = shift || "";
+    if ($str =~ /\/(\d+)/) {
+        my $denom = $1;
+        return int(log($denom)/log(2));
+    }
     return 1 if $str =~ /2/; return 2 if $str =~ /4/; return 3 if $str =~ /8/; 
     return 4 if $str =~ /16/; return 5 if $str =~ /32/; return 0;
 }
@@ -155,4 +166,3 @@ sub eval_frac {
     if ($str =~ /^(\d+)\/(\d+)$/) { return $1 / $2; }
     return $str || 1.0;
 }
-
