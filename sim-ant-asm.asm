@@ -18,6 +18,22 @@
         pla
 .endmacro
 
+.macro NL
+        jsr nl
+.endmacro
+
+.macro SPC
+        jsr spc
+.endmacro
+
+
+spc:    
+        PUTC ' '
+        rts
+
+nl:     
+        PUTC 10
+        rts
 
 puth:   
         PUTC '$'
@@ -48,10 +64,21 @@ _main:
         
         lda #$4a
         jsr puth
+
+        NL
+        putc '.'
+        NL
+
+
+
+
 halt2:  
         jmp halt2
 
 
+langauge:       
+phonem: 
+.byte $ff
 
 
 
