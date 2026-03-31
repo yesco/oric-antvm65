@@ -26,7 +26,6 @@
         jsr spc
 .endmacro
 
-
 spc:    
         PUTC ' '
         rts
@@ -56,6 +55,24 @@ putdigit:
 :       
         jmp _putchar
         
+.macro LDAX val
+        lda #<val
+        ldx #>val
+.endmacro
+
+.macro STAX addr
+        sta addr
+        stx addr+1
+.endmacro
+
+
+
+
+
+ANTTRACE=1
+
+;;; load INTERPRET
+.include "notes.asm"
 
 .export _main
 _main:   
@@ -69,8 +86,13 @@ _main:
         putc '.'
         NL
 
+        LDAX phonem
+        STAX stream
+        ldy #0
+        sty ipy
 
-
+        jsr interpret
+        
 
 halt2:  
         jmp halt2

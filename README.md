@@ -82,6 +82,9 @@ Here is a rough overview of how the bit-patterns define commands
 nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
 11 000 000 = STOP wait for even/sync/spawn
+
+TODO: squeezed 0-15 into 3 bits? LOL wtf?
+
 11 000 www = WAIT 1-10 ticks: iii*20ms (32th,16th)
 11 000 ppp = WAIT 11-15 8th/quarter/half/whole/wait (240,500,1s,2s,4s)
 

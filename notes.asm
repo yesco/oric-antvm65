@@ -38,10 +38,44 @@
 ;;; 
 ;;; COMMAND: 26c + 3c(go next)
 
+.zeropage
+
+;;; IP for interpration
+;;; TODO: ABCN
+stream:         .res 2
+ipy:            .res 1
+
+tmp_high:       .res 1
+
+.data
+
+detune:         .word 0
+
+.code
+
+
+;;; Summary:
+;;; 
+;;; BIGSHIFT: 102 B  59c-111c   work-horse
+;;; (Possibly use big 64 B table for dipatch)
+;;; 
+;;; BIGLUT:   814 B  30c- 47c   use too much mem
+;;; SMALLLUT: 413 B  34c- 51c   only double fast
+
+;;; BITSHIFT:102 B, DATA=72 B,  DECODE=33c CMD=26c NOTE=36-78c
+;;; 
+;;; BIGLUT:   36 B, DATA=768 B, DECODE=30c CMD= 0c NOTE=16c
+;;; SMALLLUT: 51 B, DATA=352 B, DECODE=20c CMD=14c NOTE=15-31c
+;;;  (param) +10 B                            +17c
+;;; (parameter decoding not included in LUT: add 10 B  17 c)
+
+
+
 .ifdef SUPERFAST
 
-;;; BIGLUT:   BYTES=768 DECODE=30c CMD= 0c NOTE=16c
-;;; SMALLLUT: BYTES=448 DECODE=20c CMD=14c NOTE=16c
+;;; SMALLLUT: BYTES=
+;;;    (+ (* 2 96) 96     64) = 352 
+;;;       lower    higher commands
 
 .ifdef BIGLUT
 
@@ -61,6 +95,7 @@ cmdaddr:        .res 256
         ;; .byte cmdWAIT-jmpcmd-2
 
 
+;;; 34 B  30-46c
 interpret:
 ;;; 27c+3c(jmp next)
         ldy ipy
@@ -95,6 +130,9 @@ cmdWAIT:
 ;;; (In this case older command bit pattern
 ;;;  use less LUT tables!)
 
+;;; TODO: actually oct 0-3: 96 words = 192 !
+;;; TODO:          oct 4-7: 96 bytes =  96 !
+
 hifreq:         .res 192
 lofreq:         .res 192
 
@@ -107,8 +145,9 @@ cmdaddr:        .res 64
         ;; .byte cmdWAIT-jmpcmd-2
 
 
-;;; DECODE=17c+3c COMMAND=14C  NOTES=16c
+;;; DECODE=17c+3c COMMAND=14C  NOTES=15-31c
 
+;;; 53 B  30-48c
 interpret:
 ;;; 17c+3c(jmp next)
         ldy ipy
@@ -118,7 +157,7 @@ interpret:
         cmp #%11000000
         bcc note
 ;;; 14c
-        ;; COMMAN
+        ;; COMMAND
         tax
         lda cmdaddr,x
         sta dispatch+1
@@ -127,14 +166,30 @@ dispatch:
         bcs dispatch            ; LOL
         
 note:   
-;;; 1+15c
-        ;; Play channel A, lol
-        ldy #0                  ; TODO: fix
-        lda lofreq,x
+;;; 1+ 14--31c
+        ;; ? oct: 0-3: use byte pitch?
+        and #%111
+        cmp #4
+        bcs :+
+
+        ;; yes byte pitches
+        ldy #0
+        lda bytepitch,x
         jsr setAYR
 
-        iny
-        lda hifreq,x
+        lda #0
+        ;; always
+        beq @sethi
+:       
+
+        ;; Play channel A, lol
+        ldy #0                  ; TODO: fix
+        lda lopitch,x
+        jsr setAYR
+
+        lda hipitch,x
+@sethi:  
+        ldy #1
         jsr setAYR
 
         jmp interpret
@@ -146,14 +201,23 @@ cmdWAIT:
 
 
 
-.else ; SUPERFAST
+.else ; BITSHIFT = !SUPERFAST
 
 interpret:
-;;; 33c
+;;; 20 B  33c
         ldy ipy             ; 3B | Load stream index
+.ifdef ANTTRACE
+        NL
+        LDAX stream
+        jsr puth
+        putc '.'
+        tya
+        jsr puth
+        putc ':'
+.endif ; ANTTRACE
+
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
-
         tax                 ; 1B | X = raw byte
         and #%00000111      ; 2B | Isolate III (Index or Octave)
         tay                 ; 1B | Y = III
@@ -168,7 +232,7 @@ interpret:
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
-;;; 26c
+;;; 23 B  26c
         eor #48             ; A = 0000PCC0
         lsr                 ; A = 00000PCC (0-7)
         tax
@@ -186,33 +250,93 @@ dispatch_br:
 
                                 ; --- Data Tables ---
 offset_table:
+        ;; no parameters
         .byte cmdWAIT-dispatch_br-2
-        .byte cmdCTRL-dispatch_br-2
-        .byte cmdSETAY-dispatch_br-2
         .byte cmdVALUE-dispatch_br-2
-        .byte cmdLocalCALL-dispatch_br-2
-        .byte cmdLangCALL-dispatch_br-2
-        .byte cmdFlowDrums-dispatch_br-2
-        .byte cmdModSet-dispatch_br-2
+        .byte cmdCALLpnm-dispatch_br-2
+        .byte cmdCHANNEL-dispatch_br-2
+        ;; with parameter(s)
+        .byte cmdSETAY-dispatch_br-2
+        .byte cmdSETAY-dispatch_br-2
+        .byte cmdCALLlang-dispatch_br-2
+        .byte cmdDRUMEXTEND-dispatch_br-2
+
+
+;;; --- no parameters
+
+cmdWAIT:        
+        ;; ...
+        jmp interpret
+
+cmdVALUE:       
+        ;; ...
+        jmp interpret
+
+cmdCALLpnm:     
+        ;; ...
+        jmp interpret
+
+cmdCHANNEL:     
+        ;; ...
+        jmp interpret
+
+
+;;; --- with parameter(s)
+
+;;; (2 entries point here)
+cmdSETAY:       
+        ;; ...
+        jmp interpret
+
+cmdCALLlang:    
+        ;; ...
+        jmp interpret
+
+cmdDRUMEXTEND:  
+        ;; ...
+        jmp interpret
+
 
 
 ;;; 48 bytes (Octave 0-3 base)
+WORDTABLE=1
+
+.ifdef WORDTABLE
 period_table:
         .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
         .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
         .word 2408, 2339, 2273, 2208, 2145, 2084, 2025, 1967
 
+.else ; BYTE TABLES HI/LO
+
+; Hexadecimal High/Low Byte Split
+hi_oct:       
+        .byte $0E, $0E, $0E, $0D, $0D, $0C, $0C, $0C
+        .byte $0B, $0B, $0B, $0A, $0A, $0A, $09, $09
+        .byte $09, $09, $08, $08, $08, $08, $07, $07
+
+lo_oct: 
+        .byte $EE, $81, $18, $B1, $4D, $EC, $8E, $33
+        .byte $DA, $83, $2F, $DE, $8F, $42, $F7, $AE
+        .byte $68, $23, $E1, $A0, $61, $24, $E9, $AF
+.endif
+
 ;;; 24 bytes (Octave 4 base - 8-bit)
+.ifdef OCT4DEC
 oct4_table:
         .byte 238, 232, 225, 219, 212, 206, 200, 195
         .byte 189, 184, 178, 173, 168, 164, 159, 154
         .byte 150, 146, 142, 138, 134, 130, 126, 122
+.else
+oct4_table:
+        .byte $EE, $E8, $E1, $DB, $D4, $CE, $C8, $C3
+        .byte $BD, $B8, $B2, $AD, $A8, $A4, $9F, $9A
+        .byte $96, $92, $8E, $8A, $86, $82, $7E, $7A
+.endif
 
 ;;; Playing a NOTE command
 ;;;   X=A=nnnnn0 Y=octave(0-7) (from dispatch)
 ;;; 
-, 130, 126, 122
-
 ;;; Cycle Counts (Absolute addressing, no page crossing, includes RTS):
 ;;; Oct 0: 42c | Oct 1: 54c | Oct 2: 66c | Oct 3: 78c
 ;;; Oct 4: 36c | Oct 5: 47c | Oct 6: 58c | Oct 7: 69c
@@ -223,43 +347,43 @@ oct4_table:
 ;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
         cpy #4              ; 2
-        bcs .high_oct       ; 2/3 | Branch to 8-bit logic
+        bcs @high_oct       ; 2/3 | Branch to 8-bit logic
         
         lda period_table+1, x ; 4
         sta tmp_high          ; 3
         lda period_table, x   ; 4
         
         cpy #0              ; 2
-        beq .low_done       ; 2/3
-.low_loop:
+        beq @low_done       ; 2/3
+@low_loop:
         lsr tmp_high        ; 5  | 16-bit shift loop (9c per iter)
         ror                 ; 2
         dey                 ; 2
-        bne .low_loop       ; 2/3
-.low_done:
+        bne @low_loop       ; 2/3
+@low_done:
         ldx tmp_high        ; 3
-        jmp pitch_done      ; 3
+        jmp @pitch_done      ; 3
 
-.high_oct:
+@high_oct:
         lsr                 ; 2 | A = nnnnn (Index)
         tax                 ; 2
         lda oct4_table, x   ; 4
-.high_loop:
+@high_loop:
         cpy #4              ; 2 | 8-bit shift loop (6c per iter)
-        beq .high_done      ; 2/3
+        beq @high_done      ; 2/3
         lsr                 ; 2
         dey                 ; 2
         ;; always
-        bne .high_loop      ; 2/3
-.high_done:
+        bne @high_loop      ; 2/3
+@high_done:
         ldx #0              ; 2
 
-pitch_done:
+@pitch_done:
         clc                 ; 2
-        adc detune_lo       ; 3
+        adc detune          ; 3
         tay                 ; 2
         txa                 ; 2
-        adc detune_hi       ; 3
+        adc detune+1        ; 3
         tax                 ; 2
         tya                 ; 2
         rts                 ; 6
