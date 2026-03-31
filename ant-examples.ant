@@ -13,3 +13,23 @@ $star_wars:
   K:4 |A
   G,4 D4 | C B, A, G4 | d4 C B, A, G4 | d4 C B, C A,4 
 RET
+
+
+% test commenting
+
+$tests:
+  |A C/4 C1/4 C'/4.
+
+QPS: 50
+BPM: 120
+
+K:4
+C
+K:3
+C
+K:2
+C
+
+OCT+ C OCT- C OCT- C
+
+
