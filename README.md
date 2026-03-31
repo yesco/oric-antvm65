@@ -83,9 +83,9 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
 11 000 000 = STOP wait for event/sync/spawn
 11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
-11 000 ppp = WAIT.music:  VALUE>>(ppp+1) /2 /4 /8 /16 relative VALUE
+11 000 ppp = WAIT.music:  VALUE>>(ppp-1): 1 /2 /4 /8 /16 /32
 
-11 001 iii = VALUE: SUSTAIN/ whole/half/quarter/...32th /LEGATO
+11 001 iii = VALUE: SUSTAIN 1 /2 /4 /8 /16 /32 /64 LEGATO
 
 11 010 pnm = CALL pnm (0-7 => local 1-8)
 
@@ -552,6 +552,42 @@ Standard BPM=120
 speech and "macro" blocks for music.
 
 This setup gives you a high-resolution "low end" for speech and rhythmic "utility" blocks for music:
+
+
+That is a very clever way to multiplex the 11000 and 11001 opcodes. You’ve created a "Gearbox" for timing:
+## 1. The Wait Logic (11000)
+
+* 000 (STOP): This is your sync/yield point. Very useful for multi-threading or waiting for a sprite to hit a coordinate.
+* 001-111 (www):
+* Speech Mode: Fixed linear ticks ($iii \times 20\text{ms}$). This is perfect for dialogue where you want constant speed regardless of music.
+   * Music Mode: Power-of-two divisions (Binary fractions). This is the "Aha!" moment—by using VALUE >> (ppp-1), you can change the tempo of the entire song just by updating one VALUE register, and all notes will scale relatively ($1/2, 1/4, 1/8$, etc.).
+
+## 2. The Value Logic (11001)
+
+* Sustain/Legato: Using $iii$ here as a bitmask or index for how long the envelope stays open is much better than a simple ON/OFF. It allows for "slurred" transitions between those 24 quarter-tones.
+
+------------------------------
+## Updated Perl Logic (Note Eater & Wait)
+I have updated the parse_note and parse_duration sections to map ABC fractions to your Music Mode power-of-two bits.
+
+sub parse_duration {
+    my $str = shift || "";
+    # 1. Map ABC fractions to your ppp bits (1=1/2, 2=1/4, 3=1/8, etc.)
+    return 5 if $str =~ /32/; # 1/32
+    return 4 if $str =~ /16/; # 1/16
+    return 3 if $str =~ /8/;  # 1/8
+    return 2 if $str =~ /4/;  # 1/4
+    return 1 if $str =~ /2/;  # 1/2
+    return 0 if $str eq "";   # Default/Stop
+    return 2; # Default to 1/4 if unknown
+}
+# In the Note Eater:my $ppp = parse_duration($dur_str);if ($ppp > 0) {
+    printf "  .byte %%11000%03b ;; %-14s (Music Wait: 1/%d note)\n", 
+           $ppp & 0x07, "", 2**$ppp;
+}
+
+
+TODO: cleanup, one table for SPEECH and one for MUSIC mode
 
 |Value| Ticks| Duration| Musical| Use Case| Speech Use Case |
 |  0  |    - |    -    |  STOP  | stop till started | wait/sync |

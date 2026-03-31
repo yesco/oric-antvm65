@@ -73,6 +73,12 @@ $TET_scale:
   c ^/c ^c ^/d d ^/d ^d _/e e ^/e f ^/f ^f _/g g ^/g ^g _/a a ^/a ^a _/b b ^/b
 RET
 
+$timing_test:
+  |A C/2 C/4 C/8 C/16 C/32   % Should generate ppp: 1, 2, 3, 4, 5
+  |B [CEG]/16                % Chord with 1/16th timing
+  |C C-C/32                  % Tie with 1/32nd timing
+RET
+
 % --- Empty Procedure Test ---
 $empty:
 RET

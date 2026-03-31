@@ -64,28 +64,28 @@ while (<>) {
                 my $staccato = ($working =~ s/^\.//) ? 1 : 0;
                 if ($staccato) { printf "  %-18s ;; TODO: STACCATO ON  (Next note short)\n", "  "; }
 
-                # Chord Eater - Fixed Note Extraction
                 if ($working =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
                     my ($notes_raw, $chord_dur) = ($1, $2);
                     printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "  ", $notes_raw;
-                    # Extract full note string including accidentals and octave marks
                     my @chord_notes = ($notes_raw =~ /([_^=]*\/?(?:[A-Ga-g][,']*))/g);
                     foreach my $n (@chord_notes) { parse_note($n, $n, 1); }
-                    my $final_dur = parse_duration($chord_dur) * $base_len;
-                    printf "  .byte %%11000%03b ;; %-14s (Wait Chord: %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
+                    my $ppp = parse_music_wait($chord_dur);
+                    printf "  .byte %%11000%03b ;; %-14s (Wait Chord: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
+                    printf "  .byte %%11000000 ;; %-14s (STOP/SYNC)\n", "" if $ppp == 0;
                     printf "  %-18s ;; %-14s (CHORD END)\n", "  ", "";
                 }
                 elsif ($working =~ s/^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?|(?=-))//) {
                     my $n_str = $1 . $2 . $3 . $4;
                     my $tie = ($working =~ s/^-//) ? 1 : 0;
-                    if ($tie) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 1, "ON"; }
+                    if ($tie) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 7, "ON"; } # iii=111
                     parse_note($n_str, $n_str, 0);
-                    if ($tie && $working !~ /^[A-G^=_]/i) { printf "  .byte %%11001%03b ;; TODO: SUSTAIN %-4s (Tie logic)\n", 0, "OFF"; }
+                    if ($tie && $working !~ /^[A-G^=_]/i) { printf "  .byte %%11001000 ;; TODO: SUSTAIN %-4s (Tie logic)\n", "OFF"; }
                     if ($staccato) { printf "  %-18s ;; TODO: STACCATO OFF\n", "  "; }
                 }
                 elsif ($working =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
-                    my $total = length($1) * parse_duration($2) * $base_len;
-                    printf "  .byte %%11000%03b ;; %-14s (Wait: %.2f)\n", int($total) & 0x07, $1 . ($2||""), $total;
+                    my $ppp = parse_music_wait($2);
+                    printf "  .byte %%11000%03b ;; %-14s (Rest: 1/%d)\n", $ppp & 0x07, $1 . ($2||""), 2**$ppp if $ppp > 0;
+                    printf "  .byte %%11000000 ;; %-14s (Rest STOP/SYNC)\n", $1 if $ppp == 0;
                 }
                 else { last; }
             }
@@ -96,7 +96,7 @@ while (<>) {
 sub handle_metadata {
     my $token = shift;
     if ($token =~ /^L:(.+)$/i) {
-        $base_len = parse_duration($1);
+        $base_len = eval_frac($1);
         printf "  %-18s ;; %-14s (Base Multiplier: %.2f)\n", "  ", $token, $base_len;
     }
     elsif ($token =~ /^(TPS|Q|BPM):(.+)$/i) {
@@ -121,17 +121,13 @@ sub handle_metadata {
 
 sub parse_note {
     my ($note_token, $orig, $no_wait) = @_;
-    # Strictly parse the provided token without re-declaring local variables that shadow inputs
     my ($acc, $n_char, $oct_mod, $dur_str) = ($note_token =~ /^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?)$/);
-    
     return unless defined $n_char;
     my $note = $note_map{uc($n_char)};
-
     if    ($acc eq '^')  { $note += 2; } 
     elsif ($acc eq '^/') { $note += 1; } 
     elsif ($acc eq '_')  { $note -= 2; } 
     elsif ($acc eq '_/') { $note -= 1; } 
-    
     my $oct = $octave_map[$active_ch[0]]; 
     $oct++ if $n_char =~ /[a-z]/;
     $oct += length($oct_mod) if ($oct_mod && $oct_mod =~ /'/);
@@ -140,17 +136,25 @@ sub parse_note {
 
     printf "  .byte %%%05b%03b ;; %-14s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $orig, $note, $oct;
     unless ($no_wait) {
-        my $final_dur = parse_duration($dur_str) * $base_len;
-        printf "  .byte %%11000%03b ;; %-14s (Wait: %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
+        my $ppp = parse_music_wait($dur_str);
+        printf "  .byte %%11000%03b ;; %-14s (Wait: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
+        printf "  .byte %%11000000 ;; %-14s (STOP/SYNC)\n", "" if $ppp == 0;
     }
 }
 
-sub parse_duration {
+sub parse_music_wait {
     my $str = shift || "";
-    return 1 if $str eq "";
+    return 1 if $str =~ /2/;  # 1/2
+    return 2 if $str =~ /4/;  # 1/4
+    return 3 if $str =~ /8/;  # 1/8
+    return 4 if $str =~ /16/; # 1/16
+    return 5 if $str =~ /32/; # 1/32
+    return 6 if $str =~ /64/; # 1/64
+    return 0; # Default STOP/SYNC
+}
+
+sub eval_frac {
+    my $str = shift;
     if ($str =~ /^(\d+)\/(\d+)$/) { return $1 / $2; }
-    if ($str =~ /^\/(\d+)$/)      { return 1 / $1; }
-    if ($str =~ /^\/$/)           { return 0.5; }
-    if ($str =~ /^(\d+)$/)        { return $1; }
-    return 1;
+    return $str || 1.0;
 }
