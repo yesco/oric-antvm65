@@ -123,4 +123,3 @@ sub parse_duration {
     if ($str =~ /^(\d+)$/)        { return $1; }
     return 1;
 }
-

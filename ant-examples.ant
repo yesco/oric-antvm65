@@ -20,8 +20,8 @@ RET
 $tests:
   |A C/4 C1/4 C'/4.
 
-QPS: 50
-BPM: 120
+TPS:50
+BPM:120
 
 K:4
 C
