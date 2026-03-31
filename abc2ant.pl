@@ -55,12 +55,14 @@ while (<>) {
             elsif ($working =~ s/^(K|L|Q|TPS|BPM):([^\s!|()]+)//i || $working =~ s/^(bass|treble|OCT[+-])//i) {
                 handle_metadata($1 . ($2 ? ":$2" : ""));
             }
+            # FIXED: Extension logic for /n and direct values
             elsif ($working =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
                 my ($cmd, $val_str) = ($1, $2);
                 my $val = 0;
                 if ($val_str =~ /^\/(\d+)$/) {
                     my $denom = $1;
-                    $val = int(log($denom)/log(2)) if $denom > 0;
+                    # Map 1->0, 2->1, 3/4->2, 5/6/7/8->3, etc.
+                    $val = ($denom <= 1) ? 0 : ($denom <= 2) ? 1 : ($denom <= 4) ? 2 : ($denom <= 8) ? 3 : ($denom <= 16) ? 4 : ($denom <= 32) ? 5 : 6;
                 } elsif ($val_str =~ /^(\d+)$/) {
                     $val = $1;
                 }
@@ -155,7 +157,7 @@ sub parse_music_wait {
     my $str = shift || "";
     if ($str =~ /\/(\d+)/) {
         my $denom = $1;
-        return int(log($denom)/log(2));
+        return ($denom <= 1) ? 0 : ($denom <= 2) ? 1 : ($denom <= 4) ? 2 : ($denom <= 8) ? 3 : ($denom <= 16) ? 4 : ($denom <= 32) ? 5 : 6;
     }
     return 1 if $str =~ /2/; return 2 if $str =~ /4/; return 3 if $str =~ /8/; 
     return 4 if $str =~ /16/; return 5 if $str =~ /32/; return 0;
