@@ -205,19 +205,23 @@ cmdWAIT:
 
 interpret:
 ;;; 20 B  33c
-        ldy ipy             ; 3B | Load stream index
 .ifdef ANTTRACE
         NL
         LDAX stream
         jsr puth
         putc '.'
         tya
-        jsr puth
+        lda ipy
+        jsr put2h
         putc ':'
 .endif ; ANTTRACE
-
+        ldy ipy             ; 3B | Load stream index
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
+.ifdef ANTTRACE
+        jsr put2h
+        SPC
+.endif ; ANTTRACE
         tax                 ; 1B | X = raw byte
         and #%00000111      ; 2B | Isolate III (Index or Octave)
         tay                 ; 1B | Y = III

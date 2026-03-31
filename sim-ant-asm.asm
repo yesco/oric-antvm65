@@ -35,7 +35,11 @@ nl:
         rts
 
 puth:   
-        PUTC '$'
+        pha
+        txa
+        jsr put2h
+        pla
+put2h:
         pha
         ;; hi nibble
         lsr
