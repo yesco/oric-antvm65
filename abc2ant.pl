@@ -14,6 +14,9 @@ my %vol_map = (
     'mf' => 10, 'f' => 12, 'ff' => 14, 'fff' => 15
 );
 
+# Fixed Gearbox: Strictly power-of-two mapping for the 3-bit value +1 LOL
+my %gearbox = ( 1=>1, 2=>2, 4=>3, 8=>4, 16=>5, 32=>6, 64=>7 );
+
 print ";;; AntVM65 Generated Assembly\n\n";
 
 while (<>) {
@@ -31,9 +34,9 @@ while (<>) {
 
     foreach my $token (split(/\s+/, $_)) {
         next if $token eq "";
-        my $working = $token;
-        while ($working ne "") {
-            if ($working =~ s/^\|([ABCN]+)//) {
+        my $t = $token;
+        while ($t ne "") {
+            if ($t =~ s/^\|([ABCN]+)//) {
                 my $match = $1;
                 my %ch_map = (A=>0, B=>1, C=>2, N=>3);
                 @active_ch = map { $ch_map{$_} } split //, $match;
@@ -41,71 +44,81 @@ while (<>) {
                     printf "  .byte %%11011%03b ;; %-14s (Select %s)\n", $ch, "|$match", (qw/A B C N/)[$ch];
                 }
             }
-            elsif ($working =~ s/^([:|\][\|]+)//) {
+            elsif ($t =~ s/^([:|\][\|]+)//) {
                 printf "  %-18s ;; %-14s (Bar line)\n", "  ", $1;
             }
-            elsif ($working =~ s/^\$([a-zA-Z0-9_]+)//) {
+            elsif ($t =~ s/^\$([a-zA-Z0-9_]+)//) {
                 printf "  .byte %%11110000 ;; %-14s (CALL %s)\n", "\$$1", $1;
             }
-            elsif ($working =~ s/^!([a-z]+)!//i) {
+            elsif ($t =~ s/^!([a-z]+)!//i) {
                 my $match = $1;
                 my $v = $vol_map{lc($match)} || 7;
                 printf "  .byte %%10111%03b ;; TODO: VOL %-7d (from !%s!)\n", $v & 0x07, $v, $match;
             }
-            elsif ($working =~ s/^(K|L|Q|TPS|BPM):([^\s!|()]+)//i || $working =~ s/^(bass|treble|OCT[+-])//i) {
-                handle_metadata($1 . ($2 ? ":$2" : ""));
+            elsif ($t =~ s/^(K|L|Q|TPS|BPM):([^\s!|()]+)//i || $t =~ s/^(bass|treble|@?OCT[+-])//i) {
+                handle_metadata($token);
             }
-            elsif ($working =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
+            elsif ($t =~ s/^@?RET//) {
+                printf "  .byte %%11111111 ;; %-14s\n.endproc\n\n", "RET";
+            }
+            elsif ($t =~ s/^@?(WAIT|VALUE|VOL)(\d+)//) {
+                my ($cmd, $val) = ($1, $2);
+
+# TODO: VOL mapped wrong??? should be using SETAY!
+
+                my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
+                $manual_mode = ($cmd eq "VALUE" && $val == 0) ? 1 : 0;
+                printf "  .byte %%%s%03b ;; %-14s (Value: %d)\n", $pre{$cmd}, $val & 0x07, $cmd.$val, $val;
+            }
+            elsif ($t =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
                 my ($cmd, $val_str) = ($1, $2);
                 my $val = 0;
-                if ($cmd eq "LEGATO") {
-                    $val = 7;
-                } elsif ($val_str =~ /^\/(\d+)$/) {
-                    my $denom = $1;
-                    $val = ($denom <= 1) ? 0 : ($denom <= 2) ? 1 : ($denom <= 4) ? 2 : ($denom <= 8) ? 3 : ($denom <= 16) ? 4 : ($denom <= 32) ? 5 : 6;
-                } elsif ($val_str =~ /^(\d+)$/) {
-                    $val = $1;
-                }
-                my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111", SUSTAIN=>"11001", LEGATO=>"11001");
+                if ($cmd eq "LEGATO") { $val = 7; }
+                elsif ($cmd eq "STOP") { $val = 0; }
+                elsif ($val_str =~ /^\/(\d+)$/) { $val = $gearbox{$1} || 0; }
+                elsif ($val_str =~ /^(\d+)$/) { $val = $1; }
+
+                my %pre = (STOP=>"11000", WAIT=>"11000", VALUE=>"11001", SUSTAIN=>"11001", LEGATO=>"11001");
                 $manual_mode = ($cmd eq "SUSTAIN" || $cmd eq "LEGATO" || ($cmd eq "VALUE" && $val == 0)) ? 1 : 0;
-                printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}||"11111", $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
+                if ($pre{$cmd}) {
+                  printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}, $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
+                } else {
+                    goto FAIL;
+                }
             }
-            elsif ($working =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
+            elsif ($t =~ s/^\[(.+?)\](\d*(?:\/\d+)?\.?)?//) {
                 my ($notes_raw, $chord_dur) = ($1, $2);
                 printf "  %-18s ;; TODO: [%-9s] (CHORD START)\n", "  ", $notes_raw;
                 my @chord_notes = ($notes_raw =~ /([_^=]*\/?(?:[A-Ga-g][,']*))/g);
                 foreach my $n (@chord_notes) { parse_note($n, $n, 1); }
                 my $ppp = parse_music_wait($chord_dur);
-                printf "  .byte %%11000%03b ;; %-14s (Wait Chord: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
+                printf "  .byte %%11000%03b ;; %-14s (Wait Chord: 1/%d)\n", $ppp & 0x07, "", 2**($ppp||0) if defined $ppp;
                 printf "  %-18s ;; %-14s (CHORD END)\n", "  ", "";
             }
-            elsif ($working =~ s/^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?|(?=-))//) {
+            elsif ($t =~ s/^([_^=]*\/?)([A-Ga-g])([,']*)(\d*(?:\/\d+)?\.?|(?=-))//) {
                 my $n_str = $1 . $2 . $3 . $4;
-                my $tie = ($working =~ s/^-//) ? 1 : 0;
+                my $tie = ($t =~ s/^-//) ? 1 : 0;
                 if ($tie) { 
                     printf "  .byte %%11001000 ;; %-14s (VALUE 0: SUSTAIN ON)\n", "-";
                     $manual_mode = 1;
                 }
                 parse_note($n_str, $n_str, 0);
-                if ($tie && $working !~ /^[A-G^=_]/i) { 
+                if ($tie && $t !~ /^[A-G^=_]/i) { 
                     printf "  .byte %%11001010 ;; %-14s (VALUE 2: SUSTAIN OFF)\n", "-";
                     $manual_mode = 0;
                 }
             }
-            elsif ($working =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
+            elsif ($t =~ s/^([zx]+)(\d*(?:\/\d+)?\.?)?//i) {
                 my $ppp = parse_music_wait($2);
-                printf "  .byte %%11000%03b ;; %-14s (Wait: 1/%d)\n", $ppp & 0x07, $1 . ($2||""), 2**$ppp if $ppp > 0;
+                printf "  .byte %%11000%03b ;; %-14s (Wait: 1/%d)\n", $ppp & 0x07, $1 . ($2||""), 2**($ppp||0) if defined $ppp;
             }
-            elsif ($working =~ s/^(WAIT|VALUE|VOL)(\d+)//) {
-                my ($cmd, $val) = ($1, $2);
-                my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
-                $manual_mode = ($cmd eq "VALUE" && $val == 0) ? 1 : 0;
-                printf "  .byte %%%s%03b ;; %-14s (Value: %d)\n", $pre{$cmd}, $val & 0x07, $cmd.$val, $val;
+            else {
+FAIL:
+                # notmatched: report failure
+                printf "  ;; FAIL: $token\n";
+                printf STDERR "%%FAIL: $token\n";
+                $t = "";
             }
-            elsif ($working =~ s/^RET//) {
-                printf "  .byte %%11111111 ;; %-14s\n.endproc\n\n", "RET";
-            }
-            else { $working = ""; }
         }
     }
 }
@@ -116,7 +129,7 @@ sub handle_metadata {
         $base_len = eval_frac($1);
         printf "  %-18s ;; %-14s (Base Multiplier: %.2f)\n", "  ", $token, $base_len;
     }
-    elsif ($token =~ /^OCT([+-])$/) {
+    elsif ($token =~ /^@?OCT([+-])$/) {
         my $dir = $1 eq '+' ? 1 : -1;
         foreach my $ch (@active_ch) { 
             $octave_map[$ch] += $dir;
@@ -145,20 +158,16 @@ sub parse_note {
     $oct += length($oct_mod) if ($oct_mod && $oct_mod =~ /'/);
     $oct -= length($oct_mod) if ($oct_mod && $oct_mod =~ /,/);
     $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
-    printf "  .byte %%11011%03b ;; %-14s (DEBUG: Pitch)\n", $note & 0x1F, $orig if 0; # Hidden check
     printf "  .byte %%%05b%03b ;; %-14s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $orig, $note, $oct;
     unless ($no_wait || $manual_mode) {
         my $ppp = parse_music_wait($dur_str);
-        printf "  .byte %%11000%03b ;; %-14s (Auto-Wait: 1/%d)\n", $ppp & 0x07, "", 2**$ppp if $ppp > 0;
+        printf "  .byte %%11000%03b ;; %-14s (Auto-Wait: 1/%d)\n", $ppp & 0x07, "", 2**($ppp||0) if defined $ppp;
     }
 }
 
 sub parse_music_wait {
     my $str = shift || "";
-    if ($str =~ /\/(\d+)/) {
-        my $denom = $1;
-        return ($denom <= 1) ? 0 : ($denom <= 2) ? 1 : ($denom <= 4) ? 2 : ($denom <= 8) ? 3 : ($denom <= 16) ? 4 : ($denom <= 32) ? 5 : 6;
-    }
+    if ($str =~ /\/(\d+)/) { return ($gearbox{$1} || -1)+1; }
     return 1 if $str =~ /2/; return 2 if $str =~ /4/; return 3 if $str =~ /8/; 
     return 4 if $str =~ /16/; return 5 if $str =~ /32/; return 0;
 }
