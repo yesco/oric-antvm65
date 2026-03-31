@@ -203,6 +203,21 @@ cmdWAIT:
 
 .else ; BITSHIFT = !SUPERFAST
 
+
+
+
+offset_table:
+        ;; no parameters
+        .byte cmdWAIT-dispatch_br-2
+        .byte cmdVALUE-dispatch_br-2
+        .byte cmdCALLpnm-dispatch_br-2
+        .byte cmdCHANNEL-dispatch_br-2
+        ;; with parameter(s)
+        .byte cmdSETAY-dispatch_br-2
+        .byte cmdSETAY-dispatch_br-2
+        .byte cmdCALLlang-dispatch_br-2
+        .byte cmdDRUMEXTEND-dispatch_br-2
+
 interpret:
 ;;; 20 B  33c
 .ifdef ANTTRACE
@@ -244,27 +259,21 @@ command:
         lda offset_table, x
         sta dispatch_br+1
         bcc no_param
+
         ldy ipy
         lda (stream),y      ; Fetch Parameter into A
         inc ipy
+.ifdef ANTTRACE
+        jsr put2h
+        SPC
+.endif ; ANTTRACE
+
 no_param:
         sec
 dispatch_br:
         bcs *               ; Jumps directly to cmd via SMC offset
 
                                 ; --- Data Tables ---
-offset_table:
-        ;; no parameters
-        .byte cmdWAIT-dispatch_br-2
-        .byte cmdVALUE-dispatch_br-2
-        .byte cmdCALLpnm-dispatch_br-2
-        .byte cmdCHANNEL-dispatch_br-2
-        ;; with parameter(s)
-        .byte cmdSETAY-dispatch_br-2
-        .byte cmdSETAY-dispatch_br-2
-        .byte cmdCALLlang-dispatch_br-2
-        .byte cmdDRUMEXTEND-dispatch_br-2
-
 
 ;;; --- no parameters
 
@@ -280,7 +289,7 @@ cmdCALLpnm:
         ;; ...
         jmp interpret
 
-cmdCHANNEL:     
+cmdCHANNEL:
         ;; ...
         jmp interpret
 
