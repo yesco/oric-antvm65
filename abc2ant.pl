@@ -17,7 +17,7 @@ while (<>) {
     if (/^K:(\d+)$/) {
         my $val = $1;
         foreach my $ch (@active_ch) { $octave_map[$ch] = $val; }
-        printf "                     ;; K:%d (Base Octave set)\n", $val;
+        printf "                     ;; %-10s (Base Octave set)\n", "K:$val";
         next;
     }
 
@@ -35,7 +35,7 @@ while (<>) {
             @active_ch = map { $map{$_} } split //, $1;
             foreach my $ch (@active_ch) {
                 my $bin = sprintf("%%11011%03b", $ch);
-                printf "  .byte %-10s  ;; %s (Select %s)\n", $bin, $token, (qw/A B C N/)[$ch];
+                printf "  .byte %-10s ;; %-10s (Select %s)\n", $bin, $token, (qw/A B C N/)[$ch];
             }
         }
 
@@ -46,36 +46,31 @@ while (<>) {
             $note += 2 if $acc eq '^'; 
             $note -= 2 if $acc eq '_'; 
 
-            my $oct = $octave_map[$active_ch[0]]; 
+            my $oct = $octave_map[$active_ch[0]]; # Use lead active channel
             $oct++ if $n_char =~ /[a-z]/;
             $oct += length($oct_mod) if $oct_mod =~ /'/;
             $oct -= length($oct_mod) if $oct_mod =~ /,/;
             $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
 
             my $val = sprintf("%%%08b", (($note & 0x1F) << 3) | ($oct & 0x07));
-            printf "  .byte %-10s  ;; %s (Note:%d Oct:%d)\n", $val, $token, $note, $oct;
+            printf "  .byte %-10s ;; %-10s (Note:%d Oct:%d)\n", $val, $token, $note, $oct;
 
             if ($dur ne "") {
                 my $w_bin = sprintf("%%11000%03b", $dur);
-                printf "  .byte %-10s  ;; (WAIT for %s)\n", $w_bin, $token;
+                printf "  .byte %-10s ;; %-10s (WAIT for %s)\n", $w_bin, "", $token;
             }
         }
 
-        # CASE: Explicit Commands (WAIT/VALUE)
+        # CASE: Explicit Commands
         elsif ($token =~ /^(WAIT|VALUE)(\d+)$/) {
             my $prefix = ($1 eq "WAIT") ? "11000" : "11001";
             my $bin = sprintf("%%%s%03b", $prefix, $2);
-            printf "  .byte %-10s  ;; %s\n", $bin, $token;
+            printf "  .byte %-10s ;; %-10s\n", $bin, $token;
         }
 
         # CASE: Return
         elsif ($token eq "RET") {
-            printf "  .byte %%11111111  ;; %s\n.endproc\n\n", $token;
-        }
-
-        # TODO placeholders
-        elsif ($token =~ /^V:(\d+)$/ || $token =~ /^!(.*)!$/ || $token =~ /^[<>]+$/) {
-            printf "  ;; TODO: %-8s  ;; %s\n", ".byte", $token;
+            printf "  .byte %%11111111 ;; %-10s\n.endproc\n\n", $token;
         }
     }
 }
