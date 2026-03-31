@@ -33,17 +33,17 @@ while (<>) {
     foreach my $token (split(/\s+/, $_)) {
         next if $token eq "";
 
-        # --- NON-CONCATENATED TOKENS ---
-print STDERR "TOKEN; >$token<\n";
-
         # CASE: Channel Select (|ABC)
         if ($token =~ /^\|([ABCN]+)$/) {
-print STDER "--- CHANNEL: $1\n";
             my %ch_map = (A=>0, B=>1, C=>2, N=>3);
             @active_ch = map { $ch_map{$_} } split //, $1;
             foreach my $ch (@active_ch) {
                 printf "  .byte %%11011%03b ;; %-14s (Select %s)\n", $ch, $token, (qw/A B C N/)[$ch];
             }
+        }
+        # CASE: Standard Bar Lines (|, |:, :|, ::, etc.)
+        elsif ($token =~ /^([:|\][\|]+)$/) {
+            printf "  %-18s ;; %-14s (Bar line)\n", "", $token;
         }
         # CASE: Call ($label)
         elsif ($token =~ /^\$([a-zA-Z0-9_]+)$/) {
@@ -54,7 +54,7 @@ print STDER "--- CHANNEL: $1\n";
             my $v = $vol_map{lc($1)} || 7;
             printf "  .byte %%10111%03b ;; TODO: VOL %-7d (from %s)\n", $v & 0x07, $v, $token;
         }
-        # CASE: Headers/Metadata (K:, L:, Q:, etc.)
+        # CASE: Headers/Metadata
         elsif ($token =~ /^(K|L|Q|TPS|BPM):(.+)$/i || $token =~ /^(bass|treble|OCT[+-])$/i) {
             handle_metadata($token);
         }
@@ -79,7 +79,7 @@ print STDER "--- CHANNEL: $1\n";
                     foreach my $n (@chord_notes) { parse_note($n, $n, 1); }
                     my $final_dur = parse_duration($chord_dur) * $base_len;
                     printf "  .byte %%11000%03b ;; %-14s (Wait Chord: %.2f)\n", int($final_dur) & 0x07, "", $final_dur;
-                    printf "  %-18s ;; TODO: %-14s (CHORD END)\n", "", "";
+                    printf "  %-18s ;; %-14s (CHORD END)\n", "", "";
                 }
                 # Note (including Ties)
                 elsif ($working =~ s/^([_^=]?[A-Ga-g][,']*(?:\d*(?:\/\d+)?\.?|(?=-)))//) {
