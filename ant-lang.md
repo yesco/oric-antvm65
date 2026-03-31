@@ -39,6 +39,59 @@ CALL       _bar
 
 ```
 
+# Examples
+
+To test your AntVM65 Perl converter, here are two melodies formatted in the ABC-ish style we've developed. One is a simple "Ode to Joy" to test 24-TET note logic, and the other is a rhythmic "Mario" intro to test your WAIT and |ABC multi-channel selecting.
+
+## 1. Ode to Joy (Beethoven)
+
+This test focuses on Scale Degrees and Key Tracking.
+
+$ode_to_joy:
+  K:4 |ABC 
+  E E F G | G F E D | C C D E | E2 D2
+  E E F G | G F E D | C C D E | D2 C2
+RET
+
+## 2. Super Mario Theme (Intro)
+
+This test checks Staccato Rhythms and Triple-Channel Sync.
+
+$mario_intro:
+  K:5 |ABC
+  E1 E1 WAIT1 E1 WAIT1 C1 E2 G2 
+  |ABC K:4 G2 RET
+
+## 3. Star Wars (Main Theme)
+
+A good test for Octave Jumps and Triplets.
+
+$star_wars:
+  K:4 |A
+  G,4 D4 | C B, A, G4 | d4 C B, A, G4 | d4 C B, C A,4 
+RET
+
+## Running the Test
+ You can save these into a file called test_songs.abc and run your Perl script: [1] 
+
+perl convert.pl test_songs.abc > test_songs.s
+
+## Expected ca65 Output (Visual Check)
+Your script should produce binary output similar to this:
+
+* Notes: %nnnnn ooo (e.g., E at Octave 4 → %01000 100).
+* Channels: %11011 000 for |A, %11011 001 for |B, etc.
+* Wait: %11000 001 for a 1-tick pause.
+* Procs: Properly wrapped .proc and .endproc blocks with matching labels.
+
+Would you like me to generate a "Language" word-list test (using the 0 prefix for speech-style commands) for your IPA phoneme layer?
+
+[1] [https://www.volkerschatz.com](https://www.volkerschatz.com/noise/abctrans.html)
+
+
+
+
+
 
 
 # ABC notation free characters
