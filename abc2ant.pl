@@ -55,20 +55,17 @@ while (<>) {
             elsif ($working =~ s/^(K|L|Q|TPS|BPM):([^\s!|()]+)//i || $working =~ s/^(bass|treble|OCT[+-])//i) {
                 handle_metadata($1 . ($2 ? ":$2" : ""));
             }
-            # FIXED EXTENSION BLOCK
             elsif ($working =~ s/^@([A-Z]+)(\d*(?:\/\d+)?)//) {
                 my ($cmd, $val_str) = ($1, $2);
                 my $val = 0;
-                
                 if ($cmd eq "LEGATO") {
-                    $val = 7; # Force LEGATO to 7
+                    $val = 7;
                 } elsif ($val_str =~ /^\/(\d+)$/) {
-                    my $denom = $1; # Power of 2 gear: 1->0, 2->1, 4->2, 8->3...
+                    my $denom = $1;
                     $val = ($denom <= 1) ? 0 : ($denom <= 2) ? 1 : ($denom <= 4) ? 2 : ($denom <= 8) ? 3 : ($denom <= 16) ? 4 : ($denom <= 32) ? 5 : 6;
                 } elsif ($val_str =~ /^(\d+)$/) {
                     $val = $1;
                 }
-                
                 my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111", SUSTAIN=>"11001", LEGATO=>"11001");
                 $manual_mode = ($cmd eq "SUSTAIN" || $cmd eq "LEGATO" || ($cmd eq "VALUE" && $val == 0)) ? 1 : 0;
                 printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}||"11111", $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
@@ -126,13 +123,13 @@ sub handle_metadata {
             $octave_map[$ch] = 0 if $octave_map[$ch] < 0;
             $octave_map[$ch] = 7 if $octave_map[$ch] > 7;
         }
-        printf "  %-18s ;; %-14s (Octave now: %d)\n", "  ", $token, $octave_map[$active_ch];
+        printf "  %-18s ;; %-14s (Octave now: %d)\n", "  ", $token, $octave_map[$active_ch[0]];
     }
     else {
         my $raw = $token; $raw =~ s/^K://i;
         my $oct = ($raw =~ /^\d+$/) ? $raw : (lc($raw) eq "bass" ? 2 : 4);
         foreach my $ch (@active_ch) { $octave_map[$ch] = $oct; }
-        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $octave_map[$active_ch];
+        printf "  %-18s ;; %-14s (Base Octave: %d)\n", "  ", $token, $octave_map[$active_ch[0]];
     }
 }
 
@@ -143,11 +140,12 @@ sub parse_note {
     my $note = $note_map{uc($n_char)};
     if ($acc eq '^') { $note += 2; } elsif ($acc eq '^/') { $note += 1; }
     elsif ($acc eq '_') { $note -= 2; } elsif ($acc eq '_/') { $note -= 1; }
-    my $oct = $octave_map[$active_ch]; 
+    my $oct = $octave_map[$active_ch[0]]; 
     $oct++ if $n_char =~ /[a-z]/;
     $oct += length($oct_mod) if ($oct_mod && $oct_mod =~ /'/);
     $oct -= length($oct_mod) if ($oct_mod && $oct_mod =~ /,/);
     $oct = 0 if $oct < 0; $oct = 7 if $oct > 7;
+    printf "  .byte %%11011%03b ;; %-14s (DEBUG: Pitch)\n", $note & 0x1F, $orig if 0; # Hidden check
     printf "  .byte %%%05b%03b ;; %-14s (Note:%d Oct:%d)\n", ($note & 0x1F), ($oct & 0x07), $orig, $note, $oct;
     unless ($no_wait || $manual_mode) {
         my $ppp = parse_music_wait($dur_str);
