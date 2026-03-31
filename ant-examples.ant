@@ -20,6 +20,11 @@ RET
 $tests:
   |A C/4 C1/4 C'/4.
 
+  $star_wars
+  $ode_to_joy
+  $mario_intro
+  $star_wars
+
 TPS:50
 BPM:120
 
@@ -33,4 +38,11 @@ C
 OCT+ C OCT- C OCT- C
 
 C !fff! C !p! C
+
+[ABC]
+
+
+
+
+RET
 
