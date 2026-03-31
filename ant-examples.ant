@@ -50,4 +50,14 @@ C C. C.
 
 RET
 
+$TET_scale:
+  C ^/C ^C _/D D ^/D ^D _/E E ^/E F ^/F ^F _/G G ^/G ^G _/A A ^/A ^A _/B B ^/B
+  c ^/c ^c ^/d d ^/d ^d _/e e ^/e f ^/f ^f _/g g ^/g ^g _/a a ^/a ^a _/b b ^/b
+  RET
+
+$TET_scale:
+
+  RET
+
+
 fail

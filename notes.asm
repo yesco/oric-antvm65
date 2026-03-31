@@ -97,6 +97,7 @@ cmdaddr:        .res 256
         ;; .byte cmdWAIT-jmpcmd-2
 
 
+
 ;;; 34 B  30-46c
 interpret:
 ;;; 27c+3c(jmp next)
@@ -220,6 +221,64 @@ offset_table:
         .byte cmdCALLlang-dispatch_br-2
         .byte cmdDRUMEXTEND-dispatch_br-2
 
+.ifdef ANTTRACE
+        ;; Single letter MNEMOIC
+        ;;     12345678
+cmd_char:       
+        .byte "SWWWWWWW"
+        .byte "swhqestl"
+        .byte "01234567"
+        .byte "ABCNxYQK"
+
+        .byte "aabbccnm"
+        .byte "vvvppeUD"
+        .byte "language"
+        .byte "kscoXBWR"
+
+note_char1:      
+        ;;     0123456789012345678901234
+        .byte "C...D...E.F...G...A...B.."
+note_char2:      
+        .byte " -#+ -#+ + -#+ -#+ -#+ -#
+
+.endif ; ANTTRACE
+
+;;; 48 bytes (Octave 0-3 base)
+WORDTABLE=1
+
+.ifdef WORDTABLE
+period_table:
+        .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
+        .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
+        .word 2408, 2339, 2273, 2208, 2145, 2084, 2025, 1967
+
+.else ; BYTE TABLES HI/LO
+
+; Hexadecimal High/Low Byte Split
+hi_oct:       
+        .byte $0E, $0E, $0E, $0D, $0D, $0C, $0C, $0C
+        .byte $0B, $0B, $0B, $0A, $0A, $0A, $09, $09
+        .byte $09, $09, $08, $08, $08, $08, $07, $07
+
+lo_oct: 
+        .byte $EE, $81, $18, $B1, $4D, $EC, $8E, $33
+        .byte $DA, $83, $2F, $DE, $8F, $42, $F7, $AE
+        .byte $68, $23, $E1, $A0, $61, $24, $E9, $AF
+.endif
+
+;;; 24 bytes (Octave 4 base - 8-bit)
+.ifdef OCT4DEC
+oct4_table:
+        .byte 238, 232, 225, 219, 212, 206, 200, 195
+        .byte 189, 184, 178, 173, 168, 164, 159, 154
+        .byte 150, 146, 142, 138, 134, 130, 126, 122
+.else
+oct4_table:
+        .byte $EE, $E8, $E1, $DB, $D4, $CE, $C8, $C3
+        .byte $BD, $B8, $B2, $AD, $A8, $A4, $9F, $9A
+        .byte $96, $92, $8E, $8A, $86, $82, $7E, $7A
+.endif
+
 interpret:
 ;;; 20 B  33c
         ;; move ticks forward
@@ -244,10 +303,12 @@ interpret:
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
 .ifdef ANTTRACE
+        ;; print CMD in hex
         pha
         jsr put2h
         SPC
         pla
+        ;; print CMD in bin
         pha
         jsr putb
         SPC
@@ -267,6 +328,14 @@ interpret:
         bcc cmdNOTE         ; 2B | If lower, it's a Note
 
 command:
+.ifdef ANTTRACE
+        ;; print CMD char
+        pha
+        tay
+        lda cmd_char,Y
+        jsr putchar
+        pla
+.endif ; ANTTRACE
 ;;; 23 B  26c
         eor #48             ; A = 0000PCC0
         lsr                 ; A = 00000PCC (0-7)
@@ -327,42 +396,6 @@ cmdDRUMEXTEND:
 
 
 
-;;; 48 bytes (Octave 0-3 base)
-WORDTABLE=1
-
-.ifdef WORDTABLE
-period_table:
-        .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
-        .word 3034, 2947, 2863, 2782, 2703, 2626, 2551, 2478
-        .word 2408, 2339, 2273, 2208, 2145, 2084, 2025, 1967
-
-.else ; BYTE TABLES HI/LO
-
-; Hexadecimal High/Low Byte Split
-hi_oct:       
-        .byte $0E, $0E, $0E, $0D, $0D, $0C, $0C, $0C
-        .byte $0B, $0B, $0B, $0A, $0A, $0A, $09, $09
-        .byte $09, $09, $08, $08, $08, $08, $07, $07
-
-lo_oct: 
-        .byte $EE, $81, $18, $B1, $4D, $EC, $8E, $33
-        .byte $DA, $83, $2F, $DE, $8F, $42, $F7, $AE
-        .byte $68, $23, $E1, $A0, $61, $24, $E9, $AF
-.endif
-
-;;; 24 bytes (Octave 4 base - 8-bit)
-.ifdef OCT4DEC
-oct4_table:
-        .byte 238, 232, 225, 219, 212, 206, 200, 195
-        .byte 189, 184, 178, 173, 168, 164, 159, 154
-        .byte 150, 146, 142, 138, 134, 130, 126, 122
-.else
-oct4_table:
-        .byte $EE, $E8, $E1, $DB, $D4, $CE, $C8, $C3
-        .byte $BD, $B8, $B2, $AD, $A8, $A4, $9F, $9A
-        .byte $96, $92, $8E, $8A, $86, $82, $7E, $7A
-.endif
-
 ;;; Playing a NOTE command
 ;;;   X=A=nnnnn0 Y=octave(0-7) (from dispatch)
 ;;; 
@@ -375,6 +408,9 @@ oct4_table:
 ;;; 55B tight dual-table shifter
 ;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
+.ifdef ANTTRACE
+        PUTC 'N'
+.endif ; ANTTRACE
         cpy #4              ; 2
         bcs @high_oct       ; 2/3 | Branch to 8-bit logic
         

@@ -7,9 +7,33 @@
 
 .import _putchar
 
+.zeropage
+tmp_putchar:    .res 1
+.code
+
+;;; Safe: prints A
+;;; Retains A,X,Y
+putchar:        
+        sta tmp_putchar
+        txa
+        pha
+        tya
+        pha
+
+        lda tmp_putchar
+        jsr _putchar
+
+        pla
+        tay
+        pla
+        tax
+        lda tmp_putchar
+        rts
+
+
 .macro putc char
         lda #char
-        jsr _putchar
+        jsr putchar
 .endmacro
         
 .macro PUTC char
@@ -57,11 +81,18 @@ putdigit:
         ;; hex a-f
         adc #'a'-'9'-1-1
 :       
-        jmp _putchar
+        jmp putchar
         
-.macro LDAX val
+
+
+.macro LDAXD val
         lda #<val
         ldx #>val
+.endmacro
+
+.macro LDAX val
+        lda val
+        ldx val+1
 .endmacro
 
 .macro STAX addr
@@ -78,26 +109,14 @@ putb:
         cpx #6
         bne :+
 @spc:
-        pha
-        txa
-        pha
         PUTC '_'
-        pla
-        tax
-        pla
 :       
         asl
 
         pha
-        txa
-        pha
-
         lda #0
         adc #'0'
         jsr putdigit
-
-        pla
-        tax
         pla
 
         dex
@@ -124,14 +143,14 @@ _main:
         putc '.'
         NL
 
-        LDAX phonem
+        LDAXD phonem
         STAX stream
         ldy #0
         sty ipy
 
         jsr interpret
-
-        ;; TODO: RETURN doesn't stop... 
+        jsr interpret
+        jsr interpret
         jsr interpret
         
 
@@ -144,7 +163,14 @@ halt2:
 
 langauge:       
 phonem: 
-.byte $ff
+        .byte $00
+        .byte $01
+        .byte $02
+        .byte $03
+        .byte $04
+        .byte $05
+        
+        .byte $ff
 
 
 

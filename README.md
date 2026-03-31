@@ -96,8 +96,8 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
 11 011 100|... = EXTENDED command
 11 011 101     = YIELD (almost same as WAIT 1?)
-11 011 110     = ? SILENCE (not common - make extended?)
-11 011 111     = ? CANCEL ALL (not common - make extended?)
+11 011 110     = ? QUIET (all) (not common - make extended?)
+11 011 111     = ? KILL ALL (not common - make extended?)
 
 
 **with parameter(s):**
@@ -116,6 +116,7 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 11 111 110|PAR|WORD = PARAM WORD "param"
 11 111 111          = RETURN ($ff - as "expected")
 ```
+
 
 
 ## PARAMETER / EXTENDED commands
@@ -1043,7 +1044,7 @@ byte values to are coming in stream and to be set.
  R12: Envelope Period, Coarse Tune (high 8 bits)
  R13: Envelope Shape/Cycle (selects attack, decay, sustain, and release pattern)
 
-**NOTE:** there is no special volume command as this can be done using SETAY.R8=15 (C: full blast, highest volume)
+**NOTE:** there is no special volume command as this can be done using SETAY.R8=15 (C: full blast, highest
 
 
 ## "Phonems"/"words" (subroutines)
