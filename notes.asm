@@ -339,9 +339,8 @@ interpret:
         tax                 ; 1B | X = index
 
         cpx #%00110000      ; 2B | Check if Note index >= 48
-        bcs :+              ; 2B | If lower, it's a Note
+        bcs command         ; 2B | If lower, it's a Note
         jmp cmdNOTE
-
 command:
 
 .ifdef ANTTRACE
