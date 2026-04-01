@@ -69,32 +69,55 @@ delayT:         .res 1
 
 ;;; DISPATCH BITMASK COST:
 ;;; 
-;;; a. nothing to do: 12c (incl RTI)
-;;; b. something    : 20c
+;;; a. nothing to do: 20c (incl RTI)
+;;; b. something    : 28c
 ;;; 
 ;;; c. 0bit: 12c
 ;;; d. 1bit: 20c (delayed)
-;;; e. 1bit: 40c (triggered)
+;;; e. 1bit: 46c (triggered)
 
 ;;; d. done: 10c
 
 
 ;;; Ticker bitmask dispatch:
 ;;; 
-;;; NOTHING:             12c
-;;; EACH leading 0 bit:  10c
+;;; NOTHING:             20c
+;;; EACH leading 0 bit:  28c
 ;;; EACH 1-bit
 ;;;   DELAY:             20c
-;;;   TRIGGER:           40c
+;;;   TRIGGER:           46c
 ;;; DONE (if had any 1): 10c
 
+.ifdef ANTTRACE
+
+.data
+
+process_char:   .byte "ABCDEFKT"
+
+.code
+
+.endif ; ANTTRACE
 
 
 startTick:
-;;; nothing to do: 12c (incl RTI)
-;;; something    : 20c
+;;; nothing to do: 20c (incl RTI)
+;;; something    : 28c
 
+        ;; move ticks forward
+;;; 8c
+        inc ticks
+        bne :+
+        inc ticks+1
+:       
 ;;; 20c
+
+.ifdef ANTTRACE
+        ;; ticks update in ticker
+        NL
+        LDAX ticks
+        jsr puth
+.endif ; ANTTRACE
+
         ;; make a copy
         lda processmap
         beq donetick
@@ -107,26 +130,56 @@ startTick:
 nextTickBit:
 ;;; 3c
         ldx tickX
+        lda tickermap
 @next:
 ;;; done: 10c
 ;;; 0bit: 12c
 ;;; 1bit: 20c (delayed)
 ;;;       22c (trigger)
+        beq donetick
         inx
         ;; rotates out next bit
-        rol tickermap
-        beq donetick
+        rol
         bcc @next
+
+.ifdef ANTTRACE
+pha
+
+putc 9
+lda process_char,X
+jsr putchar
+
+pla
+.endif ; ANTTRACE
 
         ;; Bit is set for X
         dec delays,X
+
+.ifdef ANTTRACE
+        pha
+
+        lda delays,X
+        jsr put2h
+        putc '-'
+
+        pla
+        ldy delays,X
+.endif ; ANTTRACE
+
         bne @next
 
+.ifdef ANTTRACE
+PUTC '!'
+.endif ; ANTTRACE
+
         ;; Time to do something
+        stx tickX
+        sta tickermap
         jmp tickerX
 
 donetick:
-        rti
+        ;; RTI? or called from handler
+        rts
 
 ;;; Process A tick for a bit set
 ;;;  X= channel 0..7
@@ -190,6 +243,10 @@ tickCHAN:
         ;; TODO: need to make interpreter 
         ;;   use X to do task
         jsr interpret
+
+.ifdef ANTTRACE
+        NL
+.endif ; ANTTRACE
 
         ldx tickX
         jsr tickVolENV

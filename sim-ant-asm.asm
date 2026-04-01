@@ -172,12 +172,15 @@ _main:
         sty ipy
 
         ;; processmap: A000 0000
-        lda #%1000000
+        lda #%10000000
+        ;lda #%11111111
         sta processmap
 
         ;; pretend to be 50Hz interrupt
 @loop:
-        jsr interpret
+        ;jsr interpret
+        jsr startTick
+
         ;; hi-byte=0 done! (no music on ZP!)
         ldx stream+1
         bne @loop
@@ -186,6 +189,7 @@ _main:
         putc '.'
         NL
 
+        rts
 halt2:  
         jmp halt2
 
@@ -195,6 +199,8 @@ phonem:
         .byte %00000100
         .byte %00001100
         .byte %00010100
+
+        .byte %11001111         ; WAIT 7
         .byte %00011100
         .byte %00100100
         .byte %00101100

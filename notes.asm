@@ -290,17 +290,13 @@ oct4_table:
 
 interpret:
 ;;; 20 B  33c
-        ;; move ticks forward
-        inc ticks
-        bne :+
-        inc ticks+1
 :       
 
 .ifdef ANTTRACE
         NL
-        LDAX ticks
-        jsr puth
-        SPC
+        putc 9
+        putc 9
+        putc '@'
         LDAX stream
         jsr puth
         putc '.'
@@ -401,7 +397,7 @@ cmdWAIT:
         bne :-
 :       
         sta delayA
-
+        
         ;; YIELD
         rts
 
