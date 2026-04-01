@@ -339,10 +339,11 @@ interpret:
         jmp cmdNOTE
 command:
 
-.ifdef xANTTRACE
+.ifdef ANTTRACE
 ;;; TODO messed up Y...
         ;; print CMD char
-        pha
+        SAVEAXY
+
         asl
         asl
         sty savey
@@ -351,8 +352,13 @@ command:
         tay
         lda cmd_char,Y
         jsr putchar
+        lda savey
+        clc
+        adc #'0'
+        jsr putdigit
         putc ':'
-        pla
+
+        LOADAXY
 .endif ; ANTTRACE
 
 ;;; 23 B  26c
@@ -539,9 +545,15 @@ cmdDRUMEXTEND:
 ;;; 55B tight dual-table shifter
 ;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
+
 .ifdef ANTTRACE
         SAVEAXY
+
         putc 'N'
+        lda savey
+        clc
+        adc #'0'
+        jsr putdigit
         putc ':'
         SPC
 
@@ -558,15 +570,9 @@ cmdNOTE:
         lda note_char2,x
         jsr putchar
 
-        SPC
-        putc 'o'
-        lda savey
-        clc
-        adc #'0'
-        jsr putchar
-
         LOADAXY
 .endif ; ANTTRACE
+
         cpy #4              ; 2
         bcs @high_oct       ; 2/3 | Branch to 8-bit logic
         
