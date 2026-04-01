@@ -149,6 +149,11 @@ ANTTRACE=1
 ;;; load INTERPRET
 .include "notes.asm"
 
+;;; load TICKER
+.include "antvm-ticker.asm"
+
+
+
 .export _main
 _main:   
         lda #'V'
@@ -166,12 +171,16 @@ _main:
         ldy #0
         sty ipy
 
-@loop:       
+        ;; processmap: A000 0000
+        lda #%1000000
+        sta processmap
+
+        ;; pretend to be 50Hz interrupt
+@loop:
         jsr interpret
         ;; hi-byte=0 done! (no music on ZP!)
         ldx stream+1
         bne @loop
-
 
         NL
         putc '.'

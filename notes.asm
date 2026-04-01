@@ -56,35 +56,36 @@ detune:         .word 0
 .code
 
 
-;;; Summary:
+;;; summary:
 ;;; 
-;;; BIGSHIFT: 102 B  59c-111c   work-horse
-;;; (Possibly use big 64 B table for dipatch)
+;;; bitshift: 102 b  59c-111c   work-horse
+;;; (possibly use big 64 b table for dipatch)
 ;;; 
-;;; BIGLUT:   814 B  30c- 47c   use too much mem
-;;; SMALLLUT: 413 B  34c- 51c   only double fast
+;;; BIGLUT:   814 b  30c- 47c   use too much mem
+;;; SMALLLUT: 413 b  34c- 51c   only double fast
 
-;;; BITSHIFT:102 B, DATA=72 B,  DECODE=33c CMD=26c NOTE=36-78c
+;;; BITSHIFT:102 b, data=72 b,  decode=33c cmd=26c note=36-78c
 ;;; 
-;;; BIGLUT:   36 B, DATA=768 B, DECODE=30c CMD= 0c NOTE=16c
-;;; SMALLLUT: 51 B, DATA=352 B, DECODE=20c CMD=14c NOTE=15-31c
-;;;  (param) +10 B                            +17c
-;;; (parameter decoding not included in LUT: add 10 B  17 c)
-
+;;; BIGLUT:   36 b, data=768 b, decode=30c cmd= 0c note=16c
+;;; SMALLLUT: 51 b, data=352 b, decode=20c cmd=14c note=15-31c
+;;;  (param) +10 b                            +17c
+;;; (parameter decoding not included in lut: add 10 b  17 c)
 
 
 .ifdef SUPERFAST
 
-;;; SMALLLUT: BYTES=
+;;; SMALLLUT: bytes=
 ;;;    (+ (* 2 96) 96     64) = 352 
 ;;;       lower    higher commands
 
 .ifdef BIGLUT
 
 
-;;; Use LUT for everything!
-;;; (In this case older command bit pattern
-;;;  use less LUT tables!)
+;;; use lut for everything!
+;;; (in this case older command bit pattern
+;;;  use less lut tables!)
+
+.data
 
 hifreq:         .res 256
 lofreq:         .res 256
@@ -92,13 +93,14 @@ lofreq:         .res 256
 cmdaddr:        .res 256
         ;; TODO: populate with:
         ;; .byte note-jmpcmd-2
-        ;; .byte cmdWAIT-jmpcmd-2
+        ;; .byte cmdwait-jmpcmd-2
         ;; ...
-        ;; .byte cmdWAIT-jmpcmd-2
+        ;; .byte cmdwait-jmpcmd-2
+.code
 
 
 
-;;; 34 B  30-46c
+;;; 34 b  30-46c
 interpret:
 ;;; 27c+3c(jmp next)
         ldy ipy
@@ -110,28 +112,28 @@ interpret:
         sta dispatch+1
 dispatch:       
         sec
-        bcs dispatch            ; LOL
+        bcs dispatch            ; lol
         
 note:   
 ;;; 1+15c
-        ;; Play channel A, lol
+        ;; play channel A, lol
         ldy #0                  ; TODO: fix
         lda lofreq,x
-        jsr setAYR
+        jsr SETAYR
 
         iny
         lda hifreq,x
-        jsr setAYR
+        jsr SETAYR
 
         jmp interpret
 
-cmdWAIT:        
+cmdwait:        
 
 .else ; SMALLLUT (!BIGLUT)
 
-;;; Use LUT for everything!
-;;; (In this case older command bit pattern
-;;;  use less LUT tables!)
+;;; use lut for everything!
+;;; (in this case older command bit pattern
+;;;  use less lut tables!)
 
 ;;; TODO: actually oct 0-3: 96 words = 192 !
 ;;; TODO:          oct 4-7: 96 bytes =  96 !
@@ -143,14 +145,14 @@ cmdaddr:        .res 64
 
         ;; TODO: populate with:
         ;; .byte note-jmpcmd-2
-        ;; .byte cmdWAIT-jmpcmd-2
+        ;; .byte cmdwait-jmpcmd-2
         ;; ...
-        ;; .byte cmdWAIT-jmpcmd-2
+        ;; .byte cmdwait-jmpcmd-2
 
 
-;;; DECODE=17c+3c COMMAND=14C  NOTES=15-31c
+;;; decode=17c+3c command=14c  notes=15-31c
 
-;;; 53 B  30-48c
+;;; 53 b  30-48c
 interpret:
 ;;; 17c+3c(jmp next)
         ldy ipy
@@ -166,7 +168,7 @@ interpret:
         sta dispatch+1
 dispatch:       
         sec
-        bcs dispatch            ; LOL
+        bcs dispatch            ; lol
         
 note:   
 ;;; 1+ 14--31c
@@ -178,26 +180,26 @@ note:
         ;; yes byte pitches
         ldy #0
         lda bytepitch,x
-        jsr setAYR
+        jsr setayr
 
         lda #0
         ;; always
         beq @sethi
 :       
 
-        ;; Play channel A, lol
-        ldy #0                  ; TODO: fix
+        ;; play channel A, lol
+        ldy #0                  ; todo: fix
         lda lopitch,x
-        jsr setAYR
+        jsr setayr
 
         lda hipitch,x
 @sethi:  
         ldy #1
-        jsr setAYR
+        jsr setayr
 
         jmp interpret
 
-cmdWAIT:        
+cmdwait:        
 
         
 .endif ; !BIGLUT = SMALLLUT
@@ -208,6 +210,7 @@ cmdWAIT:
 
 
 
+.data
 
 offset_table:
         ;; no parameters
@@ -282,6 +285,9 @@ oct4_table:
         .byte $96, $92, $8E, $8A, $86, $82, $7E, $7A
 .endif
 
+.code
+
+
 interpret:
 ;;; 20 B  33c
         ;; move ticks forward
@@ -333,7 +339,8 @@ interpret:
         tax                 ; 1B | X = index
 
         cpx #%00110000      ; 2B | Check if Note index >= 48
-        bcc cmdNOTE         ; 2B | If lower, it's a Note
+        bcs :+              ; 2B | If lower, it's a Note
+        jmp cmdNOTE
 
 command:
 
@@ -379,11 +386,63 @@ dispatch_br:
 ;;; --- no parameters
 
 cmdWAIT:        
-        ;; ...
-        jmp interpret
+        ;; Y=value parameter
+
+        ;; TODO: speech mode?
+
+        ;; TODO: share with cmdVALUE?
+        ;; (- (* 2 8) (+ 8 1 (* 2 3)))
+        ;; (would save 1 byte if used only 2 places)
+        lda #WHOLETICKS
+:       
+        dey
+        bmi :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+:       
+        sta delayA
+
+        ;; YIELD
+        rts
 
 cmdVALUE:       
-        ;; ...
+        ;; Y=value parameter
+        lda #WHOLETICKS
+        ;; TODO for all seleted channels
+:       
+        dey
+        bmi :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+:       
+        sta valueA
+
+        ;; Calculate "prooportional" rest ticks
+        ldy restRatioA
+:       
+        dey
+        bmi :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+        ;; bottomed out, maybe make it one tick?
+        lda #1
+:       
+        sta restA
+
+        ;; subtract from value ticks
+        eor #$ff
+        sec
+        adc valueA
+        bpl :+
+        ;; safetey valve if underflow
+        ;; TODO: revise? tones take at lesat 2 ticks
+        lda #1
+:       
+        sta valueA
+
         jmp interpret
 
 cmdCALLpnm:     
@@ -427,7 +486,6 @@ cmdDRUMEXTEND:
 
         ;; ...
         jmp interpret
-
 
 
 ;;; Playing a NOTE command
@@ -512,4 +570,7 @@ cmdNOTE:
         tya                 ; 2
         rts                 ; 6
 
+
+
 .endif ; !SUPERFAST
+

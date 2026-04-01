@@ -1,26 +1,57 @@
 ;;; AntVM Ticker - dispatch to work to do
 
-using ZP:bitmap 
-
-Called by interrrupt 50Hz so need to be superfast
-```
-;;; X= A,B,C,N, E.F.C.T == (Echo,Follow,Chrous,Tglissado)
 
 
-;;; AntVM state data in RAM
+
+.data
+
+;;; AntVM parameter state in RAM
 antvmBLOCK:     
 
+;;; A,B,C,N, E.F.K.T == (Echo,Follow,Korus,Tglissado)
 processmap:     .byte 0
+
+
 
 antvmBLOCKEnd:     
 
+;;; value is length of note in ticks
+;;; (whole@120BPM =4  beats = 2.0s = 100 50Hz ticks
+WHOLETICKS=100
+
+values: 
+        
+valueA:         .res 1
+valueB:         .res 1
+valueC:         .res 1
+valueN:         .res 1
+
+
+rests:  
+
+restA:          .res 1
+restB:          .res 1
+restC:          .res 1
+restN:          .res 1
+
+
+restRatios:     
+
+restRatioA:     .res 1
+restRatioB:     .res 1
+restRatioC:     .res 1
+restRatioN:     .res 1
 
 
 ;;; Zeropage: AntVM state data
 .zeropage
 
+;;; copy of processmap and shifted
 tickermap:      .res 1
+
+;;; Current channel number 0-7:ABCD EFCT
 tickX:          .res 1
+
 
 delays: 
 
@@ -31,7 +62,7 @@ delayN:         .res 1
 
 delayE:         .res 1
 delayF:         .res 1
-delayC:         .res 1
+delayK:         .res 1
 delayT:         .res 1
 
 .code
@@ -66,7 +97,7 @@ startTick:
 ;;; 20c
         ;; make a copy
         lda processmap
-        beq @done
+        beq donetick
 
         sta tickermap
 
@@ -84,7 +115,7 @@ nextTickBit:
         inx
         ;; rotates out next bit
         rol tickermap
-        beq @done
+        beq donetick
         bcc @next
 
         ;; Bit is set for X
@@ -94,7 +125,7 @@ nextTickBit:
         ;; Time to do something
         jmp tickerX
 
-@done:
+donetick:
         rti
 
 ;;; Process A tick for a bit set
@@ -104,29 +135,29 @@ nextTickBit:
 tickerX:
 ;;; 14c
         stx tickX
-        lda ticktable,X
+        lda @ticktable,X
         sta @patchbpl+1
         ;; N=0 always
 @patchbpl:
-        bpl $ff
+        bpl @patchbpl
 
-ticktable:
-        .byte tickCHAN -patchbpl-2
-        .byte tickCHAN -patchbpl-2
-        .byte tickCHAN -patchbpl-2
-        .byte tickCHAN -patchbpl-2
+@ticktable:
+        .byte tickCHAN -@patchbpl-2
+        .byte tickCHAN -@patchbpl-2
+        .byte tickCHAN -@patchbpl-2
+        .byte tickCHAN -@patchbpl-2
 
-        .byte tickECHO      -patchbpl-2
-        .byte tickFOLLOW    -patchbpl-2
-        .byte tickCHROUS    -patchbpl-2
-        .byte tickTGLISSADO -patchbpl-2
+        .byte tickECHO      -@patchbpl-2
+        .byte tickFOLLOW    -@patchbpl-2
+        .byte tickCHORUS    -@patchbpl-2
+        .byte tickTGLISSADO -@patchbpl-2
 
 
 
 
 ;;; === Global Effectecs
 
-tickEHCO:
+tickECHO:
         ;; B echo A
 
         jmp nextTickBit
@@ -158,7 +189,7 @@ tickTGLISSADO:
 tickCHAN:
         ;; TODO: need to make interpreter 
         ;;   use X to do task
-        jsr interpreter
+        jsr interpret
 
         ldx tickX
         jsr tickVolENV
@@ -170,3 +201,11 @@ tickCHAN:
 
         jmp nextTickBit
         
+
+tickVolENV:     
+
+        rts
+
+tickPitENV:     
+        
+        rts
