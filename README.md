@@ -1045,21 +1045,6 @@ byte values to are coming in stream and to be set.
    - 7:  RESERVED
 ```
 
-
-   "90% of your updates in a song are just these 8 registers."
-
-```
-   MASK:   
-   - 0:  R0= Fine Pitch A
-   - 1:  R2= Fine Pitch B
-   - 2:  R4= Fine Pitch C
-   - 3:  R6= Noise Period (Global)
-   - 4:  R7= Mixer
-   - 5:  R8= Volume A
-   - 6:  R9= Volume B
-   - 7: R10= Volume C
-```
-
   **AY-chip registers:**
 ```
   R0: Channel A Tone Period, Fine Tune (low 8 bits)
@@ -1073,6 +1058,8 @@ byte values to are coming in stream and to be set.
 
   R6: Noise Generator Period (5-bit value for noise frequency)
   R7: Mixer Control (enables/disables Tone/Noise)
+
+TODO: use reserved bit to set them all?
 
  R11: Envelope Period, Fine Tune (low 8 bits)
  R12: Envelope Period, Coarse Tune (high 8 bits)

@@ -243,11 +243,33 @@ tickCHAN:
         ;; TODO: need to make interpreter 
         ;;   use X to do task
         jsr interpret
-
+        ;; comes back after cmd that YIELD
+        
 .ifdef ANTTRACE
+        NL
+
+        ;; For now: print all AY regs
+        putc 9
+        putc 9
+        putc 9
+        putc 'A'
+        putc 'Y'
+        putc ':'
+
+        ldx #0
+:       
+        lda ayshadow,X
+        jsr put2h
+        SPC
+        inx
+        cpx #14
+        bne :-
+
         NL
 .endif ; ANTTRACE
 
+;;; TODO: these shoudl be before?
+;;;   no need apply, let's default do one tick at least?
         ldx tickX
         jsr tickVolENV
 

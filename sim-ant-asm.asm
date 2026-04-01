@@ -152,7 +152,8 @@ ANTTRACE=1
 ;;; load TICKER
 .include "antvm-ticker.asm"
 
-
+ayheader:
+        .byte "aa AA|bb BB|cc CC|nn|MM|va|vb|vc|pp PP|ee", 0
 
 .export _main
 _main:   
@@ -178,6 +179,25 @@ _main:
 
         lda valueA             
         sta delayA
+
+        ;; print AY header for debuggin
+        putc 9
+        putc 9
+        putc 9
+        putc 'A'
+        putc 'Y'
+        putc ':'
+
+        ldx #0
+:       
+        lda ayheader,X
+        jsr putchar
+        beq :+
+        inx
+        bne :-
+:       
+        NL
+        
 
         ;; pretend to be 50Hz interrupt
 @loop:

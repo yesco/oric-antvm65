@@ -53,6 +53,9 @@ tmp_high:       .res 1
 
 detune:         .word 0
 
+;;; AY register shadow in RAM to be manipulated
+ayshadow:       .res 14
+
 .code
 
 
@@ -605,17 +608,26 @@ cmdNOTE:
 @high_done:
         ldx #0              ; 2
 
+;;; TODO: revsiit w pitch envelope
 @pitch_done:
         clc                 ; 2
         adc detune          ; 3
-        tay                 ; 2
-        txa                 ; 2
+
+;;; TODO: tickX*2 ...
+;;;   this only works for ONE tone
+;;;   do something more clever?
+;;;   when entering here X should be 0-3:A-N
+        ldy #0
+        sta ayshadow,Y
+
         adc detune+1        ; 3
-        tax                 ; 2
-        tya                 ; 2
+        iny
+        ;; to do limit?
+        and #%1111
+        sta ayshadow,Y
+
         rts                 ; 6
 
 
-
-.endif ; !SUPERFAST
+.endif ; BITSHIFT = !SUPERFAST
 
