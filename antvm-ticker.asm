@@ -21,26 +21,26 @@ WHOLETICKS=100
 
 values: 
         
-valueA:         .res 1
-valueB:         .res 1
-valueC:         .res 1
-valueN:         .res 1
+valueA:         .byte WHOLETICKS
+valueB:         .byte WHOLETICKS
+valueC:         .byte WHOLETICKS
+valueN:         .byte WHOLETICKS
 
 
 rests:  
 
-restA:          .res 1
-restB:          .res 1
-restC:          .res 1
-restN:          .res 1
+restA:          .byte 0
+restB:          .byte 0
+restC:          .byte 0
+restN:          .byte 0
 
 
 restRatios:     
 
-restRatioA:     .res 1
-restRatioB:     .res 1
-restRatioC:     .res 1
-restRatioN:     .res 1
+restRatioA:     .byte 2
+restRatioB:     .byte 2
+restRatioC:     .byte 2
+restRatioN:     .byte 2
 
 
 ;;; Zeropage: AntVM state data
@@ -255,6 +255,10 @@ tickCHAN:
         jsr tickPitENV
 
         ;; TOOD:: make sure delay,X is updated to "min"
+        lda valueA
+        sta delayA
+        
+;;; TODO: how to handle rest?
 
         jmp nextTickBit
         

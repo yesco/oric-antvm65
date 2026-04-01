@@ -339,7 +339,8 @@ interpret:
         jmp cmdNOTE
 command:
 
-.ifdef ANTTRACE
+.ifdef xANTTRACE
+;;; TODO messed up Y...
         ;; print CMD char
         pha
         asl
@@ -363,9 +364,14 @@ command:
         sta dispatch_br+1
         bcc no_param
 
+        sty savey
+
         ldy ipy
         lda (stream),y      ; Fetch Parameter into A
         inc ipy
+
+        ldy savey
+
 .ifdef ANTTRACE
         SPC
         jsr put2h
@@ -395,6 +401,8 @@ cmdWAIT:
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
+        ;; underflow
+        lda #1
 :       
         sta delayA
         
@@ -403,17 +411,33 @@ cmdWAIT:
 
 cmdVALUE:       
         ;; Y=value parameter
+
+        ;; ? no ticker sustaain / legato
+        cpy #0
+        beq :+
+        cpy #7
+        bne :++
+:       
+
+        ;; = legato
+        ;; disable channel A ticker
+        and #%01111111
+        jmp andprocessmap
+:       
+
         lda #WHOLETICKS
         ;; TODO for all seleted channels
 :       
         dey
-        bmi :+
+        beq :+
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
 :       
+PUTC '@'
         sta valueA
 
+;jsr put2h
         ;; Calculate "prooportional" rest ticks
         ldy restRatioA
 :       
@@ -427,18 +451,36 @@ cmdVALUE:
 :       
         sta restA
 
+pha
+jsr put2h
+pla
+
+;;; TDOO: this doesn't work if can cahnge REST later???
+;;;   require update of VALUE
+
         ;; subtract from value ticks
         eor #$ff
         sec
         adc valueA
-        bpl :+
-        ;; safetey valve if underflow
-        ;; TODO: revise? tones take at lesat 2 ticks
-        lda #1
-:       
+;;; safetey valve if underflow
+;;; TODO: revise? tones take at lesat 2 ticks
         sta valueA
+pha
+jsr put2h
+pla
+        
+        ;; enable channel ticker
+        lda #%10000000
 
+orprocessmap:
+        ora processmap
+storeprocessmap:       
+        sta processmap
         jmp interpret
+
+andprocessmap:
+        and processmap
+        jmp storeprocessmap
 
 cmdCALLpnm:     
         ;; ...
@@ -447,6 +489,8 @@ cmdCALLpnm:
 cmdCHANNEL:
         ;; ...
         jmp interpret
+
+
 
 
 ;;; --- with parameter(s)

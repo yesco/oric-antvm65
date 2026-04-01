@@ -176,6 +176,9 @@ _main:
         ;lda #%11111111
         sta processmap
 
+        lda valueA             
+        sta delayA
+
         ;; pretend to be 50Hz interrupt
 @loop:
         ;jsr interpret
@@ -200,7 +203,16 @@ phonem:
         .byte %00001100
         .byte %00010100
 
-        .byte %11001111         ; WAIT 7
+;        .byte %11001111         ; LEGATO
+;        .byte %11001000         ; SUSTAIN
+;        .byte %11001110        ; VALUE6
+;        .byte %11001100        ; VALUE4
+;        .byte %11001001         ; VALUE1 = WHOLE
+;        .byte %11001010         ; VALUE2 = HALF
+
+        ;; minimal length => 1,1
+        .byte %11001110       ; VALUE6
+
         .byte %00011100
         .byte %00100100
         .byte %00101100
