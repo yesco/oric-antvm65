@@ -146,6 +146,14 @@ putb:
 
 ANTTRACE=1
 
+;;; TODO: Dummy
+
+SETAY:  
+        rts
+
+.include "drum.asm"
+
+
 ;;; load INTERPRET
 .include "notes.asm"
 

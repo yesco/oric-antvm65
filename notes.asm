@@ -298,109 +298,7 @@ oct4_table:
 .code
 
 
-interpret:
-;;; 20 B  33c
-
-
-.ifdef ANTTRACE
-        NL
-        putc 9
-        putc 9
-        putc '@'
-        LDAX stream
-        jsr puth
-        putc '.'
-        tya
-        lda ipy
-        jsr put2h
-        putc ':'
-.endif ; ANTTRACE
-
-        ldy ipy             ; 3B | Load stream index
-        lda (stream),y      ; 5B | Get command byte
-        inc ipy             ; 3B | inc pointer
-
-.ifdef ANTTRACE
-        ;; print CMD in hex
-        pha
-        jsr put2h
-        SPC
-        pla
-        ;; print CMD in bin
-        pha
-        jsr putb
-        SPC
-        SPC
-        pla
-.endif ; ANTTRACE
-
-        tax                 ; 1B | X = raw byte
-        and #%00000111      ; 2B | Isolate III (Index or Octave)
-        tay                 ; 1B | Y = III
-
-        txa                 ; 1B
-        cmp #%11000000      ; 2B | Check if Note index >= 
-        bcs command         ; 2B | If lower, it's a Note
-        jmp cmdNOTE
-command:
-
-
-.ifdef ANTTRACE
-;;; TODO messed up Y...
-        ;; print CMD char
-        SAVEAXY
-
-;;; TODO: fix using A?
-        ;; show one letter command 'name'
-        and #%111111
-        tay
-        lda cmd_char,Y
-        jsr putchar
-        lda savey
-
-        ;; show 3 low parameter bits (as digit)
-        clc
-        adc #'0'
-        jsr putdigit
-        putc ':'
-
-        LOADAXY
-.endif ; ANTTRACE
-
-;;; 23 B  26c
-        and #%00111111
-        tax
-
-        cmp #4              ; Carry set if P=1
-        lda command_table, x
-        sta dispatch_br+1
-
-        ;; ? get paramter
-        bcc no_param
-
-        sty savey
-
-        ldy ipy
-        lda (stream),y      ; Fetch Parameter into A
-        inc ipy
-
-        ldy savey
-
-.ifdef ANTTRACE
-        SPC
-        jsr put2h
-.endif ; ANTTRACE
-
-
-no_param:
-
-        sec
-dispatch_br:
-        bcs *               ; Jumps directly to cmd via SMC offset
-
-
-
-;;; --- Command Handlers ---
+;;; --- BEFORE Command Handlers ---
 
 .macro YIELD
         rts
@@ -571,6 +469,109 @@ cmdKILL:          ; 11 011 111
 
 
 
+interpret:
+;;; 20 B  33c
+
+
+.ifdef ANTTRACE
+        NL
+        putc 9
+        putc 9
+        putc '@'
+        LDAX stream
+        jsr puth
+        putc '.'
+        tya
+        lda ipy
+        jsr put2h
+        putc ':'
+.endif ; ANTTRACE
+
+        ldy ipy             ; 3B | Load stream index
+        lda (stream),y      ; 5B | Get command byte
+        inc ipy             ; 3B | inc pointer
+
+.ifdef ANTTRACE
+        ;; print CMD in hex
+        pha
+        jsr put2h
+        SPC
+        pla
+        ;; print CMD in bin
+        pha
+        jsr putb
+        SPC
+        SPC
+        pla
+.endif ; ANTTRACE
+
+        tax                 ; 1B | X = raw byte
+        and #%00000111      ; 2B | Isolate III (Index or Octave)
+        tay                 ; 1B | Y = III
+
+        txa                 ; 1B
+        cmp #%11000000      ; 2B | Check if Note index >= 
+        bcs command         ; 2B | If lower, it's a Note
+        jmp cmdNOTE
+command:
+
+
+.ifdef ANTTRACE
+;;; TODO messed up Y...
+        ;; print CMD char
+        SAVEAXY
+
+;;; TODO: fix using A?
+        ;; show one letter command 'name'
+        and #%111111
+        tay
+        lda cmd_char,Y
+        jsr putchar
+        lda savey
+
+        ;; show 3 low parameter bits (as digit)
+        clc
+        adc #'0'
+        jsr putdigit
+        putc ':'
+
+        LOADAXY
+.endif ; ANTTRACE
+
+;;; 23 B  26c
+        and #%00111111
+        tax
+
+        cmp #4              ; Carry set if P=1
+        lda command_table, x
+        sta dispatch_br+1
+
+        ;; ? get paramter
+        bcc no_param
+
+        sty savey
+
+        ldy ipy
+        lda (stream),y      ; Fetch Parameter into A
+        inc ipy
+
+        ldy savey
+
+.ifdef ANTTRACE
+        SPC
+        jsr put2h
+.endif ; ANTTRACE
+
+
+no_param:
+
+        sec
+dispatch_br:
+        bcs *               ; Jumps directly to cmd via SMC offset
+
+
+
+;;; --- AFTER Command Handlers ---
 
 cmdSETAY:         ; 11 10 rrrr
 ;;; TODO: setayr.asm
@@ -648,15 +649,19 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
 
 cmdDRUM_KICK:     ; 11 111 000
+        jsr cmdKickS
         jmp interpret
 
 cmdDRUM_SNARE:    ; 11 111 001
+        jsr cmdSnareSH
         jmp interpret
 
 cmdDRUM_HH_CLS:   ; 11 111 010
+        jsr cmdHiHatClosedCH
         jmp interpret
 
 cmdDRUM_HH_OPN:   ; 11 111 011
+        jsr cmdHiHatOpenTS
         jmp interpret
 
 
@@ -834,40 +839,47 @@ antwryte:
     .byte target - DispatchBase + 2
 .endmacro
 
+.macro PREL target
+    .byte DispatchBase - target + 2 - 100
+.endmacro
+
 
 command_table:
 DispatchBase = dispatch_br
 
-    REL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
+    PREL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
 
     ; 11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
     ; 11 000 ppp = WAIT.music:  VALUE>>(ppp-1): 1 /2 /4 /8 /16 /32
     .repeat 7
-        REL cmdWAIT
+        PREL cmdWAIT
     .endrepeat
 
-    REL cmdSUSTAIN  ; 11 001 000 = SUSTAIN
-    REL cmdVALUE1   ; 11 001 001 = VALUE1
-    REL cmdVALUE2   ; 11 001 010 = VALUE/2
-    REL cmdVALUE4   ; 11 001 011 = VALUE/4
-    REL cmdVALUE8   ; 11 001 100 = VALUE/8
-    REL cmdVALUE16  ; 11 001 101 = VALUE/16
-    REL cmdVALUE32  ; 11 001 110 = VALUE/32
-    REL cmdLEGATO   ; 11 001 111 = LEGATO
+    PREL cmdSUSTAIN  ; 11 001 000 = SUSTAIN
+    PREL cmdVALUE1   ; 11 001 001 = VALUE1
+    PREL cmdVALUE2   ; 11 001 010 = VALUE/2
+    PREL cmdVALUE4   ; 11 001 011 = VALUE/4
+    PREL cmdVALUE8   ; 11 001 100 = VALUE/8
+    PREL cmdVALUE16  ; 11 001 101 = VALUE/16
+    PREL cmdVALUE32  ; 11 001 110 = VALUE/32
+    PREL cmdLEGATO   ; 11 001 111 = LEGATO
 
     ; 11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)
     .repeat 8
-        REL cmdCALL_LOCAL
+        PREL cmdCALL_LOCAL
     .endrepeat
 
-    REL cmdSELECT_A    ; 11 011 000 = CHANNEL A - select
-    REL cmdSELECT_B    ; 11 011 001 = CHANNEL B - select
-    REL cmdSELECT_C    ; 11 011 010 = CHANNEL C - select
-    REL cmdSELECT_N    ; 11 011 011 = NOISE N - select
-    REL cmdEXTENDED    ; 11 011 100 = EXTENDED command
-    REL cmdYIELD       ; 11 011 101 = YIELD (almost same as WAIT 0?)
-    REL cmdQUIET       ; 11 011 110 = QUIET (all)
-    REL cmdKILL        ; 11 011 111 = KILL  (all)
+    PREL cmdSELECT_A    ; 11 011 000 = CHANNEL A - select
+    PREL cmdSELECT_B    ; 11 011 001 = CHANNEL B - select
+    PREL cmdSELECT_C    ; 11 011 010 = CHANNEL C - select
+    PREL cmdSELECT_N    ; 11 011 011 = NOISE N - select
+    PREL cmdEXTENDED    ; 11 011 100 = EXTENDED command
+    PREL cmdYIELD       ; 11 011 101 = YIELD (almost same as WAIT 0?)
+    PREL cmdQUIET       ; 11 011 110 = QUIET (all)
+    PREL cmdKILL        ; 11 011 111 = KILL  (all)
+
+
+;;; Commands that take PARAMTER(s)
 
     ; 11 10 rrrr|BYTE = SETAY AY[rrrr]= BYTE (2 B)
     .repeat 14

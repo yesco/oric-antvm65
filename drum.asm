@@ -7,6 +7,8 @@
 ;;; Y=7 : DRUM TS (Open Hat / 'S/Z')      - High-noise, slow decay
 ;;; ================================================================
 
+;;; TODO: a common init???
+
         pha             ; Save Variation A (The "Mouth" shape)
         
         lda #$10        ; Use Hardware Envelope
