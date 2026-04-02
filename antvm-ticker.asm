@@ -248,6 +248,12 @@ tickCHAN:
 .ifdef ANTTRACE
         NL
 
+;;; TODO: how do we know that we should be doing
+;;;   an "imlicit" REST == SILENCE+DELAY rest (ticks)
+
+;;; IDEA: store an imlicit "command" byte
+;;;   if !=00 tells us "what to do"!
+
         ;; For now: print all AY regs
         putc 9
         putc 9

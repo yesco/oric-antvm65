@@ -85,7 +85,14 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
 11 000 ppp = WAIT.music:  VALUE>>(ppp-1): 1 /2 /4 /8 /16 /32
 
-11 001 iii = VALUE: SUSTAIN 1 /2 /4 /8 /16 /32 /64 LEGATO
+11 001 000 = SUSTAIN
+11 001 001 = VALUE1
+11 001 010 = VALUE/2
+11 001 011 = VALUE/4
+11 001 100 = VALUE/8
+11 001 101 = VALUE/16
+11 001 110 = VALUE/32
+11 001 111 = LEGATO
 
 11 010 pnm = CALL pnm (0-7 => local 1-8)
 
@@ -102,14 +109,17 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
 **with parameter(s):**
 
-11 10 rrrr|BYTE.. = SETAY / AYPDATE / DUMPAY (rrrr: 14 regs)
-11 100 lng|PNM    =                -  ''   -
-11 101 lng|PNM    =                -  ''   -
+11 10 rrrr|BYTE    = SETAY
+11 10 rrrr|MASK|...= AYPDATE
+11 10 rrrr|.{14 B}.= DUMPAY (14 regs)
 
 11 110 lng|PNM  = CALL.lng PNM
 
 
-11 111 0dd|BYTE     = DRUM kick/snare/hihat(closed)/(open) s/sh/ch/ts
+11 111 000|BYTE     = DRUM kick "s"
+11 111 0011BYTE     = DRUM snare "sh"
+11 111 010|BYTE     = DRUM hihat(closed) "ch"
+11 111 0d11BYTE     = DRUM hihat(open) "ts"
 
 11 111 100|CTRL|... = EXTENDED commands
 11 111 101|PAR|BYTE = PARAM BYTE "param"

@@ -626,6 +626,9 @@ cmdNOTE:
         and #%1111
         sta ayshadow,Y
 
+;;; TODO: who restarts the envelope of this channel?
+;;;   vol on, (and later vol off after delay if no deltas)
+
         rts                 ; 6
 
 
