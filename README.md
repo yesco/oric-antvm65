@@ -94,24 +94,24 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 11 001 110 = VALUE/32
 11 001 111 = LEGATO
 
-11 010 pnm = CALL pnm (0-7 => local 1-8)
+11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)
 
 11 011 000 = CHANNEL A - select
 11 011 001 = CHANNEL B - select
 11 011 010 = CHANNEL C - select
 11 011 011 = NOISE N - select
 
-11 011 100|... = EXTENDED command
-11 011 101     = YIELD (almost same as WAIT 1?)
-11 011 110     = ? QUIET (all) (not common - make extended?)
-11 011 111     = ? KILL ALL (not common - make extended?)
+11 011 100|CTRL = EXTENDED command
+11 011 101      = YIELD (almost same as WAIT 0?)
+11 011 110      = QUIET (mute: all)
+11 011 111      = KILL  (all)
 
 
 **with parameter(s):**
 
-11 10 rrrr|BYTE    = SETAY
-11 10 rrrr|MASK|...= AYPDATE
-11 10 rrrr|.{14 B}.= DUMPAY (14 regs)
+11 10 rrrr|BYTE    = SETAY AY[rrrr]= BYTE (2 B)
+11 10 1110|MASK|...= AYPDATE              (3-13 B)
+11 10 1111|.{14 B}.= DUMPAY (14 regs)
 
 11 110 lng|PNM  = CALL.lng PNM
 
