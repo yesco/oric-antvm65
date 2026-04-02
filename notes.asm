@@ -335,18 +335,19 @@ interpret:
         lsr                 ; 1B | %011PCCII
         lsr                 ; 1B | %0011PCCI
         and #%00111110      ; 2B | Mask for Note*2 or CmdBits*2
-        tax                 ; 1B | X = index
 
-        cpx #%00110000      ; 2B | Check if Note index >= 48
+        cmp #%00110000      ; 2B | Check if Note index >= 48
         bcs command         ; 2B | If lower, it's a Note
         jmp cmdNOTE
 command:
+
 
 .ifdef ANTTRACE
 ;;; TODO messed up Y...
         ;; print CMD char
         SAVEAXY
 
+;;; TODO: fix using A?
         asl
         asl
         sty savey
@@ -391,7 +392,94 @@ no_param:
 dispatch_br:
         bcs *               ; Jumps directly to cmd via SMC offset
 
-                                ; --- Data Tables ---
+.macro YIELD
+        rts
+.endmacro
+
+;;; --- Command Handlers ---
+cmdSTOP:          ; 11 000 000
+        ;; TODO: ...
+        YIELD
+cmdWAIT:          ; 11 000 www / 11 000 ppp
+        YIELD
+
+cmdSUSTAIN:       ; 11 001 000
+        jmp interpret
+
+cmdVALUE1:        ; 11 001 001
+cmdVALUE2:        ; 11 001 010
+cmdVALUE4:        ; 11 001 011
+cmdVALUE8:        ; 11 001 100
+cmdVALUE16:       ; 11 001 101
+cmdVALUE32:       ; 11 001 110
+        jmp interpret
+
+cmdLEGATO:        ; 11 001 111
+        jmp interpret
+
+cmdCALL_LOCAL:    ; 11 010 pnm
+        jmp interpret
+
+cmdSELECT_A:      ; 11 011 000
+cmdSELECT_B:      ; 11 011 001
+cmdSELECT_C:      ; 11 011 010
+cmdSELECT_N:      ; 11 011 011
+        jmp interpret
+
+cmdEXTENDED_LO:   ; 11 011 100
+        jmp interpret
+
+cmdYIELD:         ; 11 011 101
+        YIELD
+
+cmdQUIET:         ; 11 011 110
+        jmp interpret
+
+cmdKILL:          ; 11 011 111
+        jmp interpret
+
+
+cmdSETAY:         ; 11 10 rrrr
+        jmp interpret
+
+cmdAYPDATE:       ; 11 10 1110
+        jmp interpret
+
+cmdDUMPAY:        ; 11 10 1111
+        jmp interpret
+
+
+cmdCALL_LNG:      ; 11 110 lng
+        jmp interpret
+
+
+cmdDRUM_KICK:     ; 11 111 000
+        jmp interpret
+
+cmdDRUM_SNARE:    ; 11 111 001
+        jmp interpret
+
+cmdDRUM_HH_CLS:   ; 11 111 010
+        jmp interpret
+
+cmdDRUM_HH_OPN:   ; 11 111 011
+        jmp interpret
+
+
+cmdEXTENDED_HI:   ; 11 111 100
+        jmp interpret
+
+cmdPARAM_BYTE:    ; 11 111 101
+        jmp interpret
+
+cmdPARAM_WORD:    ; 11 111 110
+        jmp interpret
+
+cmdRETURN:        ; 11 111 111
+        ;; TODO: ..
+        jmp interpret
+
+
 
 ;;; --- no parameters
 
@@ -548,6 +636,9 @@ cmdDRUMEXTEND:
 ;;; 55B tight dual-table shifter
 ;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
+        lsr
+        lsr
+        tax                 ; 1B | X = index
 
 .ifdef ANTTRACE
         SAVEAXY
@@ -576,9 +667,11 @@ cmdNOTE:
         LOADAXY
 .endif ; ANTTRACE
 
+        ;; ? can use 8-bit LUT: oct 0..3
         cpy #4              ; 2
         bcs @high_oct       ; 2/3 | Branch to 8-bit logic
         
+        ;; use 16-bit LUT: oct 4..7
         lda period_table+1, x ; 4
         sta tmp_high          ; 3
         lda period_table, x   ; 4
@@ -594,6 +687,7 @@ cmdNOTE:
         ldx tmp_high        ; 3
         jmp @pitch_done      ; 3
 
+        ;; use 8-bit LUT: oct 4..7
 @high_oct:
         lsr                 ; 2 | A = nnnnn (Index)
         tax                 ; 2
@@ -634,3 +728,67 @@ cmdNOTE:
 
 .endif ; BITSHIFT = !SUPERFAST
 
+
+
+;;; --- Relative Dispatch Table (Base $C0) ---
+
+.macro REL target
+    .byte target - DispatchBase + 2
+.endmacro
+
+
+CommandTable:
+DispatchBase = dispathc_br
+
+    REL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
+
+    ; 11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
+    ; 11 000 ppp = WAIT.music:  VALUE>>(ppp-1): 1 /2 /4 /8 /16 /32
+    .repeat 7
+        REL cmdWAIT
+    .endrepeat
+
+    REL cmdSUSTAIN  ; 11 001 000 = SUSTAIN
+    REL cmdVALUE1   ; 11 001 001 = VALUE1
+    REL cmdVALUE2   ; 11 001 010 = VALUE/2
+    REL cmdVALUE4   ; 11 001 011 = VALUE/4
+    REL cmdVALUE8   ; 11 001 100 = VALUE/8
+    REL cmdVALUE16  ; 11 001 101 = VALUE/16
+    REL cmdVALUE32  ; 11 001 110 = VALUE/32
+    REL cmdLEGATO   ; 11 001 111 = LEGATO
+
+    ; 11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)
+    .repeat 8
+        REL cmdCALL_LOCAL
+    .endrepeat
+
+    REL cmdSELECT_A    ; 11 011 000 = CHANNEL A - select
+    REL cmdSELECT_B    ; 11 011 001 = CHANNEL B - select
+    REL cmdSELECT_C    ; 11 011 010 = CHANNEL C - select
+    REL cmdSELECT_N    ; 11 011 011 = NOISE N - select
+    REL cmdEXTENDED    ; 11 011 100 = EXTENDED command
+    REL cmdYIELD       ; 11 011 101 = YIELD (almost same as WAIT 0?)
+    REL cmdQUIET       ; 11 011 110 = QUIET (all)
+    REL cmdKILL        ; 11 011 111 = KILL  (all)
+
+    ; 11 10 rrrr|BYTE = SETAY AY[rrrr]= BYTE (2 B)
+    .repeat 14
+        REL cmdSETAY
+    .endrepeat
+    REL cmdAYPDATE    ; 11 10 1110|MASK|...= AYPDATE (3-13 B)
+    REL cmdDUMPAY    ; 11 10 1111|.{14 B}.= DUMPAY (14 regs)
+
+    ; 11 110 lng|PNM = CALL.lng PNM
+    .repeat 8
+        REL cmdCALL_LNG
+    .endrepeat
+
+    REL cmdDRUM_KICK    ; 11 111 000|BYTE = DRUM kick "s"
+    REL cmdDRUM_SNARE   ; 11 111 001|BYTE = DRUM snare "sh"
+    REL cmdDRUM_HH_CLS  ; 11 111 010|BYTE = DRUM hihat(closed) "ch"
+    REL cmdDRUM_HH_OPN  ; 11 111 011|BYTE = DRUM hihat(open) "ts"
+
+    REL cmdEXTENDED_PAR ; 11 111 100|CTRL|... = EXTENDED commands
+    REL cmdPARAM_BYTE   ; 11 111 101|PAR|BYTE = PARAM BYTE "param"
+    REL cmdPARAM_WORD   ; 11 111 110|PAR|WORD = PARAM WORD "param"
+    REL cmdRETURN       ; 11 111 111 = RETURN ($ff - as "expected")
