@@ -420,7 +420,6 @@ cmdSTOP:          ; 11 000 000
 cmdSUSTAIN:       ; 11 001 000
         jmp interpret
 
-
 cmdVALUE1:        ; 11 001 001
 cmdVALUE2:        ; 11 001 010
 cmdVALUE4:        ; 11 001 011
@@ -432,14 +431,17 @@ cmdVALUE32:       ; 11 001 110
 cmdLEGATO:        ; 11 001 111
         jmp interpret
 
+
 cmdCALL_LOCAL:    ; 11 010 pnm
         jmp interpret
+
 
 cmdSELECT_A:      ; 11 011 000
 cmdSELECT_B:      ; 11 011 001
 cmdSELECT_C:      ; 11 011 010
 cmdSELECT_N:      ; 11 011 011
         jmp interpret
+
 
 cmdEXTENDED:      ; 11 011 100
         jmp interpret
