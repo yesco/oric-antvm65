@@ -332,11 +332,7 @@ interpret:
         tay                 ; 1B | Y = III
 
         txa                 ; 1B
-        lsr                 ; 1B | %011PCCII
-        lsr                 ; 1B | %0011PCCI
-        and #%00111110      ; 2B | Mask for Note*2 or CmdBits*2
-
-        cmp #%00110000      ; 2B | Check if Note index >= 48
+        cmp #%11000000      ; 2B | Check if Note index >= 
         bcs command         ; 2B | If lower, it's a Note
         jmp cmdNOTE
 command:
@@ -366,12 +362,14 @@ command:
 .endif ; ANTTRACE
 
 ;;; 23 B  26c
-        eor #48             ; A = 0000PCC0
-        lsr                 ; A = 00000PCC (0-7)
+        and #%0011 1111
         tax
+
         cmp #4              ; Carry set if P=1
-        lda offset_table, x
+        lda command_table, x
         sta dispatch_br+1
+
+        ;; ? get paramter
         bcc no_param
 
         sty savey
@@ -387,16 +385,23 @@ command:
         jsr put2h
 .endif ; ANTTRACE
 
+
 no_param:
+
         sec
 dispatch_br:
         bcs *               ; Jumps directly to cmd via SMC offset
+
+
+
+;;; --- Command Handlers ---
 
 .macro YIELD
         rts
 .endmacro
 
-;;; --- Command Handlers ---
+
+
 cmdSTOP:          ; 11 000 000
         ;; TODO: ...
         YIELD
@@ -636,9 +641,9 @@ cmdDRUMEXTEND:
 ;;; 55B tight dual-table shifter
 ;;; 51B tightest opt (X=High, A=Low, No re-loads)
 cmdNOTE:
-        lsr
-        lsr
-        tax                 ; 1B | X = index
+        lsr                 ; 1B | %0 nnnnn 00
+        lsr                 ; 1B | %00 nnnnn 0
+        and #%00111110      ; 2B | Mask for Note*2
 
 .ifdef ANTTRACE
         SAVEAXY
@@ -672,6 +677,7 @@ cmdNOTE:
         bcs @high_oct       ; 2/3 | Branch to 8-bit logic
         
         ;; use 16-bit LUT: oct 4..7
+        tax
         lda period_table+1, x ; 4
         sta tmp_high          ; 3
         lda period_table, x   ; 4
@@ -702,6 +708,7 @@ cmdNOTE:
 @high_done:
         ldx #0              ; 2
 
+
 ;;; TODO: revsiit w pitch envelope
 @pitch_done:
         clc                 ; 2
@@ -723,8 +730,7 @@ cmdNOTE:
 ;;; TODO: who restarts the envelope of this channel?
 ;;;   vol on, (and later vol off after delay if no deltas)
 
-        rts                 ; 6
-
+        YIELD
 
 .endif ; BITSHIFT = !SUPERFAST
 
@@ -737,7 +743,7 @@ cmdNOTE:
 .endmacro
 
 
-CommandTable:
+command_table:
 DispatchBase = dispathc_br
 
     REL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
