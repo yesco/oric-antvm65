@@ -4,7 +4,8 @@
 *_[0-9]*.*
 *~
 \#*\#
-
+*.sim
+*.x
 
 # Prerequisites
 *.d

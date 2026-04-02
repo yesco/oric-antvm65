@@ -231,14 +231,22 @@ offset_table:
         ;; Single letter MNEMOIC
         ;;     12345678
 cmd_char:       
+        ;; Stop Wait...
         .byte "SWWWWWWW"
+        ;; sustain whole half quarter eight 16th 32th legato
         .byte "swhqestl"
+        ;; CALL local.num
         .byte "01234567"
+        ;; CHANNEL A; B; C; Noise; ex)tenedd Yield Quiet Kill
         .byte "ABCNxYQK"
 
+        ;; SETAY: A.lo/hi B.lo/hi C.lo/hi noise mixer
         .byte "aabbccnm"
+        ;; SETAY: vol x 3; ENV: pitch env (AY)Update DumpAY
         .byte "vvvppeUD"
+        ;; CALL.lang(0-7( phonem (0-255)
         .byte "language"
+        ;; kick, snare, close/opne (hihat), Byte Word Return
         .byte "kscoXBWR"
 
 
@@ -344,15 +352,14 @@ command:
         SAVEAXY
 
 ;;; TODO: fix using A?
-        asl
-        asl
-        sty savey
-        ora savey
+        ;; show one letter command 'name'
         and #%111111
         tay
         lda cmd_char,Y
         jsr putchar
         lda savey
+
+        ;; show 3 low parameter bits (as digit)
         clc
         adc #'0'
         jsr putdigit
@@ -362,7 +369,7 @@ command:
 .endif ; ANTTRACE
 
 ;;; 23 B  26c
-        and #%0011 1111
+        and #%00111111
         tax
 
         cmp #4              ; Carry set if P=1
@@ -405,11 +412,14 @@ dispatch_br:
 cmdSTOP:          ; 11 000 000
         ;; TODO: ...
         YIELD
-cmdWAIT:          ; 11 000 www / 11 000 ppp
-        YIELD
+
+;;; Defined elsewhere
+;cmdWAIT:          ; 11 000 www / 11 000 ppp
+;        YIELD
 
 cmdSUSTAIN:       ; 11 001 000
         jmp interpret
+
 
 cmdVALUE1:        ; 11 001 001
 cmdVALUE2:        ; 11 001 010
@@ -431,7 +441,7 @@ cmdSELECT_C:      ; 11 011 010
 cmdSELECT_N:      ; 11 011 011
         jmp interpret
 
-cmdEXTENDED_LO:   ; 11 011 100
+cmdEXTENDED:      ; 11 011 100
         jmp interpret
 
 cmdYIELD:         ; 11 011 101
@@ -444,8 +454,9 @@ cmdKILL:          ; 11 011 111
         jmp interpret
 
 
-cmdSETAY:         ; 11 10 rrrr
-        jmp interpret
+;;; Defined elsewhere
+;cmdSETAY:         ; 11 10 rrrr
+;        jmp interpret
 
 cmdAYPDATE:       ; 11 10 1110
         jmp interpret
@@ -471,7 +482,7 @@ cmdDRUM_HH_OPN:   ; 11 111 011
         jmp interpret
 
 
-cmdEXTENDED_HI:   ; 11 111 100
+cmdEXTENDED_PAR:  ; 11 111 100
         jmp interpret
 
 cmdPARAM_BYTE:    ; 11 111 101
@@ -643,7 +654,7 @@ cmdDRUMEXTEND:
 cmdNOTE:
         lsr                 ; 1B | %0 nnnnn 00
         lsr                 ; 1B | %00 nnnnn 0
-        and #%00111110      ; 2B | Mask for Note*2
+        and #%111111
 
 .ifdef ANTTRACE
         SAVEAXY
@@ -744,7 +755,7 @@ cmdNOTE:
 
 
 command_table:
-DispatchBase = dispathc_br
+DispatchBase = dispatch_br
 
     REL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
 
