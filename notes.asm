@@ -40,6 +40,8 @@
 
 .zeropage
 
+channels:       .res 1
+
 ticks:          .res 2
 
 ;;; IP for interpration
@@ -248,6 +250,10 @@ note_char2:
 
 .endif ; ANTTRACE
 
+
+pow2:   
+        .byte 1,2,4,8,16,32,64,128
+
 ;;; 48 bytes (Octave 0-3 base)
 WORDTABLE=1
 
@@ -398,7 +404,12 @@ dispatch_br:
 
 
 cmdSTOP:          ; 11 000 000
-        ;; TODO: ...
+        ;; TODO: ... set high delay?
+        lda processmap
+        ;; TODO: use "x" (hannel number)
+        and #%01111111
+        sta processmap
+
         YIELD
 
 ;;; Defined elsewhere
@@ -508,23 +519,50 @@ cmdSELECT_A:      ; 11 011 000
 cmdSELECT_B:      ; 11 011 001
 cmdSELECT_C:      ; 11 011 010
 cmdSELECT_N:      ; 11 011 011
+        ldx #0
+        stx channels
+        tya
+@gotone:
+        ;; set bit n
+        tay
+        lda pow2,Y
+        ora channels
+        sta channels
+        ;; check next cmd
+        ldy ipy
+        lda (stream),Y
+        ;; ? not SELECT -> done
+        and #%11111000
+        eor #%11011000
+        beq @gotone
+
         jmp interpret
 
 
-cmdEXTENDED:      ; 11 011 100
+
+cmdEXTENDED:      ; 11 011 100|CTRL
+        ;; Extended commands (no paarmeters
         jmp interpret
 
 cmdYIELD:         ; 11 011 101
+        ;; Yield does RTS finishing this interpreation round
         YIELD
 
 cmdQUIET:         ; 11 011 110
+        lda #0
+        sta ayshadow+8+0
+        sta ayshadow+8+1
+        sta ayshadow+8+2
+
         jmp interpret
 
 cmdKILL:          ; 11 011 111
+;;; TODO: kill all
         jmp interpret
 
 
-;;; Defined elsewhere
+
+
 cmdSETAY:         ; 11 10 rrrr
         jmp interpret
 
@@ -535,8 +573,13 @@ cmdDUMPAY:        ; 11 10 1111
         jmp interpret
 
 
+
+
+
 cmdCALL_LNG:      ; 11 110 lng
         jmp interpret
+
+
 
 
 cmdDRUM_KICK:     ; 11 111 000
@@ -552,14 +595,46 @@ cmdDRUM_HH_OPN:   ; 11 111 011
         jmp interpret
 
 
-cmdEXTENDED_PAR:  ; 11 111 100
+
+cmdEXTENDED_PAR:  ; 11 111 100|CTRL|BYTE|...
         jmp interpret
 
+
 cmdPARAM_BYTE:    ; 11 111 101
+        tax
+
+        ;; lo
+        ldy ipy
+        lda (stream),Y
+        inc ipy
+        
+        sta antvmBLOCK,X
+
         jmp interpret
 
 cmdPARAM_WORD:    ; 11 111 110
+        ;; A= paramoffset (0-254)
+        tax
+
+        ;; lo
+        ldy ipy
+        lda (stream),Y
+        inc ipy
+
+        sta antvmBLOCK,X
+
+        ;;  hi
+        inx
+
+        ldy ipy
+        lda (stream),Y
+        inc ipy
+
+        sta antvmBLOCK,X
+
         jmp interpret
+
+
 
 cmdRETURN:        ; 11 111 111
         ;; TODO: ..

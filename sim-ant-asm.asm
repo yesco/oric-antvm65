@@ -167,10 +167,15 @@ _main:
         putc '.'
         NL
 
+init:   
         LDAXD phonem
         STAX stream
+
         ldy #0
         sty ipy
+
+        ldy #1
+        sty channels
 
         ;; processmap: A000 0000
         lda #%10000000
