@@ -215,18 +215,6 @@ cmdwait:
 
 .data
 
-offset_table:
-        ;; no parameters
-        .byte cmdWAIT-dispatch_br-2
-        .byte cmdVALUE-dispatch_br-2
-        .byte cmdCALLpnm-dispatch_br-2
-        .byte cmdCHANNEL-dispatch_br-2
-        ;; with parameter(s)
-        .byte cmdSETAY-dispatch_br-2
-        .byte cmdSETAY-dispatch_br-2
-        .byte cmdCALLlang-dispatch_br-2
-        .byte cmdDRUMEXTEND-dispatch_br-2
-
 .ifdef ANTTRACE
         ;; Single letter MNEMOIC
         ;;     12345678
@@ -301,7 +289,7 @@ oct4_table:
 
 interpret:
 ;;; 20 B  33c
-:       
+
 
 .ifdef ANTTRACE
         NL
@@ -414,99 +402,12 @@ cmdSTOP:          ; 11 000 000
         YIELD
 
 ;;; Defined elsewhere
-;cmdWAIT:          ; 11 000 www / 11 000 ppp
-;        YIELD
-
-cmdSUSTAIN:       ; 11 001 000
-        jmp interpret
-
-cmdVALUE1:        ; 11 001 001
-cmdVALUE2:        ; 11 001 010
-cmdVALUE4:        ; 11 001 011
-cmdVALUE8:        ; 11 001 100
-cmdVALUE16:       ; 11 001 101
-cmdVALUE32:       ; 11 001 110
-        jmp interpret
-
-cmdLEGATO:        ; 11 001 111
-        jmp interpret
-
-
-cmdCALL_LOCAL:    ; 11 010 pnm
-        jmp interpret
-
-
-cmdSELECT_A:      ; 11 011 000
-cmdSELECT_B:      ; 11 011 001
-cmdSELECT_C:      ; 11 011 010
-cmdSELECT_N:      ; 11 011 011
-        jmp interpret
-
-
-cmdEXTENDED:      ; 11 011 100
-        jmp interpret
-
-cmdYIELD:         ; 11 011 101
-        YIELD
-
-cmdQUIET:         ; 11 011 110
-        jmp interpret
-
-cmdKILL:          ; 11 011 111
-        jmp interpret
-
-
-;;; Defined elsewhere
-;cmdSETAY:         ; 11 10 rrrr
-;        jmp interpret
-
-cmdAYPDATE:       ; 11 10 1110
-        jmp interpret
-
-cmdDUMPAY:        ; 11 10 1111
-        jmp interpret
-
-
-cmdCALL_LNG:      ; 11 110 lng
-        jmp interpret
-
-
-cmdDRUM_KICK:     ; 11 111 000
-        jmp interpret
-
-cmdDRUM_SNARE:    ; 11 111 001
-        jmp interpret
-
-cmdDRUM_HH_CLS:   ; 11 111 010
-        jmp interpret
-
-cmdDRUM_HH_OPN:   ; 11 111 011
-        jmp interpret
-
-
-cmdEXTENDED_PAR:  ; 11 111 100
-        jmp interpret
-
-cmdPARAM_BYTE:    ; 11 111 101
-        jmp interpret
-
-cmdPARAM_WORD:    ; 11 111 110
-        jmp interpret
-
-cmdRETURN:        ; 11 111 111
-        ;; TODO: ..
-        jmp interpret
-
-
-
-;;; --- no parameters
-
-cmdWAIT:        
+cmdWAIT:          ; 11 000 www / 11 000 ppp
         ;; Y=value parameter
 
         ;; TODO: speech mode?
 
-        ;; TODO: share with cmdVALUE?
+        ;; TODO: share code with cmdVALUE?
         ;; (- (* 2 8) (+ 8 1 (* 2 3)))
         ;; (would save 1 byte if used only 2 places)
         lda #WHOLETICKS
@@ -521,25 +422,29 @@ cmdWAIT:
 :       
         sta delayA
         
-        ;; YIELD
-        rts
+        YIELD
 
-cmdVALUE:       
-        ;; Y=value parameter
 
-        ;; ? no ticker sustaain / legato
-        cpy #0
-        beq :+
-        cpy #7
-        bne :++
-:       
-
-        ;; = legato
+cmdSUSTAIN:       ; 11 001 000
+;;; TODO: = sustain
+        ;; don't turn off
+        ;; (do envenlopes restart)
+cmdLEGATO:        ; 11 001 111
+;;; DISABLE restart envelope
         ;; disable channel A ticker
         and #%01111111
-        jmp andprocessmap
-:       
+andprocessmap:
+        and processmap
+        jmp storeprocessmap
 
+
+cmdVALUE1:        ; 11 001 001  whole
+cmdVALUE2:        ; 11 001 010  half
+cmdVALUE4:        ; 11 001 011  quarter
+cmdVALUE8:        ; 11 001 100  eigth
+cmdVALUE16:       ; 11 001 101  sixteenth
+cmdVALUE32:       ; 11 001 110  thirtysecond
+cmdVALUE:       
         lda #WHOLETICKS
         ;; TODO for all seleted channels
 :       
@@ -593,53 +498,76 @@ storeprocessmap:
         sta processmap
         jmp interpret
 
-andprocessmap:
-        and processmap
-        jmp storeprocessmap
 
-cmdCALLpnm:     
-        ;; ...
-        jmp interpret
 
-cmdCHANNEL:
-        ;; ...
+cmdCALL_LOCAL:    ; 11 010 pnm
         jmp interpret
 
 
-
-
-;;; --- with parameter(s)
-
-;;; (2 entries point here)
-cmdSETAY:       
-        ;; ...
+cmdSELECT_A:      ; 11 011 000
+cmdSELECT_B:      ; 11 011 001
+cmdSELECT_C:      ; 11 011 010
+cmdSELECT_N:      ; 11 011 011
         jmp interpret
 
-cmdCALLlang:    
-        ;; ...
+
+cmdEXTENDED:      ; 11 011 100
         jmp interpret
 
-cmdDRUMEXTEND:
-        cpx #%111
-        bne :+
-        ;; RETURN
+cmdYIELD:         ; 11 011 101
+        YIELD
 
-;;; TODO: pop if have left or make zero/disable
-        lda #0
-        sta stream+1
-
-        ;; YIELD 
-        ;; -- LOL?
-;        pla
-;        pla
-
-        rts
-:       
-        
-        
-
-        ;; ...
+cmdQUIET:         ; 11 011 110
         jmp interpret
+
+cmdKILL:          ; 11 011 111
+        jmp interpret
+
+
+;;; Defined elsewhere
+cmdSETAY:         ; 11 10 rrrr
+        jmp interpret
+
+cmdAYPDATE:       ; 11 10 1110
+        jmp interpret
+
+cmdDUMPAY:        ; 11 10 1111
+        jmp interpret
+
+
+cmdCALL_LNG:      ; 11 110 lng
+        jmp interpret
+
+
+cmdDRUM_KICK:     ; 11 111 000
+        jmp interpret
+
+cmdDRUM_SNARE:    ; 11 111 001
+        jmp interpret
+
+cmdDRUM_HH_CLS:   ; 11 111 010
+        jmp interpret
+
+cmdDRUM_HH_OPN:   ; 11 111 011
+        jmp interpret
+
+
+cmdEXTENDED_PAR:  ; 11 111 100
+        jmp interpret
+
+cmdPARAM_BYTE:    ; 11 111 101
+        jmp interpret
+
+cmdPARAM_WORD:    ; 11 111 110
+        jmp interpret
+
+cmdRETURN:        ; 11 111 111
+        ;; TODO: ..
+        jmp interpret
+
+
+
+
 
 
 ;;; Playing a NOTE command
