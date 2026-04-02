@@ -41,17 +41,22 @@
 .zeropage
 
 channels:       .res 1
-
 ticks:          .res 2
 
 ;;; IP for interpration
 ;;; TODO: ABCN
+language:       .res 2
 stream:         .res 2
 ipy:            .res 1
+
+antlang:        .res 1
+antsp:          .res 1
 
 tmp_high:       .res 1
 
 .data
+
+antstack:       .res 3*8*4      ; 3B * 8 levels * 4 ch
 
 detune:         .word 0
 
@@ -512,7 +517,11 @@ storeprocessmap:
 
 
 cmdCALL_LOCAL:    ; 11 010 pnm
-        jmp interpret
+        tya       ; pnm
+        ldy #antlang
+
+        jmp cmdCALL_LNG
+        
 
 
 cmdSELECT_A:      ; 11 011 000
@@ -564,19 +573,75 @@ cmdKILL:          ; 11 011 111
 
 
 cmdSETAY:         ; 11 10 rrrr
+;;; TODO: setayr.asm
         jmp interpret
 
 cmdAYPDATE:       ; 11 10 1110
+;;; TODO: antvm-aypdate.asm
         jmp interpret
 
 cmdDUMPAY:        ; 11 10 1111
+;;; TODO: 
         jmp interpret
 
 
 
 
 
-cmdCALL_LNG:      ; 11 110 lng
+cmdCALL_LNG:      ; 11 110 lng|PHONEM
+        ;; A= PHONEM Y= lng
+        pha
+
+        ;; Push old
+        ldx antsp
+        lda antlang
+        sta antstack,X
+
+        ;; stream += ipy
+        clc
+        lda ipy
+        adc stream
+        sta stream
+        lda #0
+        adc stream+1
+        sta stream+1
+
+        ;; push current pos
+        inx
+        lda stream+1
+        sta antstack,X
+
+        inx
+        lda stream
+        sta antstack,X
+
+        stx antsp
+        
+        ;; set new
+        ;; (lng)
+        sty savey
+
+        ;; TODO: do something w lang vector
+        
+        pla
+        ;; skip 4 bytes header
+        iny
+        iny
+        bmi @overflowTODO
+@overflowTODO: ;; LOL TODO:
+        asl
+        tay
+
+        ;; get new stream addr from index pos Y (PHONEM)
+        lda (language),Y
+        sta stream
+        iny
+        lda (language),Y
+        sta stream+1
+
+        ldy #0
+        sty ipy
+
         jmp interpret
 
 
@@ -602,42 +667,41 @@ cmdEXTENDED_PAR:  ; 11 111 100|CTRL|BYTE|...
 
 cmdPARAM_BYTE:    ; 11 111 101
         tax
-
-        ;; lo
-        ldy ipy
-        lda (stream),Y
-        inc ipy
-        
-        sta antvmBLOCK,X
+        jsr antwryte
 
         jmp interpret
 
 cmdPARAM_WORD:    ; 11 111 110
         ;; A= paramoffset (0-254)
         tax
-
         ;; lo
-        ldy ipy
-        lda (stream),Y
-        inc ipy
-
-        sta antvmBLOCK,X
-
-        ;;  hi
+        jsr antwryte
+        ;; lo
         inx
-
-        ldy ipy
-        lda (stream),Y
-        inc ipy
-
-        sta antvmBLOCK,X
+        jsr antwryte
 
         jmp interpret
 
 
 
 cmdRETURN:        ; 11 111 111
-        ;; TODO: ..
+        ;; Restore
+        ldx antsp
+        dex
+        lda antstack,X
+        sta stream
+
+        dex
+        lda antstack,X
+        sta stream+1
+
+        dex
+        sta antstack,X
+        sta antlang
+        
+
+        stx antsp
+
         jmp interpret
 
 
@@ -749,6 +813,18 @@ cmdNOTE:
         YIELD
 
 .endif ; BITSHIFT = !SUPERFAST
+
+
+
+
+antwryte:
+        ;; lo
+        ldy ipy
+        lda (stream),Y
+        inc ipy
+        sta antvmBLOCK,X
+        rts
+
 
 
 

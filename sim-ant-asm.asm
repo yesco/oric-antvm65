@@ -223,7 +223,30 @@ halt2:
 
 
 langauge:       
+        ;; HEADER
+        .byte 0,1,2,3
+        .word phonem0
+        .word phonem1
+        .word phonem2
+        .word phonem3
+        .word phonem4
+        .word phonem5
+        .word phonem6
+        .word phonem7
+        .word phonem8
+phonem1:
+phonem2:
+phonem3:
+phonem4:        
+phonem5:
+phonem6:
+phonem7:
+phonem8:
+        ;; END
+        .byte $ff
+
 phonem: 
+phonem0: 
         .byte %00000100
         .byte %00001100
         .byte %00010100
