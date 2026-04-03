@@ -16,6 +16,7 @@ processmap:     .byte 0
 antvmBLOCKEnd:     
 
 ;;; value is length of note in ticks
+;;; 0 == no YIELD (sustain/legato) do manual WAIT for length
 ;;; (whole@120BPM =4  beats = 2.0s = 100 50Hz ticks
 WHOLETICKS=100
 
@@ -238,12 +239,43 @@ tickTGLISSADO:
 
 ;;; === Channel Effects (Generic)
 
+
 ;;; X= channel: 0-3: ABCN
+;;; (TODO: make it use it for selecting stack etc)
+;;;        (== selecting spaced offset of stack)
 tickCHAN:
-        ;; TODO: need to make interpreter 
-        ;;   use X to do task
-        jsr interpret
-        ;; comes back after cmd that YIELD
+        ;; are we "playing" (volA != 0)
+        lda ayshadow+8, X       ; relative volA
+        ; and #%1111            ; if using ENV (drum?)
+        beq @notedone
+
+        ;; PLAYING
+
+        ;; if valueA then need to invoke restA
+        lda valueA
+        beq nextTickBit
+
+        ;; do REST
+        lda restA
+        sta delayA
+        ;; volA = 0
+        lda #0
+        sta ayshadow+*,X
+
+
+@notedone:
+
+;;; TODO: restore antsp for task X!
+
+        ;; restore stream from task's X stack
+        ;; (calls directly into interpret!)
+        jsr cmdRETURN
+        ;; (returned from YIELD)
+
+        ;; we push stream on task's stack
+        ;; (TODO: YIELD could just be "jmp pushStream") ???
+        jsr pushStream
+
         
 .ifdef ANTTRACE
         NL

@@ -176,12 +176,8 @@ _main:
         NL
 
 init:   
-        LDAXD phonem
-        STAX stream
-
-        ldy #0
-        sty ipy
-
+       
+        ;; ????
         ldy #1
         sty channels
 
@@ -189,9 +185,6 @@ init:
         lda #%10000000
         ;lda #%11111111
         sta processmap
-
-        lda valueA             
-        sta delayA
 
         ;; print AY header for debuggin
         putc 9
@@ -211,6 +204,22 @@ init:
 :       
         NL
         
+        ;; INIT state
+
+        ldy #1
+        ;; needs to be 1 for not wait first tick!
+        sty delayA
+        dey
+
+        ;; Initialize stream
+        ;; Y=0
+        sty ipy
+        sty antsp
+
+        LDAXD phonem0
+        STAX stream
+
+        jsr pushStream
 
         ;; pretend to be 50Hz interrupt
 @loop:
@@ -253,7 +262,7 @@ phonem8:
         ;; END
         .byte $ff
 
-phonem: 
+        ;; MAIN
 phonem0: 
         .byte %00000100
         .byte %00001100
@@ -271,7 +280,14 @@ phonem0:
 
         .byte %00011100
         .byte %00100100
-        .byte %11000000
+
+;;; TODO: Crashes! (because does yield?)
+;        .byte %11000000
+
+;;; Loop writing :1:1:1:1:1:1:1 .... lol?
+        .byte %11000001
+        .byte %11000010
+
         .byte %00101100
         .byte %11000001
         .byte %00110100

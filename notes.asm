@@ -50,12 +50,16 @@ stream:         .res 2
 ipy:            .res 1
 
 antlang:        .res 1
-antsp:          .res 1
+antsp:          .res 1          ; next offset where to push
 
 tmp_high:       .res 1
 
+
+
 .data
 
+
+;;; TODO: "dish" out different offsets/task
 antstack:       .res 3*8*4      ; 3B * 8 levels * 4 ch
 
 detune:         .word 0
@@ -313,7 +317,11 @@ cmdSTOP:          ; 11 000 000
         and #%01111111
         sta processmap
 
+        ;; crashes???
+
         YIELD
+
+
 
 ;;; Defined elsewhere
 cmdWAIT:          ; 11 000 www / 11 000 ppp
@@ -352,12 +360,12 @@ andprocessmap:
         jmp storeprocessmap
 
 
-cmdVALUE1:        ; 11 001 001  whole
-cmdVALUE2:        ; 11 001 010  half
-cmdVALUE4:        ; 11 001 011  quarter
-cmdVALUE8:        ; 11 001 100  eigth
-cmdVALUE16:       ; 11 001 101  sixteenth
-cmdVALUE32:       ; 11 001 110  thirtysecond
+cmdVALUE1:        ; 11 001 001  w)hole
+cmdVALUE2:        ; 11 001 010  h)alf
+cmdVALUE4:        ; 11 001 011  q)uarter
+cmdVALUE8:        ; 11 001 100  e)igth
+cmdVALUE16:       ; 11 001 101  s)ixteenth
+cmdVALUE32:       ; 11 001 110  t)hirtysecond
 cmdVALUE:       
         lda #WHOLETICKS
         ;; TODO for all seleted channels
@@ -467,10 +475,14 @@ cmdKILL:          ; 11 011 111
 ;;; TODO: kill all
         jmp interpret
 
+;;; TODO: put common command here to save same,
+;;;   cmdNOTE? but it's so big...
 
+
+;;; ^^^^ no-aram subroutines BRA backwardx!
 
 interpret:
-;;; 20 B  33c
+;;; 20 B  27-29c (jump to cmdNOTE or "command")
 
 
 .ifdef ANTTRACE
@@ -486,6 +498,24 @@ interpret:
         jsr put2h
         putc ':'
 .endif ; ANTTRACE
+
+ CHECKIPY_OVERFLOW=1
+.ifdef CHECKIPY_OVERFLOW
+        ;; We check for overflow, this should only
+        ;; happen if we "run" too long in one "phonome"
+        ;; > 240 bytes without any YIELD!
+        ldy ipy
+        cmp #255-1-14 -5        ; biggest==cmdDUMPAY; 5 extra
+        bcc :+
+
+        ;; OVERFLOW near!
+        putc 'o'
+        putc 'o'
+        putc 'o'
+
+        jmp halt
+:       
+.endif ; CHECKIPY_OVERFLOW
 
         ldy ipy             ; 3B | Load stream index
         lda (stream),y      ; 5B | Get command byte
@@ -505,23 +535,27 @@ interpret:
         pla
 .endif ; ANTTRACE
 
-        tax                 ; 1B | X = raw byte
-        and #%00000111      ; 2B | Isolate III (Index or Octave)
-        tay                 ; 1B | Y = III
+        ;; Extract Y=iii from "11 ccc iii"
+        tax            
+        and #%00000111 
+        tay
 
-        txa                 ; 1B
+        ;; >= 11 xxx xxx => COMMAND! otherwise NOTE!
+        txa
         cmp #%11000000      ; 2B | Check if Note index >= 
-        bcs command         ; 2B | If lower, it's a Note
-        jmp cmdNOTE
-command:
 
+        bcs command         ; 2B | If =>, it's a command
+;;; TODO: maybe put note inline?
+        jmp cmdNOTE
+
+
+command:
 
 .ifdef ANTTRACE
 ;;; TODO messed up Y...
         ;; print CMD char
         SAVEAXY
 
-;;; TODO: fix using A?
         ;; show one letter command 'name'
         and #%111111
         tay
@@ -539,20 +573,23 @@ command:
 .endif ; ANTTRACE
 
 ;;; 23 B  26c
+        ;; extract low 6 bits for command
         and #%00111111
         tax
 
-        cmp #4              ; Carry set if P=1
+        ;; get dispatch offset
         lda command_table, x
         sta dispatch_br+1
 
-        ;; ? get paramter
+        ;; ? get paramter? (if X== 1cc xxx )
+        cpx #%100000
         bcc no_param
 
+        ;; A= parameter byte from stream
         sty savey
 
         ldy ipy
-        lda (stream),y      ; Fetch Parameter into A
+        lda (stream),y
         inc ipy
 
         ldy savey
@@ -562,12 +599,17 @@ command:
         jsr put2h
 .endif ; ANTTRACE
 
-
 no_param:
 
+        ;; Do relative BRANCH
         sec
 dispatch_br:
         bcs *               ; Jumps directly to cmd via SMC offset
+
+
+;;; vvv param subroutines BRA forwards!
+
+
 
 
 
@@ -593,32 +635,9 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
         ;; A= PHONEM Y= lng
         pha
 
-        ;; Push old
-        ldx antsp
-        lda antlang
-        sta antstack,X
-
-        ;; stream += ipy
-        clc
-        lda ipy
-        adc stream
-        sta stream
-        lda #0
-        adc stream+1
-        sta stream+1
-
-        ;; push current pos
-        inx
-        lda stream+1
-        sta antstack,X
-
-        inx
-        lda stream
-        sta antstack,X
-
-        stx antsp
+        jsr pushStream
         
-        ;; set new
+        ;; set new stream
         ;; (lng)
         sty savey
 
@@ -704,8 +723,11 @@ cmdRETURN:        ; 11 111 111
         sta antstack,X
         sta antlang
         
-
         stx antsp
+
+        ;; reset ipy
+        ldx #0
+        stx ipy
 
         jmp interpret
 
@@ -768,30 +790,32 @@ cmdNOTE:
         lda period_table, x   ; 4
         
         cpy #0              ; 2
-        beq @low_done       ; 2/3
-@low_loop:
+        beq :++
+:       
         lsr tmp_high        ; 5  | 16-bit shift loop (9c per iter)
         ror                 ; 2
         dey                 ; 2
-        bne @low_loop       ; 2/3
-@low_done:
+        bne :-
+:       
         ldx tmp_high        ; 3
         jmp @pitch_done      ; 3
+
 
         ;; use 8-bit LUT: oct 4..7
 @high_oct:
         lsr                 ; 2 | A = nnnnn (Index)
         tax                 ; 2
         lda oct4_table, x   ; 4
-@high_loop:
+:       
         cpy #4              ; 2 | 8-bit shift loop (6c per iter)
-        beq @high_done      ; 2/3
+        beq :+
         lsr                 ; 2
         dey                 ; 2
         ;; always
-        bne @high_loop      ; 2/3
-@high_done:
+        bne :-
+:       
         ldx #0              ; 2
+
 
 
 ;;; TODO: revsiit w pitch envelope
@@ -803,6 +827,7 @@ cmdNOTE:
 ;;;   this only works for ONE tone
 ;;;   do something more clever?
 ;;;   when entering here X should be 0-3:A-N
+
         ldy #0
         sta ayshadow,Y
 
@@ -812,22 +837,89 @@ cmdNOTE:
         and #%1111
         sta ayshadow,Y
 
-;;; TODO: who restarts the envelope of this channel?
-;;;   vol on, (and later vol off after delay if no deltas)
+        ;; If SUSTAIN/LEGATO return
+        ;; (value => interpret)
+        lda valueA
+        bne @hasvalue
+        ;; no yield
+        jmp interpret
+
+
+@hasvalue:       
+
+;;; starts a new envelope
+;;; A=value(A) 
+;;; X= TODO: channel 0..3: ABCN
+newenvelope:    
+
+
+        sta delayA
+
+        ;; volA
+        lda #VOLUME
+        sta ayshadow+8
+
+        ;; TODO: do min on all ?
+        ;;   possibly call with X
 
         YIELD
+
+
 
 .endif ; BITSHIFT = !SUPERFAST
 
 
 
 
+;;; antwryte: Writes a byte from stream
+;;;   X= param offset
+;;; 
+;;; returns: 
+;;;   A= value, X= offset, Y trashed
 antwryte:
         ;; lo
         ldy ipy
         lda (stream),Y
         inc ipy
         sta antvmBLOCK,X
+        rts
+
+
+;;; Pushes current interpreter state on task stack
+;;; 
+;;; Y is preserved, A X used
+;;; 
+;;; TODO: make it relative to stack of task!
+;;; (the value pushed is "noramlized" stream += ipy)
+
+pushStream:     
+;;; 33 B  54 c (+5c if inc; +3 ? write  ,x?)
+        ;; Push old
+        ldx antsp
+        lda antlang
+        sta antstack,X
+        inx
+
+        ;; stream += ipy
+        clc
+        lda ipy
+        adc stream
+        sta stream
+        bcc :+
+        inc stream+1
+:       
+
+        ;; push current stream value
+        lda stream+1
+        sta antstack,X
+        inx
+
+        lda stream
+        sta antstack,X
+        inx
+
+        stx antsp
+
         rts
 
 
