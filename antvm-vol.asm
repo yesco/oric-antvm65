@@ -32,15 +32,14 @@ ds_v_restart:
     lsr a
     lsr a
     sta ds_v_delay
-@rts:
     rts
 
 ; --- DS_V_TICK: 50Hz Volume heartbeat ---
 ds_v_tick:
     lda ds_v_delay
-    bmi @rts            ; Effect is OFF ($FF)
+    bmi @rts2           ; Effect is OFF ($FF)
     dec ds_v_delay
-    bpl @rts            ; Still waiting for delay
+    bpl @rts2           ; Still waiting for delay
 
 @do_v_bit:
     ; 1. Shift & Loop Mask
@@ -70,14 +69,15 @@ ds_v_tick:
 @save:
     sta ds_v_current
     ldy #8              ; AY Reg 8 (Ch A Volume)
-    jsr SETAYR
+    jsr setayr
 
     ; 4. Sequence Logic
     dec ds_v_count
-    bne @rts            
+    bne @rts2
 
     lda ds_v_config
     bpl ds_v_restart    ; Repeat if not One-Shot
     
     sta ds_v_delay      ; Kill ($FF)
+@rts2:
     rts

@@ -1,22 +1,30 @@
-;;; a simulated antvm run
+x;;; a simulated antvm run
 
 ; was: Minimal BRK Handler for ca65
 ;;; see Play/brk.asm
 
-;;;    5c   92 B - putc stuff 
-;;; z04d1 1233 B ANTTRACE ==> (- 1233 92)= 1141 B
-;;; z05d0 1488 B ANTTRACE ==> (- 1488 92)= 1396 B
+;;;    5c   92 B - putc stuff + size 28 B ==	 120
+;;; z04d1 1233 B ANTTRACE ==> (- 1233 120)	1113
+;;; z05d0 1488 B ANTTRACE ==> (- 1488 120)	1368
+;;; z0685 1669                (- 1669 1488)	 181 adding ant-vol/p
+;;; z0526 1318   PRINT        (- 1318 120)      1198 TOTAL
 
+
+
+;ANTTRACE=1
+
+;;; Print sizes (and includes putc stuff => 120 B)
 ;
-ANTTRACE=1
+PRINT=1
 
+.ifdef ANTTRACE
+        PRINT=1
+.endif ; ANTTRACE
 
 
 START:  
 
 .segment "CODE"
-
-.import _putchar
 
 .zeropage
 
@@ -41,7 +49,9 @@ tmp_putchar:    .res 1
 .endmacro
 
 
-.ifdef ANTTRACE
+.ifdef PRINT
+
+.import _putchar
 
 ;;; Safe: prints A
 ;;; Retains A,X,Y
@@ -141,7 +151,7 @@ putb:
 
 
 
-.endif ; ANTRACE
+.endif ; PRINT
 
 
 
@@ -165,7 +175,7 @@ putb:
 
 .include "antvm-vol.asm"
 
-.include "atnvm-p.asm"
+.include "antvm-p.asm"
 
 .include "drum.asm"
 
@@ -190,6 +200,9 @@ _main:
 
         NL
 
+.endif ; ANTTRACE
+
+.ifdef PRINT
         putc 'z'
 
         lda #<END
@@ -207,7 +220,7 @@ _main:
 
         putc '.'
         NL
-.endif ; ANTTRACE
+.endif ; PRINT
 
 init:   
        

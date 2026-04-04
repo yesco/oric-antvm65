@@ -55,15 +55,15 @@ ds_p_restart:
     lsr a
     lsr a
     sta ds_p_delay
-@rts:
+rts3:
     rts
 
 ; --- DS_P_TICK: 50Hz Tone Heartbeat ---
 ds_p_tick:
     lda ds_p_delay
-    bmi @rts           ; If negative ($FF), effect is OFF
+    bmi rts3           ; If negative ($FF), effect is OFF
     dec ds_p_delay
-    bpl @rts           ; Wait for delay to hit -1
+    bpl rts3           ; Wait for delay to hit -1
 
 @do_bit:
     ; 1. Shift & Loop Mask (Cyclic)
@@ -97,17 +97,18 @@ ds_p_tick:
     
     ldy #0             ; AY Reg 0 (Fine)
     lda ds_p_current
-    jsr SETAYR
+    jsr setayr
     iny                ; AY Reg 1 (Coarse)
     lda ds_p_current+1
-    jsr SETAYR
+    jsr setayr
 
     ; 3. Sequence Logic
     dec ds_p_count
-    bne @rts
+    bne @rtsj
 
     lda ds_p_config
     bpl ds_p_restart   ; If Bit 7 is 0, Loop.
     
     sta ds_p_delay     ; One-Shot: Set delay to $FF (OFF)
+@rtsj:
     rts
