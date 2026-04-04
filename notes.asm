@@ -52,9 +52,15 @@ ipy:            .res 1
 antlang:        .res 1
 antsp:          .res 1          ; next offset where to push
 
-tmp_high:       .res 1
+;;; maybe have a number of interrupt tmp!
+;;; TODO: replace with savea, savex, savey
+antvm_tmp:      .res 1
 
+ay_reg: 
+antvm_tmp2:     .res 1
 
+ay_coarse:      
+antvm_tmp3:     .res 1
 
 .data
 
@@ -329,9 +335,14 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
 
         ;; TODO: speech mode?
 
+        ;; TODO: use a lookup table!!!
+        ;; (but for different BPM???)
+
         ;; TODO: share code with cmdVALUE?
         ;; (- (* 2 8) (+ 8 1 (* 2 3)))
         ;; (would save 1 byte if used only 2 places)
+
+        ;; TODO: settable "global" (/task?) parameter!
         lda #WHOLETICKS
 :       
         dey
@@ -339,7 +350,8 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
-        ;; underflow
+
+        ;; underflow => at least 1 tick!
         lda #1
 :       
         sta delayA
@@ -349,15 +361,17 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
 
 cmdSUSTAIN:       ; 11 001 000
 ;;; TODO: = sustain
-        ;; don't turn off
-        ;; (do envenlopes restart)
+        ;; Allow envelop restart at new note
+        ;; just no implicit YIELD (use WAIT)
+        lda #0
+        ;; TODO: not correct, this turns off envelopes
+
 cmdLEGATO:        ; 11 001 111
-;;; DISABLE restart envelope
-        ;; disable channel A ticker
-        and #%01111111
-andprocessmap:
-        and processmap
-        jmp storeprocessmap
+        ;; DISABLE restart envelope
+        lda #0
+        sta valueA
+
+        jmp interpret
 
 
 cmdVALUE1:        ; 11 001 001  w)hole
@@ -376,7 +390,7 @@ cmdVALUE:
         ;; "always" (except zero==don't matter)
         bne :-
 :       
-PUTC '@'
+;PUTC '@'
         sta valueA
 
 ;jsr put2h
@@ -393,9 +407,9 @@ PUTC '@'
 :       
         sta restA
 
-pha
-jsr put2h
-pla
+;pha
+;jsr put2h
+;pla
 
 ;;; TDOO: this doesn't work if can cahnge REST later???
 ;;;   require update of VALUE
@@ -407,9 +421,9 @@ pla
 ;;; safetey valve if underflow
 ;;; TODO: revise? tones take at lesat 2 ticks
         sta valueA
-pha
-jsr put2h
-pla
+;pha
+;jsr put2h
+;pla
         
         ;; enable channel ticker
         lda #%10000000
@@ -464,6 +478,8 @@ cmdYIELD:         ; 11 011 101
         YIELD
 
 cmdQUIET:         ; 11 011 110
+;;; TODO: only for one channel?
+;;;   this is too "expensive" command for use so seldome!
         lda #0
         sta ayshadow+8+0
         sta ayshadow+8+1
@@ -616,16 +632,40 @@ dispatch_br:
 ;;; --- AFTER Command Handlers ---
 
 cmdSETAY:         ; 11 10 rrrr
-;;; TODO: setayr.asm
+        ;; A=value, X=6-bit command
+
+        ;; reconstruct 4-bit register from command (X)
+        sta savea
+        txa
+        and #%1111
+        tay
+        lda savea
+
+        jsr setayr
+
         jmp interpret
+
 
 cmdAYPDATE:       ; 11 10 1110
-;;; TODO: antvm-aypdate.asm
-        jmp interpret
+        jsr aypdate
+
+        YIELD
+
 
 cmdDUMPAY:        ; 11 10 1111
-;;; TODO: 
-        jmp interpret
+        ;; A= first byte
+        ldx #0
+        stx ay_reg
+        jsr setayr
+        ;; ay_reg==2
+:       
+        jsr pull_ay
+
+        ;; 
+        cpx #14
+        bne :-
+        
+        YIELD
 
 
 
@@ -786,18 +826,18 @@ cmdNOTE:
         ;; use 16-bit LUT: oct 4..7
         tax
         lda period_table+1, x ; 4
-        sta tmp_high          ; 3
+        sta antvm_tmp         ; 3
         lda period_table, x   ; 4
         
         cpy #0              ; 2
         beq :++
 :       
-        lsr tmp_high        ; 5  | 16-bit shift loop (9c per iter)
+        lsr antvm_tmp       ; 5  | 16-bit shift loop (9c per iter)
         ror                 ; 2
         dey                 ; 2
         bne :-
 :       
-        ldx tmp_high        ; 3
+        ldx antvm_tmp        ; 3
         jmp @pitch_done      ; 3
 
 
@@ -871,59 +911,6 @@ newenvelope:
 
 
 
-;;; antwryte: Writes a byte from stream
-;;;   X= param offset
-;;; 
-;;; returns: 
-;;;   A= value, X= offset, Y trashed
-antwryte:
-        ;; lo
-        ldy ipy
-        lda (stream),Y
-        inc ipy
-        sta antvmBLOCK,X
-        rts
-
-
-;;; Pushes current interpreter state on task stack
-;;; 
-;;; Y is preserved, A X used
-;;; 
-;;; TODO: make it relative to stack of task!
-;;; (the value pushed is "noramlized" stream += ipy)
-
-pushStream:     
-;;; 33 B  54 c (+5c if inc; +3 ? write  ,x?)
-        ;; Push old
-        ldx antsp
-        lda antlang
-        sta antstack,X
-        inx
-
-        ;; stream += ipy
-        clc
-        lda ipy
-        adc stream
-        sta stream
-        bcc :+
-        inc stream+1
-:       
-
-        ;; push current stream value
-        lda stream+1
-        sta antstack,X
-        inx
-
-        lda stream
-        sta antstack,X
-        inx
-
-        stx antsp
-
-        rts
-
-
-
 
 ;;; --- Relative Dispatch Table (Base $C0) ---
 
@@ -994,3 +981,75 @@ DispatchBase = dispatch_br
     REL cmdPARAM_BYTE   ; 11 111 101|PAR|BYTE = PARAM BYTE "param"
     REL cmdPARAM_WORD   ; 11 111 110|PAR|WORD = PARAM WORD "param"
     REL cmdRETURN       ; 11 111 111 = RETURN ($ff - as "expected")
+
+
+
+
+
+
+;;; antwryte: Writes a byte from stream
+;;;   X= param offset
+;;; 
+;;; returns: 
+;;;   A= value, X= offset, Y trashed
+antwryte:
+        ;; lo
+        ldy ipy
+        lda (stream),Y
+        inc ipy
+        sta antvmBLOCK,X
+        rts
+
+
+;;; Pushes current interpreter state on task stack
+;;; 
+;;; Y is preserved, A X used
+;;; 
+;;; TODO: make it relative to stack of task!
+;;; (the value pushed is "noramlized" stream += ipy)
+
+pushStream:     
+;;; 33 B  54 c (+5c if inc; +3 ? write  ,x?)
+        ;; Push old
+        ldx antsp
+        lda antlang
+        sta antstack,X
+        inx
+
+        ;; stream += ipy
+        clc
+        lda ipy
+        adc stream
+        sta stream
+        bcc :+
+        inc stream+1
+:       
+
+        ;; push current stream value
+        lda stream+1
+        sta antstack,X
+        inx
+
+        lda stream
+        sta antstack,X
+        inx
+
+        stx antsp
+
+        rts
+
+
+
+
+;;; TODO: cleanup
+        ;; 
+        ;; disable channel A ticker (?)
+;;; disable channel A?
+        and #%01111111
+
+andprocessmap:
+        and processmap
+        jmp storeprocessmap
+
+
+.include "antvm-aypdate.asm"

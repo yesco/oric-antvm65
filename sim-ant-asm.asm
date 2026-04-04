@@ -206,6 +206,11 @@ init:
         
         ;; INIT state
 
+        ldy #WHOLETICKS*3/4
+        sty valueA
+        ldy #WHOLETICKS/4       ; (little silence 1/4 rel)
+        sty restA
+
         ldy #1
         ;; needs to be 1 for not wait first tick!
         sty delayA

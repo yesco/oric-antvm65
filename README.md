@@ -99,12 +99,20 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 11 011 000 = CHANNEL A - select
 11 011 001 = CHANNEL B - select
 11 011 010 = CHANNEL C - select
-11 011 011 = NOISE N - select
+11 011 011 = NOISE   N - select
 
-11 011 100|CTRL = EXTENDED command
-11 011 101      = YIELD (almost same as WAIT 0?)
-11 011 110      = QUIET (mute: all)
-11 011 111      = KILL  (all)
+;; TODO: nah, it's only two bytes with SETAY.R8+ch= VOL;
+11 011 100 = VOL.A = 0
+11 011 101 = VOL.B = 0
+11 011 110 = VOL.C = 0
+11 011 111 = YIELD
+
+;;TODO: revisit, 4 free commands!!!!
+
+11 011 100|CTRL = EXTENDED command    - TODO: redundant
+11 011 101      = YIELD - why need??? - TODO: ?
+11 011 110      = QUIET (mute: all)   - TODO: AYPDATE: 5 bytes
+11 011 111      = KILL  (all) )       - TODO: long extend?
 
 
 **with parameter(s):**
@@ -121,9 +129,9 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 11 111 010|BYTE     = DRUM hihat(closed) "ch"
 11 111 0d11BYTE     = DRUM hihat(open) "ts"
 
-11 111 100|CTRL|... = EXTENDED commands
-11 111 101|PAR|BYTE = PARAM BYTE "param"
-11 111 110|PAR|WORD = PARAM WORD "param"
+11 111 100|CTRL|... = EXTENDED commands param and w data
+11 111 101|PAR|BYTE = PARAM BYTE "PARam"
+11 111 110|PAR|WORD = PARAM WORD "PARam"
 11 111 111          = RETURN ($ff - as "expected")
 ```
 

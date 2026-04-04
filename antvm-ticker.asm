@@ -15,25 +15,26 @@ processmap:     .byte 0
 
 antvmBLOCKEnd:     
 
-;;; value is length of note in ticks
+;;; VALUE is length of note in ticks
 ;;; 0 == no YIELD (sustain/legato) do manual WAIT for length
 ;;; (whole@120BPM =4  beats = 2.0s = 100 50Hz ticks
 WHOLETICKS=100
+VOLUME=10
 
 values: 
         
-valueA:         .byte WHOLETICKS
-valueB:         .byte WHOLETICKS
-valueC:         .byte WHOLETICKS
-valueN:         .byte WHOLETICKS
+valueA:         .byte WHOLETICKS*3/4
+valueB:         .byte WHOLETICKS*3/4
+valueC:         .byte WHOLETICKS*3/4
+valueN:         .byte WHOLETICKS*3/4
 
 
 rests:  
 
-restA:          .byte 0
-restB:          .byte 0
-restC:          .byte 0
-restN:          .byte 0
+restA:          .byte WHOLETICKS/4
+restB:          .byte WHOLETICKS/4
+restC:          .byte WHOLETICKS/4
+restN:          .byte WHOLETICKS/4
 
 
 restRatios:     
@@ -258,9 +259,16 @@ tickCHAN:
         ;; do REST
         lda restA
         sta delayA
-        ;; volA = 0
+        ;; - turn off channel sound
         lda #0
-        sta ayshadow+*,X
+        sta ayshadow+8,X
+
+        ;; TODO: print some
+.ifdef ANTTRACE
+        jsr printAY
+.endif ; ANTTRACE
+
+        jmp nextTickBit
 
 
 @notedone:
@@ -278,32 +286,7 @@ tickCHAN:
 
         
 .ifdef ANTTRACE
-        NL
-
-;;; TODO: how do we know that we should be doing
-;;;   an "imlicit" REST == SILENCE+DELAY rest (ticks)
-
-;;; IDEA: store an imlicit "command" byte
-;;;   if !=00 tells us "what to do"!
-
-        ;; For now: print all AY regs
-        putc 9
-        putc 9
-        putc 9
-        putc 'A'
-        putc 'Y'
-        putc ':'
-
-        ldx #0
-:       
-        lda ayshadow,X
-        jsr put2h
-        SPC
-        inx
-        cpx #14
-        bne :-
-
-        NL
+        jsr printAY
 .endif ; ANTTRACE
 
 ;;; TODO: these shoudl be before?
@@ -330,3 +313,36 @@ tickVolENV:
 tickPitENV:     
         
         rts
+
+.ifdef ANTTRACE
+printAY:        
+        NL
+
+;;; TODO: how do we know that we should be doing
+;;;   an "imlicit" REST == SILENCE+DELAY rest (ticks)
+
+;;; IDEA: store an imlicit "command" byte
+;;;   if !=00 tells us "what to do"!
+
+        ;; For now: print all AY regs
+        putc 9
+        putc 9
+        putc 9
+        putc 'A'
+        putc 'Y'
+        putc ':'
+
+        ldx #0
+:       
+        lda ayshadow,X
+        jsr put2h
+        SPC
+        inx
+        cpx #14
+        bne :-
+
+        NL
+
+        rts
+.endif ; ANTTRACE
+

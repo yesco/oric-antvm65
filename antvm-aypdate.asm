@@ -19,16 +19,22 @@
 ;;; CURRENT: 133 Bytes
 ;;; ==============================================================
 
-cmdAYPDATE:
+;;; aypdate, Update a partial frame from (stream), bitmask
+;;; determines what type of data comes.
+;;; 
+;;; A= MASK (coarse, A,B,C, noise, mixer, vol, RESERVED)
+;;; 
+;;; 
+aypdate:
         lsr                     ; 1 bit 0 (Coarse) -> C
         ror ay_coarse           ; 2 bit 0 -> N flag
-        sta tmp_mask            ; 2 save bits 1-7
+        sta antvm_tmp           ; 2 save bits 1-7
         
         lda #$FF                ; 2
         sta ay_reg              ; 2 cursor = -1
 
 @pitch_loop:
-        lsr tmp_mask            ; 2 shift Ch bit
+        lsr antvm_tmp           ; 2 shift Ch bit
         jsr pull_ay             ; 3 R0, 2, 4
         bit ay_coarse           ; 2 check N
         bmi @do_hi              ; 2
@@ -39,12 +45,12 @@ cmdAYPDATE:
         cpy #5                  ; 2
         bcc @pitch_loop         ; 2
 
-        lsr tmp_mask            ; 2 R6 Noise
+        lsr antvm_tmp           ; 2 R6 Noise
         jsr pull_ay             ; 3
-        lsr tmp_mask            ; 2 R7 Mixer
+        lsr antvm_tmp           ; 2 R7 Mixer
         jsr pull_ay             ; 3
 
-        lsr tmp_mask            ; 2 Vol bit
+        lsr antvm_tmp           ; 2 Vol bit
         bcc @done               ; 2
 @vol_loop:
         sec                     ; 1 force update
@@ -65,10 +71,11 @@ pull_ay:
         lda (stream),y          ; 2
         inc ipy                 ; 2
                                 ; TODO: Guard against ipy page-wrap
+        ldy ay_reg              ; 2
         jmp setayr              ; 3 (into the helper)
 @only_inc:
 ;;; Used by setayr to exit and make sure C set!
-@Csetdone:
+Csetdone:
         sec
         rts                     ; 1
 
@@ -84,12 +91,13 @@ pull_ay:
 ;;;   Do NOT use them after, including Y! (may become vol for R1,3,5)
 ;;; ----------------------------------------------------------------
 setayr:
-        ldy ay_reg              ; 2
         cpy #7                  ; 2 Mixer?
-        bne @write_phys         ; 2
+        bne :+
         ora #64                 ; 2 Bit 6 Patch
+:       
 @write_phys:
-        ldy ay_reg              ; 2 target reg in Y
+        sta ayshadow,Y
+
         ldx #$FF                ; 2
         stx $0303               ; 3 DDRA Output
         sty $030F               ; 3 Port A Address
@@ -105,6 +113,7 @@ setayr:
         stx $0303               ; 3 DDRA Input
 
         ;; --- ? Pitch regsiters - maybe fixup ---
+;;; TODO: ???? what???
         cpy #6                  ; 2 R0-R5?
         bcs Csetdone
 
@@ -114,7 +123,7 @@ setayr:
 
         tya                     ; 1 A = 1, 3, or 5
         lsr                     ; 1 C=1 if Odd, A=0, 1, or 2
-        bcc @exit               ; 2
+        bcc Csetdone
 
         ;; --- Fix register 1,3,5 => 8,9,10 ---
         ora #8                  ; 2 map to Vol R8, 9, 10
@@ -128,6 +137,6 @@ setayr:
         lsr   
 
         ;; Don't write 0 volume for caompat
-        beq @Csetdone
+        beq Csetdone
 
-        jmp setayr              ; 3 tail call back to write volume
+        jmp @write_phys         ; 3 tail call back to write volume

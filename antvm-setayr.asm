@@ -19,13 +19,17 @@ do_ayupdate:
 .mask_loop:
         lsr tmp_mask        ; 2B | Bit into Carry
         bcc .next_bit       
-        txa : pha           ; 3B | Save bit index
+        txa
+        pha                 ; 3B | Save bit index
         ldy ipy             ; 3B | Get stream
         lda (stream),y      ; 2B
         inc ipy             ; 3B
-        tax : pla : tay     ; 2B | Y = bit index, X = Value
+        tax
+        pla
+        tay                 ; 2B | Y = bit index, X = Value
         lda mask_to_reg, y  ; 4B | Map to AY Reg
-        tay : txa           ; 2B | Y = Reg, A = Value
+        tay
+        txa                 ; 2B | Y = Reg, A = Value
         jsr SETAYR          
 .next_bit:
         inx                 ; 1B
@@ -39,7 +43,8 @@ do_dumpay:
         ldy ipy             ; 3B
         lda (stream),y      ; 2B
         inc ipy             ; 3B
-        txa : tay           ; 2B | Y = Reg index
+        txa
+        tay                 ; 2B | Y = Reg index
         jsr SETAYR          
         inx                 ; 1B
         cpx #14             ; 2B
