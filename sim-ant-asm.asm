@@ -3,6 +3,17 @@
 ; was: Minimal BRK Handler for ca65
 ;;; see Play/brk.asm
 
+;;;    5c   92 B - putc stuff 
+;;; z04d1 1233 B ANTTRACE ==> (- 1233 92)= 1141 B
+;;; z05d0 1488 B ANTTRACE ==> (- 1488 92)= 1396 B
+
+;
+ANTTRACE=1
+
+
+
+START:  
+
 .segment "CODE"
 
 .import _putchar
@@ -28,6 +39,9 @@ tmp_putchar:    .res 1
         ldx savex
         ldy savey
 .endmacro
+
+
+.ifdef ANTTRACE
 
 ;;; Safe: prints A
 ;;; Retains A,X,Y
@@ -102,23 +116,6 @@ putdigit:
         jmp putchar
         
 
-
-.macro LDAXD val
-        lda #<val
-        ldx #>val
-.endmacro
-
-.macro LDAX val
-        lda val
-        ldx val+1
-.endmacro
-
-.macro STAX addr
-        sta addr
-        stx addr+1
-.endmacro
-
-
 putb:   
         ldx #8
 @loop:       
@@ -144,27 +141,47 @@ putb:
 
 
 
-ANTTRACE=1
+.endif ; ANTRACE
 
-;;; TODO: Dummy
 
-SETAY:  
-        rts
+
+
+.macro LDAXD val
+        lda #<val
+        ldx #>val
+.endmacro
+
+.macro LDAX val
+        lda val
+        ldx val+1
+.endmacro
+
+.macro STAX addr
+        sta addr
+        stx addr+1
+.endmacro
+
+
+
+.include "antvm-vol.asm"
+
+.include "atnvm-p.asm"
 
 .include "drum.asm"
 
+;;; load TICKER
+.include "antvm-ticker.asm"
 
 ;;; load INTERPRET
 .include "notes.asm"
-
-;;; load TICKER
-.include "antvm-ticker.asm"
 
 ayheader:
         .byte "aa AA|bb BB|cc CC|nn|MM|va|vb|vc|pp PP|ee", 0
 
 .export _main
 _main:   
+
+.ifdef ANTTRACE
         lda #'V'
         jsr _putchar
         
@@ -172,8 +189,25 @@ _main:
         jsr puth
 
         NL
+
+        putc 'z'
+
+        lda #<END
+        sec
+        sbc #<START
+        tay
+
+        lda #>END
+        sbc #>START
+
+        tax
+        tya
+
+        jsr puth
+
         putc '.'
         NL
+.endif ; ANTTRACE
 
 init:   
        
@@ -186,6 +220,7 @@ init:
         ;lda #%11111111
         sta processmap
 
+.ifdef ANTTRACE
         ;; print AY header for debuggin
         putc 9
         putc 9
@@ -203,6 +238,7 @@ init:
         bne :-
 :       
         NL
+.endif ; ANTTRACE
         
         ;; INIT state
 
@@ -235,13 +271,19 @@ init:
         ldx stream+1
         bne @loop
 
+.ifdef ANTTRACE
         NL
         putc '.'
         NL
+.endif ; ANNTRACE
 
         rts
 halt2:  
         jmp halt2
+
+
+END:    
+
 
 
 langauge:       

@@ -1,1 +1,4 @@
+ca65 -t sim6502 sim-ant-asm.asm -l sim.lst 
 cl65 -t sim6502 sim-ant-asm.asm -o sim.sim && sim65 sim.sim
+
+

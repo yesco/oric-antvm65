@@ -13,7 +13,7 @@
         
         lda #$10        ; Use Hardware Envelope
         ldy #10         ; R10 = Amplitude C
-        jsr SETAY
+        jsr setayr
 
         dey             ; Y was 4
         bmi cmdKickS
@@ -32,7 +32,7 @@ cmdHiHatOpenTS:
         clc
         adc #$02        ; Base "S" noise
         ldy #6          ; R6 = Noise Period
-        jsr SETAY
+        jsr setayr
         ldx #$00        ; Env Fine
         lda #$25        ; Env Coarse (Long "Sssshh" fade)
         jmp trigger
@@ -46,7 +46,7 @@ cmdHiHatClosedCH:
         clc
         adc #$01        ; Very high noise
         ldy #6
-        jsr SETAY
+        jsr setayr
         ldx #$00
         lda #$03        ; Env Coarse (Extremely short "Tick")
         jmp trigger
@@ -58,13 +58,13 @@ cmdSnareSH:
         jsr setMixerC
         lda #$0F        ; Mid-range "Breath" noise
         ldy #6
-        jsr SETAY
+        jsr setayr
         pla             ; Get Variation for Vowel Tone
         ldy #4          ; Fine Tone C
-        jsr SETAY
+        jsr setayr
         lda #$01        ; Coarse Tone C
         ldy #5
-        jsr SETAY
+        jsr setayr
         ldx #$00
         lda #$08        ; Env Coarse (Bust of noise)
         jmp trigger
@@ -78,23 +78,23 @@ cmdKickS:
         clc
         adc #$05        ; Base low frequency
         ldy #5          ; Coarse Tone C
-        jsr SETAY
+        jsr setayr
         lda #$00        ; Fine Tone C
         ldy #4
-        jsr SETAY
+        jsr setayr
         ldx #$00
         lda #$0C        ; Env Coarse (Heavy thump)
         ;; fall through to trigger
 
 trigger:
         ldy #12         ; R12 = Env Period Coarse
-        jsr SETAY
+        jsr setayr
         txa
         ldy #11         ; R11 = Env Period Fine
-        jsr SETAY
+        jsr setayr
         lda #$09        ; Shape: Single Decay (\)
         ldy #13         ; R13 starts the one-shot
-        jsr SETAY
+        jsr setayr
         rts
 
 setMixerC:
@@ -108,7 +108,7 @@ setMixerC:
         sta mixer_cache
         ldy #7
         lda mixer_cache
-        jsr SETAY
+        jsr setayr
         rts
 
 mixer_cache: .byte $FF

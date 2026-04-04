@@ -515,7 +515,10 @@ interpret:
         putc ':'
 .endif ; ANTTRACE
 
- CHECKIPY_OVERFLOW=1
+.ifdef ANTTRACE
+  CHECKIPY_OVERFLOW=1
+.endif ; ANTTRACE
+
 .ifdef CHECKIPY_OVERFLOW
         ;; We check for overflow, this should only
         ;; happen if we "run" too long in one "phonome"
@@ -918,7 +921,7 @@ newenvelope:
 .endmacro
 
 .macro PREL target
-    .byte DispatchBase - target + 2 - 100
+    .byte (1024 + DispatchBase - target + 2) .mod 256
 .endmacro
 
 
@@ -951,6 +954,9 @@ DispatchBase = dispatch_br
     PREL cmdSELECT_B    ; 11 011 001 = CHANNEL B - select
     PREL cmdSELECT_C    ; 11 011 010 = CHANNEL C - select
     PREL cmdSELECT_N    ; 11 011 011 = NOISE N - select
+
+;;; Error here if no ANTTRACE??? LOL
+
     PREL cmdEXTENDED    ; 11 011 100 = EXTENDED command
     PREL cmdYIELD       ; 11 011 101 = YIELD (almost same as WAIT 0?)
     PREL cmdQUIET       ; 11 011 110 = QUIET (all)
