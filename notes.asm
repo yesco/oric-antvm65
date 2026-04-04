@@ -661,8 +661,7 @@ cmdDUMPAY:        ; 11 10 1111
 :       
         jsr pull_ay
 
-        ;; 
-        cpx #14
+        cpx #13
         bne :-
         
         YIELD
