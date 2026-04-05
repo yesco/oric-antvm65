@@ -1,4 +1,5 @@
 .zeropage
+
 ; --- Deltas (ds) Volume State ---
 ds_v_mask:    .res 2    ; 16-bit pattern (Circular)
 ds_v_config:  .res 1    ; [7:OneShot][3-6:Delay][0-2:Step S]
