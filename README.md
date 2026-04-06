@@ -136,8 +136,56 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 ```
 
 
+### EXTENDED COMMANDS
 
-## PARAMETER / EXTENDED commands
+*TODO: just ideas*
+
+
+```
+11 111 100|CTRL|... = EXTENDED commands
+
+# maybe just dispatch of 4 bits and 4 bits inline data+BYTE?
+
+11 111 100| 0000  ????|BYTE   = WAIT ticks
+11 111 100| 0001  lang|PHON   = TAIL.CALL PHONem
+11 111 100| 0010  0000        = ENDLANG
+11 111 100| 0010  lang|BYTE   = BEGIN lang (1-7)
+11 111 100| 0011  nnnn|....   = RANDOM.CALL? lang:rand(nnnn)
+11 111 100| 0100  ....|ADDR   = $4c JMP addr (ret with RTS, A= ....)
+11 111 100| 0101  12bt|BYTE   = GOTO 12bt|BYTE (offset lang)
+11 111 100| 0110  cond|BYTE   = BRA relative using cond flags?
+11 111 100| 0111  chan|PHON   = SPAWN on chan PHONem
+
+11 111 100| 1........         = need 7 bit parameter?
+
+TODO: note-delta encoding?
+
+
+```
+
+
+## Possible delta nibble encoding
+
+Basically, for much music we could store two delta notes in one byte.
+
+   1. Byte 1: NOTE "nnnnn oct")
+   2. Byte 2: BEGIN DELTA
+   3. Stream:   "aaaa bbbb"; first aaaa or bbbb
+      * $0: ESCAPE (next byte is full command)
+      * $1 to $7: +1 to +7 semitones
+      * $8: 0 Delta (Repeat last note)
+      * $9 to $F: -7 to -1 semitones (2 complement)
+      **Note:** Any note that doesn't fit in; just insert a `ESCAPE NOTE ...and we're back in delta-stream!...`
+   4. To end: ESCAPE (aaaa or bbbb == $0) ENDDELTA/RET (?)
+   
+Estimated New Total: ~135 bytes (down from 196).
+
+**The Trade-off:**
+
+The code size of the player (the assembly logic to "unpack" the nibbles) will increase by about 20–40 bytes. This optimization is only a "win" if we have multiple songs or very long patterns where the data savings outweigh the extra decoder logic.
+
+
+## PARAMETER commands
 
 Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
 
@@ -220,22 +268,6 @@ Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
 ```
 
 
-
-```
-### EXTENDED COMMANDS
-
-11 111 100|CTRL|... = EXTENDED commands
-11 111 101|PAR|BYTE = WRITE BYTE "param"
-11 111 110|PAR|WORD = WRITE WORD "param"
-
-                    = ? TAILCALL
-                    = ? GOTO
-                    = ? BEQ/BNE
-                    = ? BEGIN LANGUAGE
-
-11 111 100|$xx|lng|pnm = SPAWN on current selectd CH: CALL lng:pnm
-
-11 111 101|$8x|ticks   = WAIT ticks (write ZP register! 0-255)
 
 
 ## Volume commands?
