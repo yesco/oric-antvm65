@@ -1,3 +1,5 @@
+;;; TODO: outdated see notes.asm "interpret:"
+
 ;;; AntVM65 - "anthem65" - the actual virtual machine
 
 

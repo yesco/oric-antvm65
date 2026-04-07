@@ -1,4 +1,4 @@
-x;;; a simulated antvm run
+;;; a simulated antvm run
 
 ; was: Minimal BRK Handler for ca65
 ;;; see Play/brk.asm
@@ -11,14 +11,26 @@ x;;; a simulated antvm run
 
 
 
-;ANTTRACE=1
+;;; 
+
+AT_TICK=1
+AT_CMD=2
+AT_NOTE=4
+AT_AY=8
+
+AT_ALL=255
+
+;ANTTRACE=AT_ALL
+;
+ANTTRACE=AT_CMD+AT_NOTE
 
 ;;; Print sizes (and includes putc stuff => 120 B)
-;
-PRINT=1
+;PRINT=1
 
 .ifdef ANTTRACE
+.ifndef PRINT
         PRINT=1
+.endif ; !PRINT
 .endif ; ANTTRACE
 
 
@@ -233,7 +245,7 @@ init:
         ;lda #%11111111
         sta processmap
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_AY
         ;; print AY header for debuggin
         putc 9
         putc 9
@@ -251,7 +263,7 @@ init:
         bne :-
 :       
         NL
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_AY
         
         ;; INIT state
 

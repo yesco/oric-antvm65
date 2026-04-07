@@ -113,12 +113,12 @@ startTick:
 :       
 ;;; 20c
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_TICK
         ;; ticks update in ticker
         NL
         LDAX ticks
         jsr puth
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_TICK
 
         ;; make a copy
         lda processmap
@@ -144,20 +144,28 @@ nextTickBit:
         rol
         bcc @next
 
+;;; this gets more events 4
+;.if ANTTRACE ;& AT_TICK
+;;; this doesn't get 4 but 1
+;.if ANTTRACE & AT_TICK
 .ifdef ANTTRACE
 pha
+txa
+pha
 
-putc 9
+;putc 9
 lda process_char,X
 jsr putchar
 
 pla
-.endif ; ANTTRACE
+tax
+pla
+.endif ; ANTTRACE & AT_TICK
 
         ;; Bit is set for X
         dec delays,X
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_TICK
         pha
 
         lda delays,X
@@ -165,14 +173,15 @@ pla
         putc '-'
 
         pla
+        ;; reestablish flags
         ldy delays,X
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
         bne @next
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_TICK
 PUTC '!'
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
         ;; Time to do something
         stx tickX
@@ -263,8 +272,8 @@ tickCHAN:
         lda #0
         sta ayshadow+8,X
 
-        ;; TODO: print some
-.ifdef ANTTRACE
+;;; TODO: move to more generic place?
+.if ANTTRACE & AT_AY
         jsr printAY
 .endif ; ANTTRACE
 
@@ -285,7 +294,8 @@ tickCHAN:
         jsr pushStream
 
         
-.ifdef ANTTRACE
+;;; TODO: move to more generic place?
+.if ANTTRACE & AT_AY
         jsr printAY
 .endif ; ANTTRACE
 
@@ -314,7 +324,7 @@ tickPitENV:
         
         rts
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_AY
 printAY:        
         NL
 

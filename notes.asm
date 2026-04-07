@@ -232,7 +232,7 @@ cmdwait:
 
 .data
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_CMD
         ;; Single letter MNEMOIC
         ;;     12345678
 cmd_char:       
@@ -263,7 +263,7 @@ note_char1:
 note_char2:      
         .byte " -#+ -#+ + -#+ -#+ -#+ -#"
 
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
 
 pow2:   
@@ -501,7 +501,7 @@ interpret:
 ;;; 20 B  27-29c (jump to cmdNOTE or "command")
 
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_CMD
         NL
         putc 9
         putc 9
@@ -513,7 +513,7 @@ interpret:
         lda ipy
         jsr put2h
         putc ':'
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
 .ifdef ANTTRACE
   CHECKIPY_OVERFLOW=1
@@ -540,7 +540,7 @@ interpret:
         lda (stream),y      ; 5B | Get command byte
         inc ipy             ; 3B | inc pointer
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_CMD
         ;; print CMD in hex
         pha
         jsr put2h
@@ -552,7 +552,7 @@ interpret:
         SPC
         SPC
         pla
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
         ;; Extract Y=iii from "11 ccc iii"
         tax            
@@ -570,10 +570,12 @@ interpret:
 
 command:
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_CMD
 ;;; TODO messed up Y...
         ;; print CMD char
         SAVEAXY
+
+        putc '>'
 
         ;; show one letter command 'name'
         and #%111111
@@ -589,7 +591,7 @@ command:
         putc ':'
 
         LOADAXY
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
 ;;; 23 B  26c
         ;; extract low 6 bits for command
@@ -613,10 +615,10 @@ command:
 
         ldy savey
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_CMD
         SPC
         jsr put2h
-.endif ; ANTTRACE
+.endif ; ANTTRACE & AT_CMD
 
 no_param:
 
@@ -794,8 +796,10 @@ cmdNOTE:
         lsr                 ; 1B | %00 nnnnn 0
         and #%111111
 
-.ifdef ANTTRACE
+.if ANTTRACE & AT_NOTE
         SAVEAXY
+
+        putc '>'
 
         putc 'N'
         lda savey
