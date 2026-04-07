@@ -329,7 +329,6 @@ cmdSTOP:          ; 11 000 000
 
 
 
-;;; Defined elsewhere
 cmdWAIT:          ; 11 000 www / 11 000 ppp
         ;; Y=value parameter
 
@@ -343,105 +342,36 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
         ;; (would save 1 byte if used only 2 places)
 
         ;; TODO: settable "global" (/task?) parameter!
+PUTC 'a'
+NL
         lda #WHOLETICKS
 :       
         dey
+PUTC 'b'
+NL
         bmi :+
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
 
+PUTC 'c'
+NL
         ;; underflow => at least 1 tick!
         lda #1
 :       
+
+PUTC 'd'
+NL
+
+pha
+jsr put2h
+putc 'w'
+NL
+pla
         sta delayA
         
         YIELD
 
-
-cmdSUSTAIN:       ; 11 001 000
-;;; TODO: = sustain
-        ;; Allow envelop restart at new note
-        ;; just no implicit YIELD (use WAIT)
-        lda #0
-        ;; TODO: not correct, this turns off envelopes
-
-cmdLEGATO:        ; 11 001 111
-        ;; DISABLE restart envelope
-        lda #0
-        sta valueA
-
-        jmp interpret
-
-
-cmdVALUE1:        ; 11 001 001  w)hole
-cmdVALUE2:        ; 11 001 010  h)alf
-cmdVALUE4:        ; 11 001 011  q)uarter
-cmdVALUE8:        ; 11 001 100  e)igth
-cmdVALUE16:       ; 11 001 101  s)ixteenth
-cmdVALUE32:       ; 11 001 110  t)hirtysecond
-cmdVALUE:       
-        lda #WHOLETICKS
-        ;; TODO for all seleted channels
-:       
-        dey
-        beq :+
-        lsr
-        ;; "always" (except zero==don't matter)
-        bne :-
-:       
-;PUTC '@'
-        sta valueA
-
-;jsr put2h
-        ;; Calculate "prooportional" rest ticks
-        ldy restRatioA
-:       
-        dey
-        bmi :+
-        lsr
-        ;; "always" (except zero==don't matter)
-        bne :-
-        ;; bottomed out, maybe make it one tick?
-        lda #1
-:       
-        sta restA
-
-;pha
-;jsr put2h
-;pla
-
-;;; TDOO: this doesn't work if can cahnge REST later???
-;;;   require update of VALUE
-
-        ;; subtract from value ticks
-        eor #$ff
-        sec
-        adc valueA
-;;; safetey valve if underflow
-;;; TODO: revise? tones take at lesat 2 ticks
-        sta valueA
-;pha
-;jsr put2h
-;pla
-        
-        ;; enable channel ticker
-        lda #%10000000
-
-orprocessmap:
-        ora processmap
-storeprocessmap:       
-        sta processmap
-        jmp interpret
-
-
-
-cmdCALL_LOCAL:    ; 11 010 pnm
-        tya       ; pnm
-        ldy #antlang
-
-        jmp cmdCALL_LNG
-        
 
 
 cmdSELECT_A:      ; 11 011 000
@@ -451,6 +381,7 @@ cmdSELECT_N:      ; 11 011 011
         ldx #0
         stx channels
         tya
+;;; Process several SELECT following!
 @gotone:
         ;; set bit n
         tay
@@ -487,6 +418,7 @@ cmdQUIET:         ; 11 011 110
 
         jmp interpret
 
+
 cmdKILL:          ; 11 011 111
 ;;; TODO: kill all
         jmp interpret
@@ -515,7 +447,7 @@ interpret:
         putc ':'
 .endif ; ANTTRACE & AT_CMD
 
-.ifdef ANTTRACE
+.if ANTTRACE
   CHECKIPY_OVERFLOW=1
 .endif ; ANTTRACE
 
@@ -575,7 +507,7 @@ command:
         ;; print CMD char
         SAVEAXY
 
-        putc '>'
+        PUTC '>'
 
         ;; show one letter command 'name'
         and #%111111
@@ -590,6 +522,9 @@ command:
         jsr putdigit
         putc ':'
 
+;;; forcing a NL to flush, not to hide print at errrors
+        NL
+
         LOADAXY
 .endif ; ANTTRACE & AT_CMD
 
@@ -601,6 +536,16 @@ command:
         ;; get dispatch offset
         lda command_table, x
         sta dispatch_br+1
+
+.if ANTTRACE & AT_CMD
+        SAVEAXY
+
+        PUTC '['
+        jsr put2h
+        PUTC ']'
+
+        LOADAXY
+.endif ; ANTTRACE & AT_CMD
 
         ;; ? get paramter? (if X== 1cc xxx )
         cpx #%100000
@@ -625,7 +570,7 @@ no_param:
         ;; Do relative BRANCH
         sec
 dispatch_br:
-        bcs *               ; Jumps directly to cmd via SMC offset
+        bcs *                   ; Jumps directly to cmd via SMC offset
 
 
 ;;; vvv param subroutines BRA forwards!
@@ -674,6 +619,11 @@ cmdDUMPAY:        ; 11 10 1111
 
 
 
+cmdCALL_LOCAL:    ; 11 010 pnm
+        tya       ; pnm
+        ldy #antlang
+
+        ;; fall-through
 
 cmdCALL_LNG:      ; 11 110 lng|PHONEM
         ;; A= PHONEM Y= lng
@@ -777,6 +727,82 @@ cmdRETURN:        ; 11 111 111
 
 
 
+cmdSUSTAIN:       ; 11 001 000
+;;; TODO: = sustain
+        ;; Allow envelop restart at new note
+        ;; just no implicit YIELD (use WAIT)
+        lda #0
+        ;; TODO: not correct, this turns off envelopes
+
+cmdLEGATO:        ; 11 001 111
+        ;; DISABLE restart envelope
+        lda #0
+        sta valueA
+
+        jmp interpret
+
+cmdVALUE1:        ; 11 001 001  w)hole
+cmdVALUE2:        ; 11 001 010  h)alf
+cmdVALUE4:        ; 11 001 011  q)uarter
+cmdVALUE8:        ; 11 001 100  e)igth
+cmdVALUE16:       ; 11 001 101  s)ixteenth
+cmdVALUE32:       ; 11 001 110  t)hirtysecond
+cmdVALUE:       
+        lda #WHOLETICKS
+        ;; TODO for all seleted channels
+:       
+        dey
+        beq :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+:       
+;PUTC '@'
+        sta valueA
+
+;jsr put2h
+        ;; Calculate "prooportional" rest ticks
+        ldy restRatioA
+:       
+        dey
+        bmi :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+        ;; bottomed out, maybe make it one tick?
+        lda #1
+:       
+        sta restA
+
+;pha
+;jsr put2h
+;pla
+
+;;; TDOO: this doesn't work if can cahnge REST later???
+;;;   require update of VALUE
+
+        ;; subtract from value ticks
+        eor #$ff
+        sec
+        adc valueA
+;;; safetey valve if underflow
+;;; TODO: revise? tones take at lesat 2 ticks
+        sta valueA
+;pha
+;jsr put2h
+;pla
+        
+        ;; enable channel ticker
+        lda #%10000000
+
+orprocessmap:
+        ora processmap
+storeprocessmap:       
+        sta processmap
+        jmp interpret
+
+
+
 
 
 
@@ -799,9 +825,9 @@ cmdNOTE:
 .if ANTTRACE & AT_NOTE
         SAVEAXY
 
-        putc '>'
+        PUTC '>'
 
-        putc 'N'
+        PUTC 'N'
         lda savey
         clc
         adc #'0'
@@ -821,6 +847,9 @@ cmdNOTE:
         tax
         lda note_char2,x
         jsr putchar
+
+;;; forcing a NL to flush, not to hide print at errrors
+        NL
 
         LOADAXY
 .endif ; ANTTRACE
@@ -921,16 +950,17 @@ newenvelope:
 ;;; --- Relative Dispatch Table (Base $C0) ---
 
 .macro REL target
-    .byte target - DispatchBase + 2
+;    .assert (target - dispatch_br + 2)>127,ERROR,"%% REL: too far away"
+    .byte target - dispatch_br + 2
 .endmacro
 
 .macro PREL target
-    .byte (1024 + DispatchBase - target + 2) .mod 256
+    .byte (256 + target - dispatch_br + 2) .mod 256
+;    .assert ((dispatch_br+2 - target) < 127),ERROR,"%% target too far"
 .endmacro
 
 
 command_table:
-DispatchBase = dispatch_br
 
     PREL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
 
@@ -940,18 +970,18 @@ DispatchBase = dispatch_br
         PREL cmdWAIT
     .endrepeat
 
-    PREL cmdSUSTAIN  ; 11 001 000 = SUSTAIN
-    PREL cmdVALUE1   ; 11 001 001 = VALUE1
-    PREL cmdVALUE2   ; 11 001 010 = VALUE/2
-    PREL cmdVALUE4   ; 11 001 011 = VALUE/4
-    PREL cmdVALUE8   ; 11 001 100 = VALUE/8
-    PREL cmdVALUE16  ; 11 001 101 = VALUE/16
-    PREL cmdVALUE32  ; 11 001 110 = VALUE/32
-    PREL cmdLEGATO   ; 11 001 111 = LEGATO
+    REL cmdSUSTAIN  ; 11 001 000 = SUSTAIN
+    REL cmdVALUE1   ; 11 001 001 = VALUE1
+    REL cmdVALUE2   ; 11 001 010 = VALUE/2
+    REL cmdVALUE4   ; 11 001 011 = VALUE/4
+    REL cmdVALUE8   ; 11 001 100 = VALUE/8
+    REL cmdVALUE16  ; 11 001 101 = VALUE/16
+    REL cmdVALUE32  ; 11 001 110 = VALUE/32
+    REL cmdLEGATO   ; 11 001 111 = LEGATO
 
     ; 11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)
     .repeat 8
-        PREL cmdCALL_LOCAL
+        REL cmdCALL_LOCAL
     .endrepeat
 
     PREL cmdSELECT_A    ; 11 011 000 = CHANNEL A - select

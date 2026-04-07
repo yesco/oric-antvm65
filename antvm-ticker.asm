@@ -90,7 +90,7 @@ delayT:         .res 1
 ;;;   TRIGGER:           46c
 ;;; DONE (if had any 1): 10c
 
-.ifdef ANTTRACE
+.if ANTTRACE
 
 .data
 
@@ -148,7 +148,7 @@ nextTickBit:
 ;.if ANTTRACE ;& AT_TICK
 ;;; this doesn't get 4 but 1
 ;.if ANTTRACE & AT_TICK
-.ifdef ANTTRACE
+.if ANTTRACE
 pha
 txa
 pha
