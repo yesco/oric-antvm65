@@ -2343,3 +2343,94 @@ Since nearly all these languages build "Trillion" as "Three" + the base for "Mil
 The library is now complete.
 What is the challenge you have for me? I'm ready for the "Ant-VM65" stress test!
 
+
+
+This is the refined Ant-VM65 English Word Library (Tier 2 & 2.5). It integrates the IPA phoneme IDs from your Master Table with prosody (Volume/Stressing) and the WAIT.ticks timing logic.
+## Ant-VM65 Semantic Table (English Reference)
+
+| ID | Word | Macro String (ID, Vol, Timing) | Phonetic Logic |
+|---|---|---|---|
+| 129 | BLACK | 7(v12), 28, 21(v15), WAIT.ticks:6, 16, WAIT.ticks:2, $FF | Stress vowel 21, end with sharp K. |
+| 130 | RED | 8(v12), 33(v14), WAIT.ticks:8, 7, WAIT.ticks:2, $FF | Mid-length vowel 33. |
+| 131 | GREEN | 7, 8, 4(v15), WAIT.ticks:10, 5(v11), WAIT.ticks:4, $FF | Long EE (4) into soft nasal. |
+| 132 | YELLOW | 30, 33(v14), WAIT.ticks:6, 28, 27(v12), WAIT.ticks:8, $FF | Stress E (33), glide into OH. |
+| 133 | BLUE | 7, 28, 11(v15), WAIT.ticks:12, $FF | Strong plosive, long OO. |
+| 134 | MAGENTA | 12, 33, 42, 33(v14), WAIT.ticks:6, 5, 3, 1, $FF | Rapid nasal cluster. |
+| 135 | CYAN | 2, 9(v14), WAIT.ticks:8, 1, 5, WAIT.ticks:4, $FF | Slide up on 9. |
+| 136 | WHITE | 29, 9(v14), WAIT.ticks:10, 3, WAIT.ticks:2, $FF | Breath + slide + click. |
+| 137 | I / ME | 12, 4(v15), WAIT.ticks:12, $FF | Single stressed syllable. |
+| 138 | YOU | 30, 11(v15), WAIT.ticks:12, $FF | Strong vowel 11. |
+| 139 | HE/SHE | 14, 4(v14), WAIT.ticks:10, $FF | SH (14) into long EE. |
+| 140 | IT/THAT | 3, 4(v14), WAIT.ticks:4, 3, WAIT.ticks:2, $FF | Clipped T sounds. |
+| 141 | WE | 29, 4(v15), WAIT.ticks:12, $FF | Long vowel EE. |
+| 142 | THEY | 32, 25(v15), WAIT.ticks:10, $FF | Buzzing TH into AY. |
+| 143 | THE | 32, 1(v11), WAIT.ticks:4, $FF | Short schwa (unstressed). |
+| 144 | A / AN | 1, 5(v11), WAIT.ticks:4, $FF | Soft indefinite article. |
+| 145 | GO | 7(v13), 27(v15), WAIT.ticks:12, $FF | Strong G (7) into OH. |
+| 146 | COME | 16, 23(v14), WAIT.ticks:8, 12(v10), WAIT.ticks:4, $FF | Sharp K, soft nasal end. |
+| 147 | DO | 7(v13), 11(v15), WAIT.ticks:12, $FF | Simple D-OO. |
+| 148 | GIVE | 7, 4(v14), WAIT.ticks:6, 39(v10), WAIT.ticks:4, $FF | Sharp start, buzzing end. |
+| 149 | SAY | 2, 25(v15), WAIT.ticks:12, $FF | Hiss into AY glide. |
+| 150 | EAT | 4(v15), WAIT.ticks:10, 3, WAIT.ticks:2, $FF | Long vowel, sharp stop. |
+| 151 | SEE | 2, 4(v15), WAIT.ticks:12, $FF | S-hiss to long EE. |
+| 152 | HEAR | 18, 36(v15), WAIT.ticks:12, $FF | Breath into EAR-glide. |
+| 153 | KNOW | 5, 27(v14), WAIT.ticks:12, $FF | Silent-K, starts with N. |
+| 154 | WANT | 29, 24(v14), WAIT.ticks:6, 5, 3, WAIT.ticks:2, $FF | Stressed O. |
+| 155 | TAKE | 3, 25(v15), WAIT.ticks:8, 16, WAIT.ticks:2, $FF | T-start, K-stop. |
+| 156 | WAIT | 29, 25(v15), WAIT.ticks:12, 3, WAIT.ticks:2, $FF | Glide + click. |
+| 157 | HELP | 18, 33(v14), 28, 7(v12), WAIT.ticks:3, $FF | Heavy P-pop end. |
+| 158 | RUN | 8, 23(v14), WAIT.ticks:8, 5, WAIT.ticks:4, $FF | R-start, N-end. |
+| 160 | NOT | 5, 24(v15), WAIT.ticks:8, 3, WAIT.ticks:2, $FF | Short vowel, hard T. |
+| 161 | HOT | 18, 24(v15), WAIT.ticks:8, 3, WAIT.ticks:2, $FF | Breath into O-hot. |
+| 162 | COLD | 16, 27(v14), WAIT.ticks:8, 28, 7, WAIT.ticks:4, $FF | Multi-consonant cluster. |
+| 163 | BIG | 7(v14), 4(v13), WAIT.ticks:6, 7(v10), WAIT.ticks:2, $FF | B (7) to G (7) plosives. |
+| 164 | SMALL | 2, 12, 34(v15), WAIT.ticks:10, 28, WAIT.ticks:6, $FF | S + M cluster. |
+| 165 | NEW | 5, 30, 11(v15), WAIT.ticks:12, $FF | N + Y + OO. |
+| 166 | OLD | 27(v14), WAIT.ticks:8, 28, 7, WAIT.ticks:4, $FF | OH-L-D. |
+| 167 | GOOD | 7(v13), 22(v14), WAIT.ticks:6, 7(v10), WAIT.ticks:4, $FF | Soft Book-U (22). |
+| 168 | BAD | 7(v14), 21(v15), WAIT.ticks:10, 7(v10), WAIT.ticks:4, $FF | Wide Cat-A (21). |
+| 169 | ALL | 6(v14), WAIT.ticks:10, 28, WAIT.ticks:6, $FF | AH into L. |
+| 170 | MANY | 12, 33(v14), WAIT.ticks:6, 5, 4(v12), WAIT.ticks:8, $FF | M-E-N-EE. |
+| 171 | HALF | 18, 6(v15), WAIT.ticks:10, 17, WAIT.ticks:6, $FF | Breath-AH-F. |
+| 172 | QUARTER | 16, 29, 34(v14), WAIT.ticks:8, 3, 1, WAIT.ticks:4, $FF | K-W cluster. |
+| 173 | MORE | 12, 34(v14), WAIT.ticks:10, 13, WAIT.ticks:6, $FF | M + AU (34). |
+| 174 | LESS | 28, 33(v14), WAIT.ticks:8, 2, WAIT.ticks:6, $FF | L-E-S. |
+| 175 | MOST | 12, 27(v15), WAIT.ticks:8, 2, 3, WAIT.ticks:3, $FF | M-OH-S-T. |
+| 176 | NONE | 5, 23(v14), WAIT.ticks:8, 5, WAIT.ticks:4, $FF | N-U-N. |
+| 181 | BUY | 7(v14), 9(v15), WAIT.ticks:12, $FF | B + long UP-glide. |
+| 182 | SELL | 2, 33(v14), WAIT.ticks:8, 28, WAIT.ticks:6, $FF | S-E-L. |
+| 183 | MONEY | 12, 23(v14), WAIT.ticks:6, 5, 4, WAIT.ticks:8, $FF | M-U-N-EE. |
+| 184 | FREE | 17, 8, 4(v15), WAIT.ticks:12, $FF | F-R-EE. |
+| 185 | MAN | 12, 21(v15), WAIT.ticks:10, 5, WAIT.ticks:4, $FF | M-A-N. |
+| 186 | WOMAN | 29, 22(v14), WAIT.ticks:6, 12, 1, 5, WAIT.ticks:6, $FF | W-OO-M-A-N. |
+| 187 | CHILD | 19(v13), 9(v15), WAIT.ticks:12, 28, 7, $FF | CH-I-L-D. |
+| 188 | FRIEND | 17, 8, 33(v14), WAIT.ticks:6, 5, 7, $FF | F-R-E-N-D. |
+| 189 | MOTHER | 12, 23(v14), WAIT.ticks:6, 32, 1, WAIT.ticks:6, $FF | M-U-TH-A. |
+| 190 | FATHER | 17, 6(v14), WAIT.ticks:8, 32, 1, WAIT.ticks:6, $FF | F-AH-TH-A. |
+| 191 | NAME | 5, 25(v15), WAIT.ticks:12, 12, WAIT.ticks:4, $FF | N-AY-M. |
+| 192 | BODY | 7(v13), 24(v15), WAIT.ticks:8, 7, 4(v12), WAIT.ticks:8, $FF | B-O-D-EE. |
+| 213 | EAST | 4(v15), WAIT.ticks:10, 2, 3, WAIT.ticks:3, $FF | EE-S-T. |
+| 214 | WEST | 29, 33(v14), WAIT.ticks:8, 2, 3, WAIT.ticks:3, $FF | W-E-S-T. |
+| 215 | NEAR | 5, 36(v15), WAIT.ticks:12, $FF | N + EAR-glide. |
+| 216 | FAR | 17, 6(v15), WAIT.ticks:12, 13, $FF | F-AH-R. |
+| 222 | HOUSE | 18, 10(v15), WAIT.ticks:12, 2, $FF | H-AU-S. |
+| 223 | ROAD | 8, 27(v15), WAIT.ticks:12, 7, $FF | R-OH-D. |
+| 224 | PHONE | 17, 27(v15), WAIT.ticks:12, 5, $FF | F-OH-N. |
+| 229 | TIME | 3, 9(v15), WAIT.ticks:12, 12, $FF | T-I-M. |
+| 230 | WEEK | 29, 4(v15), WAIT.ticks:12, 16, $FF | W-EE-K. |
+| 231 | MONTH | 12, 23(v14), WAIT.ticks:8, 5, 32, $FF | M-U-N-TH. |
+| 232 | YEAR | 30, 36(v15), WAIT.ticks:12, $FF | Y-EAR. |
+| 233-240 | QUESTS | As defined in previous turn | Intonation hooks. |
+| 241 | SLEEP | 2, 28, 4(v15), WAIT.ticks:12, 7, $FF | S-L-EE-P. |
+| 242 | WAKE | 29, 25(v15), WAIT.ticks:10, 16, $FF | W-AY-K. |
+| 243 | WORK | 29, 35(v14), WAIT.ticks:12, 16, $FF | W-UR-K. |
+| 244 | PLAY | 7, 28, 25(v15), WAIT.ticks:12, $FF | P-L-AY. |
+| 245 | LOVE | 28, 23(v14), WAIT.ticks:8, 39, $FF | L-U-V. |
+| 246 | HATE | 18, 25(v15), WAIT.ticks:12, 3, $FF | H-AY-T. |
+| 247 | LIVE | 28, 4(v14), WAIT.ticks:8, 39, $FF | L-EE-V. |
+| 248 | DIE | 7, 9(v15), WAIT.ticks:12, $FF | D-I. |
+
+## Note on "Alias" IDs:
+For IDs that were marked as "Alias" in your original map (e.g., STOP ID 159), simply point your VM to jump to the existing ID logic to save memory.
+How is the index logic for your 4 cursors coming along—do you need a specific routine for handling the Mode B (Tone+Noise) linkage?
+
