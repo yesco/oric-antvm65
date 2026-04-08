@@ -389,6 +389,7 @@ interpret:
 .endif ; ANTTRACE & AT_CMD
 
 .if ANTTRACE
+;;; TODO: crashes
   CHECKIPY_OVERFLOW=1
 .endif ; ANTTRACE
 
@@ -1079,6 +1080,7 @@ checkOverflow:
 
         jmp halt
 :       
+        rts
 
 .endif ; CHECKIPY_OVERFLOW
 

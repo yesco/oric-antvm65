@@ -20,10 +20,10 @@ AT_AY=8
 
 AT_ALL=255
 
-;
-ANTTRACE=AT_ALL
+;ANTTRACE=AT_ALL
 
-;ANTTRACE=AT_CMD+AT_NOTE
+;
+ANTTRACE=AT_CMD+AT_NOTE
 
 
 .ifndef ANTTRACE
@@ -382,7 +382,7 @@ phonem0:
 ;        .byte %11001010         ; VALUE2 = HALF
 
 ;;; just to get offset right
-.byte %11000000                 ; cmdSTOP
+;.byte %11000000                 ; cmdSTOP
 
         ;; minimal length => 1,1
         .byte %11001110       ; VALUE6

@@ -76,11 +76,13 @@ nextTickBit:
         rol
         bcc @next
 
-;;; this gets more events 4
-;.if ANTTRACE ;& AT_TICK
+;;; TODO: somehow calling this code is vital,
+;;;   otherwise crash, lol?
+;.ifnblank                      
+
+.if ANTTRACE ;& AT_TICK
 ;;; this doesn't get 4 but 1
 ;.if ANTTRACE & AT_TICK
-.if ANTTRACE
 pha
 txa
 pha
