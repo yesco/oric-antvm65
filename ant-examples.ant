@@ -89,6 +89,35 @@ $TET_scale:
   @RET
 
 
+
+% Maqam Rast (The "Fundamental" Scale) - "Arabic"
+
+$maqam_rast:
+
+  C D Eqs F G A Bqs C
+
+  @RET
+
+
+% Folk style scale
+
+$maqam_bayati:
+
+  D Eqs F G A As C D
+
+  @RET
+
+
+% Quarter-Tone "Neutral" Major
+% -- For a more modern approach, you can create a scale using the "half-sharp fourth" (11 steps/550 cents), which is often cited as a highly resonant microtonal interval. [1] 
+$quarter_major:
+
+  C D E Fqs G A B C
+
+  @RET
+
+
+
 $timing_test:
 
   |A C/2 C/4 C/8 C/16 C/32   % Should generate ppp: 1, 2, 3, 4, 5

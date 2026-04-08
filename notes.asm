@@ -226,7 +226,7 @@ note_char1:
         ;;     0123456789012345678901234
         .byte "CCCDDDDEEEFFFFGGGGAAAABBB"
 note_char2:      
-        .byte " -#+ -#+ + -#+ -#+ -#+ -#"
+        .byte " qst qst q qst qst qst qs"
 
 .code
 .endif ; ANTTRACE & AT_CMD
@@ -276,7 +276,7 @@ oct4_table:
 
 ;;; --- BEFORE Command Handlers ---
 
-.macro YIELD
+.macro DOYIELD
         rts
 .endmacro
 
@@ -291,7 +291,7 @@ cmdSTOP:          ; 11 000 000
 
         ;; crashes???
 
-        YIELD
+        DOYIELD
 
 
 
@@ -321,7 +321,7 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
 :       
         sta delayA
         
-        YIELD
+        DOYIELD
 
 
 
@@ -357,7 +357,7 @@ cmdEXTENDED:      ; 11 011 100|CTRL
 
 cmdYIELD:         ; 11 011 101
         ;; Yield does RTS finishing this interpreation round
-        YIELD
+        DOYIELD
 
 cmdQUIET:         ; 11 011 110
 ;;; TODO: only for one channel?
@@ -490,7 +490,7 @@ cmdSETAY:         ; 11 10 rrrr
 cmdAYPDATE:       ; 11 10 1110
         jsr aypdate
 
-        YIELD
+        DOYIELD
 
 
 cmdDUMPAY:        ; 11 10 1111
@@ -505,7 +505,7 @@ cmdDUMPAY:        ; 11 10 1111
         cpx #13
         bne :-
         
-        YIELD
+        DOYIELD
 
 
 
@@ -537,11 +537,16 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
         asl
         tay
 
+        ;; TODO: check index is within range?
+
         ;; get new stream addr from index pos Y (PHONEM)
-        lda (language),Y
+
+;;; TODO: handle more than "one" language
+
+        lda language,Y
         sta stream
         iny
-        lda (language),Y
+        lda language,Y
         sta stream+1
 
         ldy #0
@@ -632,6 +637,7 @@ cmdLEGATO:        ; 11 001 111
 
         jmp interpret
 
+
 cmdVALUE1:        ; 11 001 001  w)hole
 cmdVALUE2:        ; 11 001 010  h)alf
 cmdVALUE4:        ; 11 001 011  q)uarter
@@ -647,6 +653,8 @@ cmdVALUE:
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
+        ;; undeflow -> 1 tick
+        lda #1
 :       
 ;PUTC '@'
         sta valueA
@@ -698,7 +706,9 @@ storeprocessmap:
 
 
 ;;; Playing a NOTE command
-;;;   X=A=nnnnn0 Y=octave(0-7) (from dispatch)
+;;;   A=comamnd Y=octave(0-7) (from dispatch)
+;;; 
+;;; TODO: X= channel 0-2 (ABC)
 ;;; 
 ;;; Cycle Counts (Absolute addressing, no page crossing, includes RTS):
 ;;; Oct 0: 42c | Oct 1: 54c | Oct 2: 66c | Oct 3: 78c
@@ -707,11 +717,14 @@ storeprocessmap:
 ;;; 28B shift 0-7 steps, 17-122cycles (SLOW for high oct)
 ;;; 67B optimize by second byte array for oct>=4 (hip=0)
 ;;; 55B tight dual-table shifter
-;;; 51B tightest opt (X=High, A=Low, No re-loads)
+;;; 51B tightest opt
+;;; 
+;;; 
 cmdNOTE:
-        lsr                 ; 1B | %0 nnnnn 00
-        lsr                 ; 1B | %00 nnnnn 0
-        and #%111111
+        ;; nnnnn ooo => nnnn 0 use for LUT
+        lsr
+        lsr
+        and #%1111110
 
 .if ANTTRACE & AT_NOTE
         jsr traceNOTE1
@@ -721,6 +734,8 @@ cmdNOTE:
         cpy #4              ; 2
         bcs @high_oct       ; 2/3 | Branch to 8-bit logic
         
+
+
         ;; use 16-bit LUT: oct 4..7
         tax
         lda period_table+1, x ; 4
@@ -739,9 +754,11 @@ cmdNOTE:
         jmp @pitch_done      ; 3
 
 
+
         ;; use 8-bit LUT: oct 4..7
 @high_oct:
-        lsr                 ; 2 | A = nnnnn (Index)
+        ;; A= 000 nnnn (index in LUT)
+        lsr                 ; 2
         tax                 ; 2
         lda oct4_table, x   ; 4
 :       
@@ -800,7 +817,7 @@ newenvelope:
         ;; TODO: do min on all ?
         ;;   possibly call with X
 
-        YIELD
+        DOYIELD
 
 
 

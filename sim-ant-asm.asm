@@ -345,10 +345,20 @@ halt2:
 
 
 
-langauge:       
+;;; ----- Example
+
+.include "ant-cmd.asm"
+
+language:
         ;; HEADER
+        ;; TODO: "n"?
+        ;; TODO: title?
         .byte 0,1,2,3
+
+        ;; MAIN
         .word phonem0
+
+        ;; phonem 1-8
         .word phonem1
         .word phonem2
         .word phonem3
@@ -357,6 +367,9 @@ langauge:
         .word phonem6
         .word phonem7
         .word phonem8
+
+        ;; phonems 9--255
+
 phonem1:
 phonem2:
 phonem3:
@@ -366,13 +379,13 @@ phonem6:
 phonem7:
 phonem8:
         ;; END
-        .byte $ff
+        .byte RET
 
-        ;; MAIN
+        ;; MAIN (play "song" will launch this automatic)
 phonem0: 
-        .byte %00000100
-        .byte %00001100
-        .byte %00010100
+        .byte _C  + oct4
+        .byte _Cs + oct4
+        .byte _Ds + oct4
 
 ;        .byte %11001111         ; LEGATO
 ;        .byte %11001000         ; SUSTAIN
@@ -387,24 +400,29 @@ phonem0:
         ;; minimal length => 1,1
         .byte %11001110       ; VALUE6
 
-        .byte %00011100
-        .byte %00100100
+        .byte _Ds + oct4
+        .byte _E  + oct4
 
 ;;; TODO: Crashes! (because does yield?)
 ;        .byte %11000000
 
-;;; Loop writing :1:1:1:1:1:1:1 .... lol?
-        .byte %11000001
-        .byte %11000010
+        ;; Explicit timing (SUSTAIN/LEGATO)
+        .byte SUSTAIN
 
-        .byte %00101100
-        .byte %11000001
-        .byte %00110100
-        .byte %11000001
-        .byte %00110100
-        
-        .byte $ff
+        .byte WAIT1
+        .byte WAIT2
 
+        .byte _F  + oct4
+        .byte WAIT3
+        .byte _G  + oct4
+        .byte WAIT1
+
+        .byte _Gs + oct4
+
+        .byte STOP        ; STOP
+
+        ;; return from non-call? lol
+        .byte RET
 
 
 

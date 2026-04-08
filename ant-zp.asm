@@ -5,12 +5,11 @@ ticks:          .res 2
 
 ;;; IP for interpration
 ;;; TODO: ABCN
-language:       .res 2
 stream:         .res 2
 ipy:            .res 1
 
 antlang:        .res 1
-antsp:          .res 1          ; next offset where to push
+antsp:          .res 1          ; offset where to push
 
 ;;; maybe have a number of interrupt tmp!
 ;;; TODO: replace with savea, savex, savey
@@ -24,6 +23,10 @@ antvm_tmp3:     .res 1
 
 
 .data
+
+
+;;; TODO: array of langauge modules
+langarr:        .res 2*8
 
 
 ;;; TODO: "dish" out different offsets/task
