@@ -233,6 +233,7 @@ cmdwait:
 .data
 
 .if ANTTRACE & AT_CMD
+.data
         ;; Single letter MNEMOIC
         ;;     12345678
 cmd_char:       
@@ -254,7 +255,6 @@ cmd_char:
         ;; kick, snare, close/opne (hihat), Byte Word Return
         .byte "kscoXBWR"
 
-
 ;;; JSK-notation, LOL: ABC-notation uses ^/C and _/C !
 
 note_char1:      
@@ -263,6 +263,7 @@ note_char1:
 note_char2:      
         .byte " -#+ -#+ + -#+ -#+ -#+ -#"
 
+.code
 .endif ; ANTTRACE & AT_CMD
 
 
@@ -419,17 +420,7 @@ interpret:
 
 
 .if ANTTRACE & AT_CMD
-        NL
-        putc 9
-        putc 9
-        putc '@'
-        LDAX stream
-        jsr puth
-        putc '.'
-        tya
-        lda ipy
-        jsr put2h
-        putc ':'
+        jsr traceCMD1
 .endif ; ANTTRACE & AT_CMD
 
 .if ANTTRACE
@@ -437,20 +428,7 @@ interpret:
 .endif ; ANTTRACE
 
 .ifdef CHECKIPY_OVERFLOW
-        ;; We check for overflow, this should only
-        ;; happen if we "run" too long in one "phonome"
-        ;; > 240 bytes without any YIELD!
-        ldy ipy
-        cmp #255-1-14 -5        ; biggest==cmdDUMPAY; 5 extra
-        bcc :+
-
-        ;; OVERFLOW near!
-        putc 'o'
-        putc 'o'
-        putc 'o'
-
-        jmp halt
-:       
+        jsr checkOverflow
 .endif ; CHECKIPY_OVERFLOW
 
         ldy ipy             ; 3B | Load stream index
@@ -458,17 +436,7 @@ interpret:
         inc ipy             ; 3B | inc pointer
 
 .if ANTTRACE & AT_CMD
-        ;; print CMD in hex
-        pha
-        jsr put2h
-        SPC
-        pla
-        ;; print CMD in bin
-        pha
-        jsr putb
-        SPC
-        SPC
-        pla
+        jsr traceCMD2
 .endif ; ANTTRACE & AT_CMD
 
         ;; Extract Y=iii from "11 ccc iii"
@@ -488,29 +456,7 @@ interpret:
 command:
 
 .if ANTTRACE & AT_CMD
-;;; TODO messed up Y...
-        ;; print CMD char
-        SAVEAXY
-
-        PUTC '>'
-
-        ;; show one letter command 'name'
-        and #%111111
-        tay
-        lda cmd_char,Y
-        jsr putchar
-        lda savey
-
-        ;; show 3 low parameter bits (as digit)
-        clc
-        adc #'0'
-        jsr putdigit
-        putc ':'
-
-;;; forcing a NL to flush, not to hide print at errrors
-        NL
-
-        LOADAXY
+        jsr traceCMD3
 .endif ; ANTTRACE & AT_CMD
 
 ;;; 23 B  26c
@@ -523,13 +469,7 @@ command:
         sta dispatch_br+1
 
 .if ANTTRACE & AT_CMD
-        SAVEAXY
-
-        PUTC '['
-        jsr put2h
-        PUTC ']'
-
-        LOADAXY
+        jsr traceCMD4
 .endif ; ANTTRACE & AT_CMD
 
         ;; ? get paramter? (if X== 1cc xxx )
@@ -808,35 +748,7 @@ cmdNOTE:
         and #%111111
 
 .if ANTTRACE & AT_NOTE
-        SAVEAXY
-
-        PUTC '>'
-
-        PUTC 'N'
-        lda savey
-        clc
-        adc #'0'
-        jsr putdigit
-        putc ':'
-        SPC
-
-        ;; Show note 2 char
-        lda savex
-        lsr
-        pha
-        tax
-        lda note_char1,x
-        jsr putchar
-
-        pla
-        tax
-        lda note_char2,x
-        jsr putchar
-
-;;; forcing a NL to flush, not to hide print at errrors
-        NL
-
-        LOADAXY
+        jsr traceNOTE1
 .endif ; ANTTRACE
 
         ;; ? can use 8-bit LUT: oct 0..3
@@ -1077,3 +989,131 @@ andprocessmap:
 
 
 .include "antvm-aypdate.asm"
+
+
+
+.if ANTTRACE & AT_CMD
+
+traceCMD1:      
+        NL
+        putc 9
+        putc 9
+        putc '@'
+        LDAX stream
+        jsr puth
+        putc '.'
+        tya
+        lda ipy
+        jsr put2h
+        putc ':'
+
+        rts
+
+traceCMD2:      
+        ;; print CMD in hex
+        pha
+        jsr put2h
+        SPC
+        pla
+        ;; print CMD in bin
+        pha
+        jsr putb
+        SPC
+        SPC
+        pla
+
+        rts
+
+
+traceCMD3:      
+        ;; print CMD char
+        SAVEAXY
+
+        PUTC '>'
+
+        ;; show one letter command 'name'
+        and #%111111
+        tay
+        lda cmd_char,Y
+        jsr putchar
+        lda savey
+
+        ;; show 3 low parameter bits (as digit)
+        clc
+        adc #'0'
+        jsr putdigit
+        putc ':'
+
+;;; forcing a NL to flush, not to hide print at errrors
+        NL
+
+        LOADAXY
+        rts
+
+
+
+traceCMD4:      
+        SAVEAXY
+
+        PUTC '['
+        jsr put2h
+        PUTC ']'
+
+        LOADAXY
+        rts
+
+traceNOTE1:     
+        SAVEAXY
+
+        PUTC '>'
+
+        PUTC 'N'
+        lda savey
+        clc
+        adc #'0'
+        jsr putdigit
+        putc ':'
+        SPC
+
+        ;; Show note 2 char
+        lda savex
+        lsr
+        pha
+        tax
+        lda note_char1,x
+        jsr putchar
+
+        pla
+        tax
+        lda note_char2,x
+        jsr putchar
+
+;;; forcing a NL to flush, not to hide print at errrors
+        NL
+
+        LOADAXY
+        rts
+
+.endif ; ANTRACE & AT_CMD
+
+
+.ifdef CHECKIPY_OVERFLOW
+
+checkOverflow:  
+        ;; We check for overflow, this should only
+        ;; happen if we "run" too long in one "phonome"
+        ;; > 240 bytes without any YIELD!
+        ldy ipy
+        cmp #255-1-14 -5        ; biggest==cmdDUMPAY; 5 extra
+        bcc :+
+
+        ;; OVERFLOW near!
+        putc 'o'
+        putc 'o'
+        putc 'o'
+
+        jmp halt
+:       
+
+.endif ; CHECKIPY_OVERFLOW
+
