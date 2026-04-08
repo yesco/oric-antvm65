@@ -38,41 +38,6 @@
 ;;; 
 ;;; COMMAND: 26c + 3c(go next)
 
-.zeropage
-
-channels:       .res 1
-ticks:          .res 2
-
-;;; IP for interpration
-;;; TODO: ABCN
-language:       .res 2
-stream:         .res 2
-ipy:            .res 1
-
-antlang:        .res 1
-antsp:          .res 1          ; next offset where to push
-
-;;; maybe have a number of interrupt tmp!
-;;; TODO: replace with savea, savex, savey
-antvm_tmp:      .res 1
-
-ay_reg: 
-antvm_tmp2:     .res 1
-
-ay_coarse:      
-antvm_tmp3:     .res 1
-
-.data
-
-
-;;; TODO: "dish" out different offsets/task
-antstack:       .res 3*8*4      ; 3B * 8 levels * 4 ch
-
-detune:         .word 0
-
-;;; AY register shadow in RAM to be manipulated
-ayshadow:       .res 14
-
 .code
 
 

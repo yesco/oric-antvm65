@@ -189,6 +189,17 @@ putb:
 .endmacro
 
 
+;;; Move all here
+
+.include "ant-zp.asm"
+
+.code
+
+;;; Gotten from print '@' START
+;.org $0286
+;.org $0286
+;.org $1000
+
 START:  
 
 .include "antvm-vol.asm"
@@ -234,6 +245,12 @@ DTO=cmdVALUE
 ;;; Enable if we only want info
 ;        jmp halt
 
+        putc '@'
+
+        LDAXD START
+        jsr puth
+        NL
+
         putc 'z'
 
         lda #<END
@@ -251,7 +268,6 @@ DTO=cmdVALUE
 
         putc '.'
         NL
-
 
 ;;; TODO: move to antinit
 

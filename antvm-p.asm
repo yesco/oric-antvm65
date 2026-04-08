@@ -1,14 +1,3 @@
-.zeropage
-; --- Deltas (ds) Pitch State ---
-ds_p_mask:    .res 2    ; 16-bit pattern (Circular)
-ds_p_config:  .res 1    ; [7:OneShot][3-6:Delay][0-2:StepIndex]
-ds_p_current: .res 2    ; 16-bit Current Period (Reg 0/1)
-ds_p_step:    .res 2    ; 16-bit Calculated Step (P >> (8-S))
-ds_p_delay:   .res 1    ; Negative = Off, 0-15 = Active
-ds_p_count:   .res 1    ; Bit counter (16 down to 1)
-
-.code
-
 ; ---------------------------------------------------------
 ; DS_P_PITCH_ENGINE
 ; ;; 77 B - Unified math path to remove @p_up/@p_down branches

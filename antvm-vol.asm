@@ -1,14 +1,3 @@
-.zeropage
-
-; --- Deltas (ds) Volume State ---
-ds_v_mask:    .res 2    ; 16-bit pattern (Circular)
-ds_v_config:  .res 1    ; [7:OneShot][3-6:Delay][0-2:Step S]
-ds_v_current: .res 1    ; 4-bit Volume (0-15)
-ds_v_delay:   .res 1    ; Negative = Off, 0-15 = Active
-ds_v_count:   .res 1    ; Bit counter (16 down to 1)
-
-.code
-
 ; ---------------------------------------------------------
 ; DS_V_VOLUME_ENGINE
 ; ;; 42 B - Initial branchy volume math/clamping
