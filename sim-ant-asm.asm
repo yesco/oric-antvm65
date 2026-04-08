@@ -39,8 +39,6 @@ PRINT=1
 .endif ; ANTTRACE
 
 
-START:  
-
 .segment "CODE"
 
 .zeropage
@@ -189,18 +187,15 @@ putb:
 .endmacro
 
 
+START:  
 
 .include "antvm-vol.asm"
-
 .include "antvm-p.asm"
-
 .include "drum.asm"
-
-;;; load TICKER
 .include "antvm-ticker.asm"
+.include "notes.asm"            ; INTERPRET
 
-;;; load INTERPRET
-.include "notes.asm"
+END:    
 
 ayheader:
         .byte "aa AA|bb BB|cc CC|nn|MM|va|vb|vc|pp PP|ee", 0
@@ -208,7 +203,6 @@ ayheader:
 .export _main
 _main:   
 
-.if ANTTRACE
         lda #'V'
         jsr _putchar
         
@@ -216,75 +210,6 @@ _main:
         jsr puth
 
         NL
-
-.endif ; ANTTRACE
-
-.ifdef PRINT
-
-
-TODO:   
-
-;(+ 9 66 26 7 11 3 42) === 164 !!!! too big...
-
-
-;00022Cr 2     9         cmdSTOP:          ; 11 000 000
-;000235r 2    66         cmdWAIT:          ; 11 000 www / 
-;000277r 2    26         cmdSELECT_A:      ; 11 011 000
-;....          7         cmdEXTEND cmdYIELD
-;             11         cmdQUIET:
-;0002A3r 2     3         cmdKILL:          ; 11 011 111
-
-;0002A6r 2    42         interpret:
-;0002D0r 2     2         dispatch_br:
-
-;(+ 14 4 15 3 29 27 18 11)= 121
-;0002D2r 2    14         cmdSETAY:         ; 11 10 rrrr
-;0002E0r 2     4         cmdAYPDATE:       ; 11 10 1110
-;0002E4r 2    15         cmdDUMPAY:        ; 11 10 1111
-
-;0002F3r 2     3         cmdCALL_LOCAL:    ; 11 010 pnm
-;0002F6r 2    29         cmdCALL_LNG:      ; 11 110 lng|PHO
-;000313r 2    27         cmdDRUM_KICK:     ; 11 111 000
-;00032Er 2    18         cmdPARAM_BYTE:    ; 11 111 101
-;000335r 2    11         cmdPARAM_WORD:    ; 11 111 110
-
-;000340r 2    39         cmdRETURN:        ; 11 111 111
-;00035Dr 2    10         cmdSUSTAIN:       ; 11 001 000
-;000367r 2               cmdVALUE:
-
-
-
-
-
-;;; cmdNOTE:
-
-;; 000238r 2      9    9   cmdSTOP:          ; 11 000 000
-;; 000241r 2     66   75   cmdWAIT:          ; 11 000 www / 1
-;; 000283r 2     55        cmdSUSTAIN:       ; 11 001 000
-;; 0002BAr 2     50        cmdCALL_LOCAL:    ; 11 010 pnm
-;; 0002ECr 2      3        cmdKILL:          ; 11 011 111
-
-;; 0002EFr 2    205        interpret: ; LOT'S ANTTRACE bytes!
-
-;; 0003BCr 2               dispatch_br:
-;; 0003BEr 2     14  107   cmdSETAY:         ; 11 10 rrrr
-;; 0003CCr 2      4   93   cmdAYPDATE:       ; 11 10 1110
-;; 0003D0r 2     15   89   cmdDUMPAY:        ; 11 10 1111
-;; 0003DFr 2     29   74   cmdCALL_LNG:      ; 11 110 lng|PHO
-;; 0003FCr 2     24   45   cmdDRUM_KICK:     ; 11 111 000
-;; 000414r 2      3   21   cmdEXTENDED_PAR:  ; 11 111 100|CTR
-;; 000417r 2      7   18   cmdPARAM_BYTE:    ; 11 111 101
-;; 00041Er 2     11   11   cmdPARAM_WORD:    ; 11 111 110
-;; 000429r 2     29    0   cmdRETURN:        ; 11 111 111
-;; (- #x446 #x429)
-
-;; 000446r 2               cmdNOTE:
-
-;;; 180
-;DFROM=cmdSTOP
-;DTO=cmdKILL
-
-;cmdSETAY:         ; 11 10 rrrr
 
 ;;; 109
 DFROM=dispatch_br
@@ -302,9 +227,10 @@ DTO=cmdVALUE
         tax
         tya
         jsr puth
+        NL
 
-        jmp halt
-
+;;; Enable if we only want info
+;        jmp halt
 
         putc 'z'
 
@@ -323,7 +249,9 @@ DTO=cmdVALUE
 
         putc '.'
         NL
-.endif ; PRINT
+
+
+;;; TODO: move to antinit
 
 init:   
        
@@ -396,9 +324,6 @@ init:
         rts
 halt2:  
         jmp halt2
-
-
-END:    
 
 
 

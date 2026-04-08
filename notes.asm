@@ -342,32 +342,17 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
         ;; (would save 1 byte if used only 2 places)
 
         ;; TODO: settable "global" (/task?) parameter!
-PUTC 'a'
-NL
         lda #WHOLETICKS
 :       
         dey
-PUTC 'b'
-NL
         bmi :+
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
 
-PUTC 'c'
-NL
         ;; underflow => at least 1 tick!
         lda #1
 :       
-
-PUTC 'd'
-NL
-
-pha
-jsr put2h
-putc 'w'
-NL
-pla
         sta delayA
         
         YIELD
