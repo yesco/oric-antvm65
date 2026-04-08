@@ -1,26 +1,18 @@
 ;;; AntVM Ticker - dispatch to work to do
 
 
-;;; DISPATCH BITMASK COST:
-;;; 
-;;; a. nothing to do: 20c (incl RTI)
-;;; b. something    : 28c
-;;; 
-;;; c. 0bit: 12c
-;;; d. 1bit: 20c (delayed)
-;;; e. 1bit: 46c (triggered)
-
-;;; d. done: 10c
-
-
 ;;; Ticker bitmask dispatch:
 ;;; 
-;;; NOTHING:             20c
-;;; EACH leading 0 bit:  28c
+;;; NOTHING:             20c (incl RTS)
+;;; SOMETHING:           29c (incl RTS)
+;;; 
+;;; EACH leading 0 bit:   7c
 ;;; EACH 1-bit
-;;;   DELAY:             20c
-;;;   TRIGGER:           46c
-;;; DONE (if had any 1): 10c
+;;;   DELAY:             17c
+;;;   TRIGGER:           34c
+;;;   PROCESSING:        ??c
+;;; 
+;;; DONE (if had any 1):  1c
 
 .if ANTTRACE
 
@@ -33,28 +25,43 @@ process_char:   .byte "ABCDEFKT"
 .endif ; ANTTRACE
 
 
+
+;;; LOL, we put it at top to make the
+;;; normal path 2c insteead of 3c!
+donetick:
+        ;; 6c
+        ;; TODO: RTI? or called from handler
+.if ANTTRACE & AT_TICK
+        putc '<'
+.endif
+        rts
+
+
 startTick:
-;;; nothing to do: 20c (incl RTI)
-;;; something    : 28c
+        ;; nothing to do: 20c (incl RTI)
+        ;; something    : 28c
 
         ;; move ticks forward
-;;; 8c
+        ;; 8c
         inc ticks
         bne :+
         inc ticks+1
 :       
-;;; 20c
 
 .if ANTTRACE & AT_TICK
-        ;; ticks update in ticker
         NL
         LDAX ticks
         jsr puth
 .endif ; ANTTRACE & AT_TICK
 
+        ;;   no set:  6c
+        ;;   copy  : 13c
+
         ;; make a copy
         lda processmap
-        beq donetick
+        ;; technically this test is redundant
+        ;; (adds 2c but early exit -17c!)
+        beq donetick           
 
         sta tickermap
 
@@ -62,18 +69,26 @@ startTick:
         stx tickX
 
 nextTickBit:
-;;; 3c
+putc 'n'
+        ;; 10c(+1c)
+        ;; done: 9c+6c(RTS)
         ldx tickX
+
+        ;; Check if any bit set
         lda tickermap
-@next:
-;;; done: 10c
-;;; 0bit: 12c
-;;; 1bit: 20c (delayed)
-;;;       22c (trigger)
+@nextAfterOne:
+        ;; we need to set flags again! - lol
+        tay
         beq donetick
+
+        ;; We only enter if there is a bit set!
+        ;; 0bit:  7c
+        ;; 1bit: 15c (delayed)
+        ;;       21c (triggered)
+@next:
         inx
         ;; rotates out next bit
-        rol
+        asl
         bcc @next
 
 ;;; TODO: somehow calling this code is vital,
@@ -88,6 +103,7 @@ txa
 pha
 
 ;putc 9
+putc ' '
 lda process_char,X
 jsr putchar
 
@@ -111,7 +127,7 @@ pla
         ldy delays,X
 .endif ; ANTTRACE & AT_CMD
 
-        bne @next
+        bne @nextAfterOne
 
 .if ANTTRACE & AT_TICK
 PUTC '!'
@@ -120,11 +136,6 @@ PUTC '!'
         ;; Time to do something
         stx tickX
         sta tickermap
-        jmp tickerX
-
-donetick:
-        ;; RTI? or called from handler
-        rts
 
 ;;; Process A tick for a bit set
 ;;;  X= channel 0..7
@@ -132,7 +143,6 @@ donetick:
 ;;;
 tickerX:
 ;;; 14c
-        stx tickX
         lda @ticktable,X
         sta @patchbpl+1
         ;; N=0 always
