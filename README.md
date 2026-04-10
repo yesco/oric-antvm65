@@ -2,7 +2,9 @@
 
 *Oric AntVM65 - a 24-TET Sound Virtual Machine for the 6502*
 
-**Status: in progress**
+**Status: very early implementation in progress**
+
+*Note: this paper contains fragments of Gemeni discussionsin trying to understand and refine as well as define, not only the functionality, but as well as description. Eventually, it should be edited out.
 
 AntVM65 is a high-performance, 24-TET micro-synth designed for elite 8-bit music, organic speech synthesis, and custom FX. It’s a specialized VM that interprets "in-band" command streams alongside quarter-note data.
 
@@ -12,12 +14,12 @@ Precision Tuning: Native 24-TET support across 8 octaves (0–7), bridging the g
 
 Channel Routing: Independent cursors for Tone Channels A, B, C, plus a dedicated Virtual Noise (N) channel.
 
-The Ticker Engine: A savage 1-bit delta engine with 16-bit patterns.It drives high-resolution, custom envelopes for volume, pitch, and noise.
+The Ticker Engine: A savage 1-bit delta engine with 16-bit patterns. It drives high-resolution, custom envelopes for volume, pitch, and noise. These are used by an Articulator to implement a sound. It may be programmed manually, or rely on simple pre-determined combinations of elements.
 
 **Advanced FX:**
 
-- LINK: C mirrors A with relative detuning and volume attenuation.
 - ECHO: A-to-B delay with a 1–16 step buffer (switching to a 2-tick "cheat" for deep rhythmic repeats).
+- LINK: C mirrors A with relative detuning and volume attenuation.
 
 The Logic & Control: Commands that trigger channel shifts, control flow, or raw AY-register overrides.
 
@@ -35,25 +37,30 @@ Tag-line: "AntVM65 isn't just a player; it’s a Sound Language that treats spee
 ;;; - A,B,C: tone generators w independent cursors
 ;;; - N    : noise generator (on A, B, or C)
 ;;; 
-;;; Each cursor interprets a stream.
-;;; Each stream has the following parameters:
+;;; Each cursor interprets a stream of a phonem.
+;;; A set of phonems are called Language.
+;;;
+;;; The Articulator plays each note.
+;;;
+;;; Each cursor has the following state parameters:
 ;;; - volume
-;;; - note/pitch 
-;;; - duration
-;;; - rest
-;;; - DELTAS: 1-bitstream modulator
-;;;   - volume
-;;;   - pitch
+;;; - note/pitch/period (quarter-notes: 24-TET)
+;;; - a detune (quarter-note resolution shifter)
+;;; - VALUE (whole half quarter ... 32th)
+;;; - REST  (VALUE >> "relative-rest")
+;;; - DELTAS: 16 bits of a bit-delta modulator
+;;;   - volume (speed + step)
+;;;   - pitch  (speed + step)
 ;;; - EFFECTS
 ;;;   - LINK: C linked to A, detuned by:
 ;;;         pitch +- = pitch >> 1..12
 ;;;         vol    - = dvol
-;;;   - ECHO: B follows A, delayed in 8 buffer
+;;;   - ECHO: B follows A, delayed in 8 element buffer
 ;;;        - delay 1-8  : 
 ;;;        - delay 9-16 : every second swample
-;;;        - ? optional feedback? w >>
-;;; 
-```
+;;;        - ? optional feedback? w >> 1 (?)
+
+
 
 
 # COMMAND BITPATTERN FORMATS
@@ -301,13 +308,11 @@ Mapping your volume to these terms makes the VM intuitive for both musicians and
 * Speech: Uses these levels for Emphasis. In natural speech, important words are slightly louder. Having 8 levels allows you to tag specific "Word Indices" in your Language 1 table with a dynamic level (e.g., Level 6 for "Stop!") while the rest of the sentence sits at Level 4.
 
 ## The "6502 Hack" for Volume:
+
 Since the AY-3-8910 has 16 internal volume levels (0-15), you can easily map your 3-bit (0-7) VM levels to the AY hardware using a simple Shift or Lookup Table:
 
 * AY_VOL = VM_LEVEL << 1 (Simple, but 0 stays 0 and 7 becomes 14).
 * Recommended: Use a 8-byte LUT to map them logarithmically (e.g., 0, 2, 4, 7, 9, 11, 13, 15) to better match how human ears perceive loudness.
-
-Would you like to reserve the 3 bits in your VALUE command to act as this "Dynamic Level" for the next note?
-Next Step: Decide if the Envelope Speed should also be tied to these dynamic levels for "harder" attacks at higher volumes?
 
 [1] [https://www.sfu.ca](https://www.sfu.ca/sonic-studio-webdav/handbook/Dynamics.html#:~:text=Table_content:%20header:%20%7C%20pp%20%7C%20pianissimo%20%28very,pianissimo%20%28very%20soft%29:%20fortissimo%20%28very%20loud%29%20%7C)
 [2] [https://www.sfu.ca](https://www.sfu.ca/sonic-studio-webdav/handbook/Dynamics.html#:~:text=Table_content:%20header:%20%7C%20pp%20%7C%20pianissimo%20%28very,pianissimo%20%28very%20soft%29:%20fortissimo%20%28very%20loud%29%20%7C)
@@ -654,6 +659,108 @@ TODO: cleanup, one table for SPEECH and one for MUSIC mode
 | 13  |   50 |    1s   |  half   |         | Sentence break |
 | 14  |  100 |    2s   |  whole  | Measure | Full stop |
 | 15  |  200 |    4s   |  wait   | Ambient fade-out | Scene change
+
+
+## Consider using LENGTH (NOTE VALUE)/ GATE (FACTOR)
+
+In the world of synthesis and sequencing, Gate is the industry-standard term for the concept you are describing. [1, 2] 
+## How GATE is typically defined
+
+* Definition: A Gate signal is a binary "on/off" state that tells an articulator/envelope whether a key is currently "held".
+* Gate Time / Gate Length: This refers to the active portion of a note's duration—the time the sound is actually "on" before it begins its release.
+* Duty Cycle: In step-sequencing, this is often expressed as a percentage (e.g., 50% Gate means the note is "on" for half the step and "silent" for the rest). [1, 3, 4, 5, 6] 
+
+## Is "VALUE" confusing for Note Length?
+Using VALUE to represent the "Total Note Length" (the rhythmic grid position including the silence) is not inherently confusing, but it differs from standard terminology: [7] 
+
+* Standard term: Most systems call this Duration or Note Value (e.g., a "Quarter Note Value").
+* Your logic: Since your VALUE sets the total ticks (the rhythmic "slot"), and your REST subtracts from that to create the gap, your system is technically a Gate Duration Controller. [8, 9, 10] 
+
+## Recommendation: Naming Improvements
+If you want your code to be more "musical" to an outside reader, consider these renames:
+
+| Your Current Term [11, 12, 13, 14, 15] | Industry Equivalent | Why? |
+|---|---|---|
+| VALUE | DURATION or LENGTH | It defines the rhythmic space (e.g., 100 ticks for a whole note). |
+| REST | GATE or DUTY | It defines the "cut-off" point within that duration. |
+| TICKER | ARTICULATOR | As we discussed, this "runs" the program of the note. |
+
+Why "Gate" is better than "Rest":
+
+In your formula restTicks = valueTicks >> REST, the REST isn't a standalone pause; it's a coefficient of the note's activity. Calling it "Gate" or "Gate Factor" more accurately describes how it's shaping the active sound vs. the silence. [5, 10] 
+
+Since REST 0 results in no subtraction (a 100% full note), you could call this "Gate: Infinite/Sustain" and any value above that as a "Gate Reduction."
+
+[1] [https://learningmodular.com](https://learningmodular.com/glossary/gate/)
+[2] [https://www.craigstuntz.com](https://www.craigstuntz.com/posts/2023-02-23-building-a-synthesizer-glossary.html)
+[3] [https://forum.moogmusic.com](https://forum.moogmusic.com/t/length-of-midi-notes-is-longer-than-selected-by-gate-length/17473)
+[4] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/CV/gate)
+[5] [https://support.apple.com](https://support.apple.com/guide/logicpro-ipad/gate-time-lpip4439e422/ipados)
+[6] [https://shop.synthesizers.com](https://shop.synthesizers.com/blogs/learn/gates-and-triggers-explained)
+[7] [https://www.youtube.com](https://www.youtube.com/watch?v=7l9X-K1_pNs&t=1)
+[8] [https://musictheoryde-mystified.com](https://musictheoryde-mystified.com/5-note-values-part-1/)
+[9] [https://www.open.edu](https://www.open.edu/openlearn/history-the-arts/music/an-introduction-music-theory/content-section-3.1)
+[10] [https://music-prod.com](https://music-prod.com/tutorials/ableton-live/how-to-use-note-length-midi)
+[11] [https://majicdesigns.github.io](https://majicdesigns.github.io/MD_MIDIFile/page_timing.html)
+[12] [https://www.khanacademy.org](https://www.khanacademy.org/humanities/music/music-basics2/notes-rhythm/v/lesson-1-note-values-duration-and-time-signatures)
+[13] [https://www.reddit.com](https://www.reddit.com/r/modular/comments/q6vhi8/newbie_question_about_gates_and_sequencers/)
+[14] [https://www.reddit.com](https://www.reddit.com/r/modular/comments/13xjrhv/hardware_gate_sequencer/)
+[15] [https://www.facebook.com](https://www.facebook.com/groups/361165013897141/posts/1180924181921216/#:~:text=I%20want%20Reason%209%20to%20include%20some,wish%20list%20for%20Reason%209%20and%20beyond?)
+
+
+In the MIDI standard, "Value" is a universal term for any parameter's data (0–127), but your specific bit-pattern logic aligns beautifully with several "official" MIDI concepts. If you were to map your Articulator commands to standard MIDI [Control Change (CC)](https://studiocode.dev/resources/midi-cc/) or messages, it would look like this: [1] 
+## 1. VALUE/Rhythmic Length → MIDI Ticks
+In MIDI files, the "length" of a note isn't a single command; it's the gap between a Note On and a Note Off event. [2] 
+
+* Your System: Your VALUE sets a fixed number of ticks (e.g., 100 for a whole note).
+* MIDI equivalent: This is called Delta Ticks. Most modern sequencers use 480 or 960 [Pulses Per Quarter Note (PPQN)](https://en.wikipedia.org/wiki/MIDI_beat_clock). [2, 3] 
+
+## 2. REST/Gate → MIDI Gate Time
+What you call REST (the subtraction from your VALUE) is almost universally called Gate Time or Gate Length in MIDI. [4, 5, 6] 
+
+* Gate 100%: Equivalent to your REST=0 (the note plays the full duration of the slot).
+* Gate 50%: Equivalent to a note that plays for half its value and "rests" for the other half. [7] 
+
+## 3. Articulation Mapping (The "Hammond" commands)
+MIDI has specific CC numbers for the types of "envelopes" you’re building into your Articulator: [8, 9, 10] 
+
+| Your Command [9, 10, 11, 12, 13, 14] | Standard MIDI CC / Message | Purpose in MIDI |
+|---|---|---|
+| SUSTAIN | CC 64 | Holds the note's release phase. |
+| LEGATO | CC 68 | Turns on/off smooth transitions between notes. |
+| VALUE (Pitch) | Pitch Bend | Dedicated high-resolution message for sliding frequency. |
+| VALUE (Filter) | CC 74 | Standard for "Brightness" or Cutoff frequency. |
+| VALUE (Attack) | CC 73 | Controls how fast the sound reaches max volume. |
+| VALUE (Release) | CC 72 | Controls how long the sound fades out after the "Rest" starts. |
+
+## Is it confusing?
+It is not confusing to use VALUE for rhythmic length within your own engine, but if you ever interface with other gear, remember:
+
+* MIDI "Value" usually means "How much?" (e.g., How loud? How bright?).
+* MIDI "Duration" usually means "How long?". [1, 15, 16, 17] 
+
+By treating REST as a function that modifies your rhythmic VALUE, you have essentially built a [Step Sequencer with variable Gate Time](https://forums.steinberg.net/t/how-to-control-gate-time-of-repeating-evolving-note-sequences/825642). [4, 7] 
+Would you like to see how to implement a "Slur" or "Tie" logic using your REST=0/Sustain pattern?
+
+[1] [https://nickfever.com](https://nickfever.com/music/midi-cc-list)
+[2] [https://www.reddit.com](https://www.reddit.com/r/midi/comments/9655ua/is_there_any_way_to_determine_the_note_length/)
+[3] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/MIDI_beat_clock)
+[4] [https://forums.steinberg.net](https://forums.steinberg.net/t/how-to-control-gate-time-of-repeating-evolving-note-sequences/825642)
+[5] [https://music-prod.com](https://music-prod.com/tutorials/ableton-live/how-to-use-note-length-midi#:~:text=Set%20Gate%20and%20Variation%20The%20%27Gate%27%20knob,note%20lengths%20for%20humanized%20or%20evolving%20patterns.)
+[6] [https://myweb.liu.edu](https://myweb.liu.edu/jmeschi/f22/mus14a/notes/MIDI%20Vocabulary.pdf)
+[7] [https://www.reddit.com](https://www.reddit.com/r/synthesizers/comments/2kh4g4/step_sequencer_gate_time/)
+[8] [https://anotherproducer.com](https://anotherproducer.com/online-tools-for-musicians/midi-cc-list/)
+[9] [https://professionalcomposers.com](https://professionalcomposers.com/midi-cc-list/)
+[10] [https://help.ableton.com](https://help.ableton.com/hc/en-us/articles/360010389480-Using-MIDI-CC-in-Live)
+[11] [https://forum.loopypro.com](https://forum.loopypro.com/uploads/editor/bg/jz1e33hbq4du.pdf)
+[12] [https://es.scribd.com](https://es.scribd.com/document/457164994/MIDI-CC-list)
+[13] [https://www.reddit.com](https://www.reddit.com/r/Logic_Studio/comments/1dqsxsx/mapping_midi_cc_parameters_to_midi_controller/)
+[14] [https://www.scribd.com](https://www.scribd.com/document/676339955/MIDI-CC-Chart-the-Full-List)
+[15] [https://support.apple.com](https://support.apple.com/en-mn/guide/logicpro/lgcp2158ecea/10.7/mac/11.0)
+[16] [https://docs.oracle.com](https://docs.oracle.com/javase/tutorial/sound/MIDI-seq-intro.html)
+[17] [https://www.paulcecchettimusic.com](https://www.paulcecchettimusic.com/full-list-of-midi-cc-numbers/)
+
+
 
 
 ## TODO: cleanup all!
@@ -1770,6 +1877,57 @@ The Command:
 The Logic: Sets the Noise Period to one of 8 specific "colors" (e.g., 
  for white hiss, 
  for a low rumble).
+
+
+
+# Articulator
+
+The Articulator is the mechanism that "runs" a note, controls its envelope, handles VALUE/REST states, and can perform complex, multi-sample, delta-encoded articulations (like Hammond "tune-in" or reverb tails)—the term you are looking for is likely one of the following: [1, 2, 3, 4] 
+
+There are several options for doing articulation:
+
+a. **VALUE+REST:** a simple default "beeper"
+b. **+ DELTAs:** a custom vol/pitch-envelop shaper
+c. **LEGATO+phonem setup:** a "mini-program" setting up a "custom" sequence. These may require specific WAITs for timing, as well as manipulation of delta speeds etc.
+
+
+## 1. Articulation Generator (or Articulator)
+
+While an ADSR envelope handles the shape, an articulator defines the specific, often complex behavior of how a note is produced, including initial transients (like the "tune-in") or multi-stage pitch/volume shifts. [2, 5] 
+
+* It covers the 1-bit delta-encoded volume/pitch envelopes, as it treats the envelope not as a simple curve, but as a "program" that articulates the note. [6] 
+
+## 2. Step Sequencer / Modulation Sequencer
+Since you mentioned the "ticker" and "VALUE and REST" mechanism, you are essentially talking about a step sequencer, but one that controls audio parameters (amplitude/pitch) directly at audio or high control rates, rather than musical notes. [7] 
+
+* Why it fits: The "1-bit delta-encoded" description matches high-resolution modulation sequencing. [8] 
+
+## 3. Envelope/Modulation Program
+If this mechanism "runs" a small script or memory block, it is acting as a program or routine. In digital synthesis, these are often called custom envelopes or sample-accurate envelopes.
+
+* Why it fits: You can have a "Hammond Attack Program" that dictates the first 2 samples, or a "Reverb Tail Routine" that runs after a note is released. [6] 
+
+## 4. Micro-Sequencer / Tick-Sequencer
+If "ticker" is your mechanism, Micro-Sequencer fits the behavior of a sequencer that works at a very high rate (per tick/sample) rather than a musical tempo. [9] 
+## Summary of Differences
+
+* Sequencer: Usually implies a repeating or linear sequence of MIDI/note data (long time scale).
+* Ticker/Articulation Generator: Operates on the micro-level of a single note (short time scale).
+
+In summary, your "ticker" seems to be a Custom Articulation Generator or a Modulation Sequencer.
+
+[1] [https://cmtext.com](https://cmtext.com/synthesis/chapter4_envelopes.php#:~:text=An%20envelope%20generator%20is%20a%20module%20that,a%20VCO%20to%20shape%20pitch%20over%20time.)
+[2] [https://www.instagram.com](https://www.instagram.com/reel/DNQkJOGuK8u/)
+[3] [https://rolandindonesia.com](https://rolandindonesia.com/a-to-z-synthesizer/)
+[4] [https://www.soundonsound.com](https://www.soundonsound.com/techniques/more-about-envelopes)
+[5] [https://www.perfectcircuit.com](https://www.perfectcircuit.com/signal/learning-synthesis-envelopes-1)
+[6] [https://www.reddit.com](https://www.reddit.com/r/synthesizers/comments/juj8jf/pitch_envelopes/)
+[7] [https://synthanatomy.com](https://synthanatomy.com/2024/10/bela-gliss-touch-sensitive-controller-modulation-recorder-module-goes-1u.html)
+[8] [https://modwiggler.com](https://modwiggler.com/forum/viewtopic.php?t=60294)
+[9] [https://www.reddit.com](https://www.reddit.com/r/ZOIA/comments/i7xxio/sequenced_dronery/)
+
+
+
 
 
 # Naming of this project
