@@ -722,6 +722,7 @@ What you call REST (the subtraction from your VALUE) is almost universally calle
 * Gate 50%: Equivalent to a note that plays for half its value and "rests" for the other half. [7] 
 
 ## 3. Articulation Mapping (The "Hammond" commands)
+
 MIDI has specific CC numbers for the types of "envelopes" you’re building into your Articulator: [8, 9, 10] 
 
 | Your Command [9, 10, 11, 12, 13, 14] | Standard MIDI CC / Message | Purpose in MIDI |
@@ -759,6 +760,37 @@ Would you like to see how to implement a "Slur" or "Tie" logic using your REST=0
 [15] [https://support.apple.com](https://support.apple.com/en-mn/guide/logicpro/lgcp2158ecea/10.7/mac/11.0)
 [16] [https://docs.oracle.com](https://docs.oracle.com/javase/tutorial/sound/MIDI-seq-intro.html)
 [17] [https://www.paulcecchettimusic.com](https://www.paulcecchettimusic.com/full-list-of-midi-cc-numbers/)
+
+In standard music theory, REST strictly implies an interval of silence. It is not just a "silent note," but a visual instruction to stop sounding the instrument for a specific duration that corresponds to a note value (e.g., a quarter rest lasts as long as a quarter note). [1, 2, 3] 
+## Key distinctions for your engine:
+
+* Rest vs. Pause: While often used interchangeably, a "Rest" typically has a fixed rhythmic length within the beat, whereas a "Pause" (like a [Fermata](https://en.wikipedia.org/wiki/Fermata)) usually stops the clock or stretches time at the performer's discretion.
+* Silence vs. Release: In synthesis, a "Rest" command usually triggers the Release phase of an envelope. This means the sound might not be instantly silent if there is a long release tail, but the instruction itself marks the moment the active playing stops.
+* Implementation: In step sequencers, a "Rest" is often just a disabled step. For your engine, using it as a "yield" or "sleep" instruction is a standard programming approach, but musically, it always represents the "off" part of the signal. [4, 5, 6, 7, 8] 
+
+## Summary Table
+
+| Term [1, 9, 10, 11] | Musical Meaning | Technical Meaning |
+|---|---|---|
+| Rest | Measured silence | Gate = 0 (Triggers Release) |
+| Pause | Temporary stop in time | Clock.stop() or yield |
+| Tacet | Long period of not playing | Channel.mute() |
+
+Using REST as your "yield" mechanism is logically sound, provided you distinguish between a rest that happens after a note (a gap) and a rest that is the entire duration (a silent slot). [5] 
+Would you like to refine how your LEGATO flag interacts with the REST logic to prevent the envelope from resetting during these "yield" periods?
+
+[1] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Rest_%28music%29)
+[2] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Rest_%28music%29)
+[3] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Rest_%28music%29)
+[4] [https://www.quora.com](https://www.quora.com/What-is-the-difference-between-a-rest-and-a-pause-in-music-notation-What-are-their-uses-and-examples)
+[5] [https://voxfulgentis.com](https://voxfulgentis.com/uncategorized/pause-and-rest/)
+[6] [https://www.classicalguitarcorner.com](https://www.classicalguitarcorner.com/rests-in-music/)
+[7] [https://www.youtube.com](https://www.youtube.com/watch?v=dmYFdgbT1WY&t=325)
+[8] [https://www.yourclassical.org](https://www.yourclassical.org/story/2014/10/10/class-notes-rests-sometimes-music-is-silence)
+[9] [https://www.hoffmanacademy.com](https://www.hoffmanacademy.com/blog/musical-rests)
+[10] [https://www.facebook.com](https://www.facebook.com/musicnotes/posts/hold-it-right-there-lets-explain-the-fermata-musictheory-notation-musicnotes/1205334378290813/)
+[11] [https://www.liveabout.com](https://www.liveabout.com/types-of-rests-2455911)
+
 
 
 
