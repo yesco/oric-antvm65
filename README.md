@@ -171,25 +171,16 @@ TODO: note-delta encoding?
 ```
 
 
-## Possible delta nibble encoding
+## Octaves reversed, lol
 
-Basically, for much music we could store two delta notes in one byte.
-
-   1. Byte 1: NOTE "nnnnn oct")
-   2. Byte 2: BEGIN DELTA
-   3. Stream:   "aaaa bbbb"; first aaaa or bbbb
-      * $0: ESCAPE (next byte is full command)
-      * $1 to $7: +1 to +7 semitones
-      * $8: 0 Delta (Repeat last note)
-      * $9 to $F: -7 to -1 semitones (2 complement)
-      **Note:** Any note that doesn't fit in; just insert a `ESCAPE NOTE ...and we're back in delta-stream!...`
-   4. To end: ESCAPE (aaaa or bbbb == $0) ENDDELTA/RET (?)
-   
-Estimated New Total: ~135 bytes (down from 196).
-
-**The Trade-off:**
-
-The code size of the player (the assembly logic to "unpack" the nibbles) will increase by about 20–40 bytes. This optimization is only a "win" if we have multiple songs or very long patterns where the data savings outweigh the extra decoder logic.
+Standard Octave Numbering
+The numbering follows an ascending order, where each new octave begins on the note C. 
+hamburgmusicnotation.com
+hamburgmusicnotation.com
+ +1
+Octave 0 (or lower): These are the lowest frequencies. Octave 0 is the lowest full register on a piano, sitting at the bottom edge of human hearing (around 16–20 Hz).
+Octave 4: This is the "middle" register. C4 is specifically defined as Middle C.
+Octave 7 & 8: These are the highest frequencies. On a standard 88-key piano, C8 is the highest
 
 
 ## PARAMETER commands
@@ -1957,6 +1948,31 @@ In summary, your "ticker" seems to be a Custom Articulation Generator or a Modul
 [7] [https://synthanatomy.com](https://synthanatomy.com/2024/10/bela-gliss-touch-sensitive-controller-modulation-recorder-module-goes-1u.html)
 [8] [https://modwiggler.com](https://modwiggler.com/forum/viewtopic.php?t=60294)
 [9] [https://www.reddit.com](https://www.reddit.com/r/ZOIA/comments/i7xxio/sequenced_dronery/)
+
+
+
+
+# Possible delta nibble encoding
+
+Basically, for much music we could store two delta notes in one byte.
+
+   1. Byte 1: NOTE "nnnnn oct")
+   2. Byte 2: BEGIN DELTA
+   3. Stream:   "aaaa bbbb"; first aaaa or bbbb
+      * $0: ESCAPE (next byte is full command)
+      * $1 to $7: +1 to +7 semitones
+      * $8: 0 Delta (Repeat last note)
+      * $9 to $F: -7 to -1 semitones (2 complement)
+      **Note:** Any note that doesn't fit in; just insert a `ESCAPE NOTE ...and we're back in delta-stream!...`
+   4. To end: ESCAPE (aaaa or bbbb == $0) ENDDELTA/RET (?)
+   
+Estimated New Total: ~135 bytes (down from 196).
+
+**The Trade-off:**
+
+The code size of the player (the assembly logic to "unpack" the nibbles) will increase by about 20–40 bytes. This optimization is only a "win" if we have multiple songs or very long patterns where the data savings outweigh the extra decoder logic.
+
+
 
 
 
