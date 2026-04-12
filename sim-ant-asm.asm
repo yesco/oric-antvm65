@@ -244,31 +244,6 @@ _main:
 
         NL
 
-;;; > ./ant | head -12 | ./unhex
-
-;; P:   97 - drum.asm                - TOOD: can be improved
-;; v:   78 - antvm-vol-env.asm
-;; p:  102 - antvm-p(itch)-env.asm   - hmmm 24 B more than vol?
-;; N:   72 - notes pitch data        - 2*24+24
-;; n:   84 - notes code              - (+ 72 84) = 156 (< 256B LUT)
-;; I:   64 - dispatch data           - 6 bits dispatch (saves!)
-;; i:  507 - INTERP very big!        - TODO: look at simplify!
-
-;;; - Parts of 'i'
-;; Y:  168 - cmdSETAY/cmdAYPDATE/cmdAYDUMP
-
-
-
-
-
-;;; (+ 97 78 102 78 84 64 507) 1010
-
-;;; SUM: 1082 bytes - little too big, as not finished yet!
-;;;      1010 - Drum improved -72 B!
-
-
-
-
 
 ;        PRSIZE 'V',dispatch_br,cmdVALUE
         NL
@@ -281,8 +256,38 @@ _main:
         PRSIZE 'i',INTERPSTART,INTERPEND
         NL
         PRSIZE 'y',AYSTART,AYEND
+        PRSIZE 'k',CALLSTART,CALLEND
+        PRSIZE 'K',KALLSUBSSTART,KALLSUBSEND
+        PRSIZE 'v',VALUESTART,VALUEEND
 
         
+;;; > ./ant | head -12 | ./unhex
+
+;; P:   97 - drum.asm                - TOOD: can be improved
+;; v:   78 - antvm-vol-env.asm
+;; p:  102 - antvm-p(itch)-env.asm   - hmmm 24 B more than vol?
+;; N:   72 - notes pitch data        - 2*24+24
+;; n:   84 - notes code              - (+ 72 84) = 156 (< 256B LUT)
+;; I:   64 - dispatch data           - 6 bits dispatch (saves!)
+;; i:  507 - INTERP very big!        - TODO: look at simplify!
+
+;;; - Parts of 'i'
+;; y:  168 - cmdSETAY/cmdAYPDATE/cmdAYDUMP
+;; k:   63 - cmdRET, cmdCALL.local/cmdCALL.lang
+;; K:   34 - pushStream
+;; v:   57 - cmdVALUE, SUSTAIN/LEGATO
+
+;;; (+ 168 63 34 57) 322
+
+
+;;; (+ 97 78 102 78 84 64 507) 1010
+
+;;; SUM: 1082 bytes - little too big, as not finished yet!
+;;;      1010 - Drum improved -72 B!
+
+
+
+
 
 ;;; Enable if we only want info
 ;        jmp halt

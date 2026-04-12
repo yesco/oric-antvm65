@@ -499,6 +499,8 @@ dispatch_br:
 
 
 
+CALLSTART:      
+
 cmdCALL_LOCAL:    ; 11 010 pnm
         tya       ; pnm
         ldy #antlang
@@ -543,7 +545,31 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
         jmp interpret
 
+cmdRETURN:        ; 11 111 111
+        ;; Restore
+        ldx antsp
+        dex
+        lda antstack,X
+        sta stream
 
+        dex
+        lda antstack,X
+        sta stream+1
+
+        dex
+        sta antstack,X
+        sta antlang
+        
+        stx antsp
+
+        ;; reset ipy
+        ldx #0
+        stx ipy
+
+        jmp interpret
+
+
+CALLEND:        
 
 
 cmdDRUM_KICK:     ; 11 111 000
@@ -581,31 +607,7 @@ cmdPARAM_WORD:    ; 11 111 110
         jmp interpret
 
 
-
-cmdRETURN:        ; 11 111 111
-        ;; Restore
-        ldx antsp
-        dex
-        lda antstack,X
-        sta stream
-
-        dex
-        lda antstack,X
-        sta stream+1
-
-        dex
-        sta antstack,X
-        sta antlang
-        
-        stx antsp
-
-        ;; reset ipy
-        ldx #0
-        stx ipy
-
-        jmp interpret
-
-
+VALUESTART:     
 
 cmdSUSTAIN:       ; 11 001 000
 ;;; TODO: = sustain
@@ -685,6 +687,23 @@ storeprocessmap:
         jmp interpret
 
 
+;;; TODO: cleanup
+        ;; 
+        ;; disable channel A ticker (?)
+;;; disable channel A?
+        and #%01111111
+
+andprocessmap:
+        and processmap
+        jmp storeprocessmap
+
+
+
+
+
+
+VALUEEND:       
+
 
 AYSTART:        
 
@@ -745,6 +764,8 @@ antwryte:
         rts
 
 
+KALLSUBSSTART:  
+
 ;;; Pushes current interpreter state on task stack
 ;;; 
 ;;; Y is preserved, A X used
@@ -782,20 +803,7 @@ pushStream:
 
         rts
 
-
-
-
-;;; TODO: cleanup
-        ;; 
-        ;; disable channel A ticker (?)
-;;; disable channel A?
-        and #%01111111
-
-andprocessmap:
-        and processmap
-        jmp storeprocessmap
-
-
+KALLSUBSEND:    
 
 
 
