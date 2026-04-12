@@ -7,125 +7,96 @@
 ;;; Y=7 : DRUM TS (Open Hat / 'S/Z')      - High-noise, slow decay
 ;;; ================================================================
 
-DRUMSTART:      
+;;; 163 B - as AI gen
+;;;  97 B - JSK: opt! (ayshadow + structure change)
+
+DRUMSTART:
 
 ;;; COMBO "TS" (Open Hi-Hat / Long Sibilant 'S/Z/TS')
 ;;; A = Sibilant Pitch (0=Sizzle, 15=Hiss)
 cmdHiHatOpenTS:
-        pha
-
-        lda #$24        ; Noise C ON, Tone C OFF
-        jsr setMixerC
-
-        pla             ; Get Variation
         clc
         adc #$02        ; Base "S" noise
-        ldy #6          ; R6 = Noise Period
-        jsr setayr
+        sta ayshadow+6  ; R6 = Noise Period
 
-        ldx #$00        ; Env Fine
-        lda #$25        ; Env Coarse (Long "Sssshh" fade)
+        ldy #$24        ; Noise C ON, Tone C OFF
+        ldx #$25        ; Env Coarse (Long "Sssshh" fade)
         jmp trigger
 
 ;;; COMBO "CH" (Closed Hi-Hat / Hard Plosive 'CH/T/K')
 ;;; A = Sharpness (0=Thick 'CH', 15=Thin 'T')
 cmdHiHatClosedCH:
-        pha
-
-        lda #$24        ; Noise C ON, Tone C OFF
-        jsr setMixerC
-
-        pla             ; Get Variation
         clc
         adc #$01        ; Very high noise
-        ldy #6
-        jsr setayr
+        sta ayshadow+6
 
-        ldx #$00
-        lda #$03        ; Env Coarse (Extremely short "Tick")
+        ldy #$24        ; Noise C ON, Tone C OFF
+        ldx #$03        ; Env Coarse (Extremely short "Tick")
         jmp trigger
 
 ;;; COMBO "SH" (Snare / Fricative 'SH/ZH')
 ;;; A = Vowel Body (Changes the "mouth" tone)
 cmdSnareSH:     
-        pha
-
-        lda #$00        ; Noise C ON, Tone C ON
-        jsr setMixerC
-
-        lda #$0F        ; Mid-range "Breath" noise
-        ldy #6
-        jsr setayr
-
-        pla             ; Get Variation for Vowel Tone
-        ldy #4          ; Fine Tone C
-        jsr setayr
+        sta ayshadow+4  ; Fine Tone C
 
         lda #$01        ; Coarse Tone C
-        ldy #5
-        jsr setayr
+        sta ayshadow+5
 
-        ldx #$00
-        lda #$08        ; Env Coarse (Bust of noise)
+        lda #$0F        ; Mid-range "Breath" noise
+        sta ayshadow+6
+
+        ldy #$00        ; Noise C ON, Tone C ON
+        ldx #$08        ; Env Coarse (Bust of noise)
         jmp trigger
 
 ;;; COMBO "S" (Kick / Deep Plosive 'B/P/D')
 ;;; A = Impact (0=Deep Thump, 15=Tight Pop)
 cmdKickS:       
-        pha
-
-        lda #$20        ; Noise C OFF, Tone C ON
-        jsr setMixerC
-
-        pla             ; Get Variation for Impact
         clc
         adc #$05        ; Base low frequency
-        ldy #5          ; Coarse Tone C
-        jsr setayr
+        sta ayshadow+5  ; Coarse Tone C
 
         lda #$00        ; Fine Tone C
-        ldy #4
-        jsr setayr
+        sta ayshadow+4
 
-        ldx #$00
-        lda #$0C        ; Env Coarse (Heavy thump)
+        ldy #$20        ; Noise C OFF, Tone C ON
+        ldx #$0C        ; Env Coarse (Heavy thump)
         ;; fall through to trigger
 
+
+;;; X= env coarse
+;;; Y= mixer new bits C N or:ed in
 trigger:
-        ldy #12         ; R12 = Env Period Coarse
-        jsr setayr
 
-        txa
-        ldy #11         ; R11 = Env Period Fine
-        jsr setayr
+        ;; Update MIXER C+N bits
 
-        lda #$09        ; Shape: Single Decay (\)
-        ldy #13         ; R13 starts the one-shot
-        jsr setayr
+;;; TODO: is this correct, not inverted?
 
-        lda #$10        ; Use Hardware Envelope
-        ldy #10         ; R10 = Amplitude C
-        jsr setayr
+        lda #%11011011
+
+        and ayshadow+7
+        sta ayshadow+7
+
+        ;; maybe add C+/N
+        tya
+        ora ayshadow+7
+        sta ayshadow+7
+
+
+        ;; Update common (R11=0, R12=X, R13=9, R10=10)
+
+        stx ayshadow+12 ; R12 = Env Period Coarse
+
+        ldx #0
+        stx ayshadow+11 ; R11 = Env Period Fine
+
+        ldx #$09        ; Shape: Single Decay (\)
+        stx ayshadow+13 ; R13 starts the one-shot
+
+        ldx #$10        ; Use Hardware Envelope
+        stx ayshadow+10 ; R10 = Amplitude C
 
         ;; "jsr"
         jmp interpret
-
-;;; TODO: redundant? ayshadow?
-mixer_cache: .byte $FF
-
-setMixerC:
-        pha
-        lda mixer_cache 
-        and #%11011011  ; Mask Channel C
-        sta mixer_cache
-        pla
-        and #%00100100 
-        ora mixer_cache
-        sta mixer_cache
-        ldy #7
-        lda mixer_cache
-        jsr setayr
-
-        rts
 
 DRUMEND:        
