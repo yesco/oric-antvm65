@@ -255,10 +255,17 @@ _main:
         PRSIZE 'I',IDATASTART,IDATAEND
         PRSIZE 'i',INTERPSTART,INTERPEND
         NL
-        PRSIZE 'y',AYSTART,AYEND
+        NL
+        PRSIZE 'w',WAITSTART,WAITEND
+        PRSIZE 'm',MISCSTART,MISCEND
+        NL
+        PRSIZE 'j',JUMPSTART,JUMPEND
+        NL
         PRSIZE 'k',CALLSTART,CALLEND
         PRSIZE 'K',KALLSUBSSTART,KALLSUBSEND
         PRSIZE 'v',VALUESTART,VALUEEND
+        PRSIZE 'p',PARAMSTART,PARAMEND
+        PRSIZE 'y',AYSTART,AYEND
 
         
 ;;; > ./ant | head -12 | ./unhex
@@ -269,18 +276,27 @@ _main:
 ;; N:   72 - notes pitch data        - 2*24+24
 ;; n:   84 - notes code              - (+ 72 84) = 156 (< 256B LUT)
 ;; I:   64 - dispatch data           - 6 bits dispatch (saves!)
-;; i:  507 - INTERP very big!        - TODO: look at simplify!
+;; i:  506 - INTERP very big!        - TODO: look at simplify!
 
 ;;; - Parts of 'i'
-;; y:  168 - cmdSETAY/cmdAYPDATE/cmdAYDUMP
+;; w:   22 - cmdSTOP, cmdWAIT
+;; m:   46 - cmdEXTEND, cmdQUIT, cmdKILL, cmdSELECT_x
+
+;; j:   65 - interpret: actual dispatch jmp
+;; (+ 72 46 65) = 183
+
 ;; k:   63 - cmdRET, cmdCALL.local/cmdCALL.lang
 ;; K:   34 - pushStream
-;; v:   57 - cmdVALUE, SUSTAIN/LEGATO
+;; DRUM 12 = cmdDRUMxxx (4x jmp)
+;; v:   65 - cmdVALUE, SUSTAIN/LEGATO
+;; p:   21 - cmdEXTEND, cmdPARAMBYTE, cmdPARAMWORD
+;; y:  168 - cmdSETAY/cmdAYPDATE/cmdAYDUMP
+;; (+ 63 34 12 65 21 168)= 363
 
-;;; (+ 168 63 34 57) 322
+;;; (+ 183 363) = 546 (some after BRANCH location=AY)
 
 
-;;; (+ 97 78 102 78 84 64 507) 1010
+;;; (+ 97 78 102 78 84 64 506) 1009
 
 ;;; SUM: 1082 bytes - little too big, as not finished yet!
 ;;;      1010 - Drum improved -72 B!

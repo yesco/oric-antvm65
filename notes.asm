@@ -307,6 +307,9 @@ NDATAEND:
 
 INTERPSTART:    
 
+
+WAITSTART:      
+
 cmdSTOP:          ; 11 000 000
         ;; TODO: ... set high delay?
         lda processmap
@@ -346,9 +349,17 @@ cmdWAIT:          ; 11 000 www / 11 000 ppp
 :       
         sta delayA
         
+        ;; Fall-through
+
+cmdYIELD:         ; 11 011 101
+        ;; Yield does RTS finishing this interpreation round
         DOYIELD
 
 
+WAITEND:        
+
+
+MISCSTART:     
 
 cmdSELECT_A:      ; 11 011 000
 cmdSELECT_B:      ; 11 011 001
@@ -380,9 +391,6 @@ cmdEXTENDED:      ; 11 011 100|CTRL
         ;; Extended commands (no paarmeters
         jmp interpret
 
-cmdYIELD:         ; 11 011 101
-        ;; Yield does RTS finishing this interpreation round
-        DOYIELD
 
 cmdQUIET:         ; 11 011 110
 ;;; TODO: only for one channel?
@@ -403,7 +411,11 @@ cmdKILL:          ; 11 011 111
 ;;;   cmdNOTE? but it's so big...
 
 
+MISCEND:        
+
 ;;; ^^^^ no-aram subroutines BRA backwardx!
+
+JUMPSTART:      
 
 interpret:
 ;;; 20 B  27-29c (jump to cmdNOTE or "command")
@@ -487,6 +499,9 @@ no_param:
         sec
 dispatch_br:
         bcs *                   ; Jumps directly to cmd via SMC offset
+
+
+JUMPEND:
 
 
 ;;; vvv param subroutines BRA forwards!
@@ -585,7 +600,10 @@ cmdDRUM_HH_OPN:   ; 11 111 011
         jmp cmdHiHatOpenTS
 
 
+PARAMSTART:     
+
 cmdEXTENDED_PAR:  ; 11 111 100|CTRL|BYTE|...
+;;; TODO:
         jmp interpret
 
 
@@ -607,6 +625,7 @@ cmdPARAM_WORD:    ; 11 111 110
         jmp interpret
 
 
+PARAMEND:       
 VALUESTART:     
 
 cmdSUSTAIN:       ; 11 001 000
