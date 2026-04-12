@@ -726,7 +726,8 @@ loop
 
 ;; TODO: jsk test w this?
 
-;COMPACT=1
+;
+COMPACT=1
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ; Conversion from note to pitch
 ; This is the slow version

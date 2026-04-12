@@ -304,6 +304,13 @@ _main:
 
 ;;; (+ 97 78 102 72 84 64 498) = 995 B total
 
+;;; CHEMA (!compact): 1165: 893 B code / 272 B data / 48 B zp
+;;; CHEMA COMPACT     1014: 960 B code /  54 B data / 48 B zp
+;;; ANTVM:             995: 859 B code / 136 B data / ?? B zp
+;;;  (antvm not working yet...)
+
+;;; DATA: (+ 72 64) = 136 B
+
 ;;; SUM: 1082 bytes - little too big, as not finished yet!
 ;;;      1010 - Drum improved -72 B!
 ;;;      1009 - YIELD save 1 B
