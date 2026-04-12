@@ -268,6 +268,8 @@ _main:
         PRSIZE 'I',IDATASTART,IDATAEND
         PRSIZE 'i',INTERPSTART,INTERPEND
         NL
+        PRSIZE 'y',AYSTART,AYEND
+
         
 
 ;;; Enable if we only want info

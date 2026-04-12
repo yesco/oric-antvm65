@@ -497,42 +497,6 @@ dispatch_br:
 
 ;;; --- AFTER Command Handlers ---
 
-cmdSETAY:         ; 11 10 rrrr
-        ;; A=value, X=6-bit command
-
-        ;; reconstruct 4-bit register from command (X)
-        sta savea
-        txa
-        and #%1111
-        tay
-        lda savea
-
-        jsr setayr
-
-        jmp interpret
-
-
-cmdAYPDATE:       ; 11 10 1110
-        jsr aypdate
-
-        DOYIELD
-
-
-cmdDUMPAY:        ; 11 10 1111
-        ;; A= first byte
-        ldx #0
-        stx ay_reg
-        jsr setayr
-        ;; ay_reg==2
-:       
-        jsr pull_ay
-
-        cpx #13
-        bne :-
-        
-        DOYIELD
-
-
 
 
 cmdCALL_LOCAL:    ; 11 010 pnm
@@ -727,6 +691,48 @@ storeprocessmap:
 
 
 
+AYSTART:        
+
+cmdSETAY:         ; 11 10 rrrr
+        ;; A=value, X=6-bit command
+
+        ;; reconstruct 4-bit register from command (X)
+        sta savea
+        txa
+        and #%1111
+        tay
+        lda savea
+
+        jsr setayr
+
+        jmp interpret
+
+
+cmdAYPDATE:       ; 11 10 1110
+        jsr aypdate
+
+        DOYIELD
+
+
+cmdDUMPAY:        ; 11 10 1111
+        ;; A= first byte
+        ldx #0
+        stx ay_reg
+        jsr setayr
+        ;; ay_reg==2
+:       
+        jsr pull_ay
+
+        cpx #13
+        bne :-
+        
+        DOYIELD
+
+
+.include "antvm-aypdate.asm"
+
+AYEND:  
+
 
 
 
@@ -795,7 +801,6 @@ andprocessmap:
         jmp storeprocessmap
 
 
-.include "antvm-aypdate.asm"
 
 
 
