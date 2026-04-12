@@ -468,7 +468,78 @@ OCT=oct4
 
         ;; MAIN (play "song" will launch this automatic)
 phonem0: 
-        ;.byte QUARTER
+        .byte L1, _A  + OCT
+
+        .byte L2, _A  + OCT
+        .byte L2, _A  + OCT
+
+        .byte L4, _A  + OCT
+        .byte L4, _A  + OCT
+        .byte L4, _A  + OCT
+        .byte L4, _A  + OCT
+
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+        .byte L8, _A  + OCT
+
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+        .byte L16, _A  + OCT
+
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+        .byte L32, _A  + OCT
+
+        .byte WAIT0
+
         .byte L32
         .byte _C  + OCT
         .byte _Cs + OCT
