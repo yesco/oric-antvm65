@@ -454,6 +454,20 @@ language:
         ;; phonems 9--255
 
 phonem1:
+        .byte _C  + OCT
+        .byte _Cs + OCT
+        .byte _Ds + OCT
+        .byte _E  + OCT
+        .byte _F  + OCT
+        .byte _Fs + OCT
+        .byte _G  + OCT
+        .byte _Gs + OCT
+        .byte _A  + OCT
+        .byte _As + OCT
+        .byte _B  + OCT
+
+        .byte RET
+
 phonem2:
 phonem3:
 phonem4:        
@@ -541,17 +555,6 @@ phonem0:
         .byte WAIT0
 
         .byte L32
-        .byte _C  + OCT
-        .byte _Cs + OCT
-        .byte _Ds + OCT
-        .byte _E  + OCT
-        .byte _F  + OCT
-        .byte _Fs + OCT
-        .byte _G  + OCT
-        .byte _Gs + OCT
-        .byte _A  + OCT
-        .byte _As + OCT
-        .byte _B  + OCT
 
         .byte L16
         .byte _C  + OCT
