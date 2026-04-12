@@ -1,75 +1,89 @@
-; === Global Music State (Initialize at top of file) ===
+; === Global Music State (Initialize at top) ===
 M_OCT  = 4
 M_LEN  = 4
 M_ACC  = 0
 M_VOL  = 12
+M_TMP  = 120
 
-.macro GEN_ABC_SPN Arg
-    _i := 0
-    .repeat .strlen(Arg)
-        .if _i < .strlen(Arg)
-            _c := .strat(Arg, _i)
+.macro GEN_ABC_SPN Arg, Pos
+    ; Setup position pointer
+    .ifblank Pos
+        _p .set 0
+    .else
+        _p .set Pos
+    .endif
 
-            ; --- 1. ACCIDENTALS ---
-            .if _c = '^'
-                M_ACC := 1
-                _i := _i + 1
-                _c := .strat(Arg, _i)
-            .elseif _c = '_'
-                M_ACC := -1
-                _i := _i + 1
-                _c := .strat(Arg, _i)
+    .if _p < .strlen(Arg)
+        .local @c, @nc, @nv, @toct, @arg
+        @c = .strat(Arg, _p)
+
+        ; --- 1. ACCIDENTALS (Prefix) ---
+        .if @c = '^'
+            M_ACC := 1
+            GEN_ABC_SPN Arg, (_p + 1)
+        .elseif @c = '_'
+            M_ACC := -1
+            GEN_ABC_SPN Arg, (_p + 1)
+
+        ; --- 2. NOTES (A-H, a-h, z, R, P) ---
+        .elseif (@c >= 'A' && @c <= 'H') || (@c >= 'a' && @c <= 'h') || @c = 'z' || @c = 'R' || @c = 'P'
+            @nc = @c
+            @toct = M_OCT
+            
+            .if @nc >= 'a' && @nc <= 'h'
+                @toct = M_OCT + 1
+                @nc = @nc - 32
             .endif
 
-            ; --- 2. NOTES (A-H, a-h, z/R/P) ---
-            _nc := _c
-            .if (_nc >= 'A' && _nc <= 'H') || (_nc >= 'a' && _nc <= 'h') || _nc = 'z' || _nc = 'R' || _nc = 'P'
-                _toct := M_OCT
-                
-                .if _nc >= 'a' && _nc <= 'h'
-                    _toct := _toct + 1
-                    _nc := _nc - 32
-                .endif
-
-                _nv := 0
-                .if _nc = 'C'
-                    _nv := 0
-                .elseif _nc = 'D'
-                    _nv := 2
-                .elseif _nc = 'E'
-                    _nv := 4
-                .elseif _nc = 'F'
-                    _nv := 5
-                .elseif _nc = 'G'
-                    _nv := 7
-                .elseif _nc = 'A'
-                    _nv := 9
-                .elseif _nc = 'H' || _nc = 'B'
-                    _nv := 11
-                .elseif _nc = 'z' || _nc = 'R' || _nc = 'P'
-                    _nv := $FF
-                .endif
-
-                ; TODO: Look-ahead for ' , / and digits
-
-                .byte (_toct * 12) + _nv + M_ACC
-                M_ACC := 0 
-
-            ; --- 4. COMMANDS ---
-            .elseif _c = 'O' || _c = 'o' || _c = 'K'
-                _i := _i + 1
-                M_OCT := (.strat(Arg, _i) - '0')
-            .elseif _c = 'L'
-                _i := _i + 1
-                M_LEN := (.strat(Arg, _i) - '0')
-            .elseif _c = 'V' || _c = 'v'
-                _i := _i + 1
-                M_VOL := (.strat(Arg, _i) - '0')
-            .elseif _c = 'S'
-                .byte $FF
+            @nv = 0
+            .if @nc = 'C'
+                @nv = 0
+            .elseif @nc = 'D'
+                @nv = 2
+            .elseif @nc = 'E'
+                @nv = 4
+            .elseif @nc = 'F'
+                @nv = 5
+            .elseif @nc = 'G'
+                @nv = 7
+            .elseif @nc = 'A'
+                @nv = 9
+            .elseif @nc = 'H' || @nc = 'B'
+                @nv = 11
+            .elseif @nc = 'z' || @nc = 'R' || @nc = 'P'
+                @nv = $FF ; Rest
             .endif
 
-            _i := _i + 1
+            ; TODO: Look-ahead for ' , / and digits
+            .byte (@toct * 12) + @nv + M_ACC
+            M_ACC := 0
+            GEN_ABC_SPN Arg, (_p + 1)
+
+        ; --- 3. COMMANDS (O, L, V, T, W, E, S) ---
+        .elseif @c = 'O' || @c = 'o' || @c = 'K'
+            M_OCT := (.strat(Arg, _p + 1) - '0')
+            GEN_ABC_SPN Arg, (_p + 2)
+        .elseif @c = 'L'
+            M_LEN := (.strat(Arg, _p + 1) - '0')
+            GEN_ABC_SPN Arg, (_p + 2)
+        .elseif @c = 'V' || @c = 'v'
+            M_VOL := (.strat(Arg, _p + 1) - '0')
+            GEN_ABC_SPN Arg, (_p + 2)
+        .elseif @c = 'T'
+            ; TODO: Handle multi-digit tempo
+            GEN_ABC_SPN Arg, (_p + 2)
+        .elseif @c = 'W' || @c = 'N'
+            ; TODO: Mixer logic
+            GEN_ABC_SPN Arg, (_p + 2)
+        .elseif @c = 'E'
+            ; TODO: Envelope logic
+            GEN_ABC_SPN Arg, (_p + 2)
+        .elseif @c = 'S'
+            .byte $FE ; Stop code
+            GEN_ABC_SPN Arg, (_p + 1)
+        .else
+            ; Skip spaces or unknown chars
+            GEN_ABC_SPN Arg, (_p + 1)
         .endif
-    .endrepeat
+    .endif
 .endmacro
