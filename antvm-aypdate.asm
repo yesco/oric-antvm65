@@ -19,6 +19,8 @@
 ;;; CURRENT: 133 Bytes
 ;;; ==============================================================
 
+AYPDATESTART:   
+
 ;;; aypdate, Update a partial frame from (stream), bitmask
 ;;; determines what type of data comes.
 ;;; 
@@ -61,6 +63,9 @@ aypdate:
 @done:
         rts                     ; 1 (52 Bytes)
 
+AYPDATEEND:     
+
+
 ;;; ----------------------------------------------------------------
 ;;; pull_ay (15 Bytes)
 ;;; ----------------------------------------------------------------
@@ -90,12 +95,15 @@ Csetdone:
 ;;;   All value is potentially trashed:
 ;;;   Do NOT use them after, including Y! (may become vol for R1,3,5)
 ;;; ----------------------------------------------------------------
+SETAYRSTART:    
+
+setSTART:       
 setayr:
         cpy #7                  ; 2 Mixer?
         bne :+
         ora #64                 ; 2 Bit 6 Patch
 :       
-@write_phys:
+write_phys:
         sta ayshadow,Y
 
         ldx #$FF                ; 2
@@ -111,6 +119,8 @@ setayr:
         stx $030C               ; 3 Inactive ($DD)
         ldx #$00                ; 2
         stx $0303               ; 3 DDRA Input
+
+setEND: 
 
         ;; --- ? Pitch regsiters - maybe fixup ---
 ;;; TODO: ???? what???
@@ -139,4 +149,6 @@ setayr:
         ;; Don't write 0 volume for caompat
         beq Csetdone
 
-        jmp @write_phys         ; 3 tail call back to write volume
+        jmp write_phys         ; 3 tail call back to write volume
+
+SETAYREND:      

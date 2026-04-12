@@ -30,7 +30,31 @@ langarr:        .res 2*8
 
 
 ;;; TODO: "dish" out different offsets/task
-antstack:       .res 3*8*4      ; 3B * 8 levels * 4 ch
+ANTLEVELS=8
+antstack:       .res 3*ANTLEVELS*4      ; 3B * 8 levels * 4 ch
+
+;;; The stack values for "RET" are stored striped
+;;; 
+;;; lang: AAAAAAAA BBBBBBBB CCCCCCCC DDDDDDDD
+;;; slo:  AAAAAAAA BBBBBBBB CCCCCCCC DDDDDDDD
+;;; shi:  AAAAAAAA BBBBBBBB CCCCCCCC DDDDDDDD
+
+stackpointers:  
+
+asp:            .res 1
+bsp:            .res 1
+csp:            .res 1
+nsp:            .res 1
+
+;;; Different data stored indendently indexed by same X!
+langstack= antstack + 0* ANTLEVELS
+slostack = antstack + 1* ANTLEVELS
+shistack = antstack + 2* ANTLEVELS
+
+
+
+STK_LANG= 0
+STK_HIS=  1*ANTLEVELS
 
 detune:         .word 0
 

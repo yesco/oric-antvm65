@@ -109,13 +109,11 @@ dispatch:
 note:   
 ;;; 1+15c
         ;; play channel A, lol
-        ldy #0                  ; TODO: fix
         lda lofreq,x
-        jsr SETAYR
+        sta ayshadow+0          ; TODO: A ... B C
 
-        iny
         lda hifreq,x
-        jsr SETAYR
+        sta ayshadow+1          ; TODO: A ... B C
 
         jmp interpret
 
@@ -181,24 +179,20 @@ note:
         bcs :+
 
         ;; yes byte pitches
-        ldy #0
         lda bytepitch,x
-        jsr setayr
+        sta ayshadow+0          ; TODO: A...
 
         lda #0
-        ;; always
-        beq @sethi
+        jmp @sethi
 :       
 
         ;; play channel A, lol
-        ldy #0                  ; todo: fix
         lda lopitch,x
-        jsr setayr
+        sta ayshadow+0          ; TODO: A...
 
         lda hipitch,x
 @sethi:  
-        ldy #1
-        jsr setayr
+        sta ayshadow+1          ; TODO: A...
 
         jmp interpret
 
@@ -560,19 +554,18 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
         jmp interpret
 
-cmdRETURN:        ; 11 111 111
+cmdRET:        ; 11 111 111
         ;; Restore
         ldx antsp
         dex
-        lda antstack,X
+
+        lda slostack,X
         sta stream
 
-        dex
-        lda antstack,X
+        lda shistack,X
         sta stream+1
 
-        dex
-        sta antstack,X
+        sta langstack,X
         sta antlang
         
         stx antsp
@@ -582,6 +575,7 @@ cmdRETURN:        ; 11 111 111
         stx ipy
 
         jmp interpret
+
 
 
 CALLEND:        
@@ -728,26 +722,28 @@ AYSTART:
 
 cmdSETAY:         ; 11 10 rrrr
         ;; A=value, X=6-bit command
+        tay
 
         ;; reconstruct 4-bit register from command (X)
-        sta savea
         txa
         and #%1111
-        tay
-        lda savea
-
-        jsr setayr
+        tax
+        tya
+        sta ayshadow,x
 
         jmp interpret
 
 
 cmdAYPDATE:       ; 11 10 1110
-        jsr aypdate
+;;; TODO: maybe not worth it "too inlligent!"
+;;;  (war.ym5 - not much save 280->190KB)
 
+        jsr aypdate
         DOYIELD
 
 
 cmdDUMPAY:        ; 11 10 1111
+;;; 15 B
         ;; A= first byte
         ldx #0
         stx ay_reg
@@ -793,12 +789,11 @@ KALLSUBSSTART:
 ;;; (the value pushed is "noramlized" stream += ipy)
 
 pushStream:     
-;;; 33 B  54 c (+5c if inc; +3 ? write  ,x?)
+;;; 32 B  ?54 c (+5c if inc; +3 ? write  ,x?)
         ;; Push old
         ldx antsp
         lda antlang
-        sta antstack,X
-        inx
+        sta langstack,X
 
         ;; stream += ipy
         clc
@@ -811,13 +806,12 @@ pushStream:
 
         ;; push current stream value
         lda stream+1
-        sta antstack,X
-        inx
+        sta slostack,X
 
         lda stream
-        sta antstack,X
-        inx
+        sta shistack,X
 
+        inx
         stx antsp
 
         rts
@@ -1036,7 +1030,7 @@ command_table:
     REL cmdEXTENDED_PAR ; 11 111 100|CTRL|... = EXTENDED commands
     REL cmdPARAM_BYTE   ; 11 111 101|PAR|BYTE = PARAM BYTE "param"
     REL cmdPARAM_WORD   ; 11 111 110|PAR|WORD = PARAM WORD "param"
-    REL cmdRETURN       ; 11 111 111 = RETURN ($ff - as "expected")
+    REL cmdRET          ; 11 111 111 = RETURN ($ff - as "expected")
 
 IDATAEND:       
 

@@ -230,7 +230,7 @@ tickCHAN:
 
         ;; restore stream from task's X stack
         ;; (calls directly into interpret!)
-        jsr cmdRETURN
+        jsr cmdRET
         ;; (returned from YIELD)
 
         ;; we push stream on task's stack
