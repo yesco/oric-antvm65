@@ -406,9 +406,15 @@ init:
         ;jsr interpret
         jsr startTick
 
+;;; TODO: move to more generic place?
+.if ANTTRACE & AT_AY
+        jsr printAY
+.endif ; ANTTRACE
+
         ;; hi-byte=0 done! (no music on ZP!)
         ldx stream+1
         bne @loop
+
 
 .if ANTTRACE
         NL
@@ -458,11 +464,13 @@ phonem8:
         ;; END
         .byte RET
 
+OCT=oct4
+
         ;; MAIN (play "song" will launch this automatic)
 phonem0: 
-        .byte _C  + oct4
-        .byte _Cs + oct4
-        .byte _Ds + oct4
+        .byte _C  + OCT
+        .byte _Cs + OCT
+        .byte _Ds + OCT
 
 ;        .byte %11001111         ; LEGATO
 ;        .byte %11001000         ; SUSTAIN
@@ -477,8 +485,8 @@ phonem0:
         ;; minimal length => 1,1
         .byte %11001110       ; VALUE6
 
-        .byte _Ds + oct4
-        .byte _E  + oct4
+        .byte _Ds + OCT
+        .byte _E  + OCT
 
 ;;; TODO: Crashes! (because does yield?)
 ;        .byte %11000000
@@ -489,12 +497,12 @@ phonem0:
         .byte WAIT1
         .byte WAIT2
 
-        .byte _F  + oct4
+        .byte _F  + OCT
         .byte WAIT3
-        .byte _G  + oct4
+        .byte _G  + OCT
         .byte WAIT1
 
-        .byte _Gs + oct4
+        .byte _Gs + OCT
 
         .byte STOP        ; STOP
 

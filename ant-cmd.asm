@@ -106,94 +106,94 @@ oct7= 7
 
 ;;; 12-TET Notes by "name" (common-notation)
 
-_C   = 0                 
-_Cs  = 2   ; C#
-_D   = 4
-_Ds  = 6   ; D#
-_E   = 8
-_F   = 10
-_Fs  = 12  ; F#
-_G   = 14
-_Gs  = 16  ; G#
-_A   = 18
-_As  = 20  ; A#
-_B   = 22
+_C   = 8* 0                 
+_Cs  = 8* 2   ; C#
+_D   = 8* 4
+_Ds  = 8* 6   ; D#
+_E   = 8* 8
+_F   = 8* 10
+_Fs  = 8* 12  ; F#
+_G   = 8* 14
+_Gs  = 8* 16  ; G#
+_A   = 8* 18
+_As  = 8* 20  ; A#
+_B   = 8* 22
 
 
 ;;; 24-TET Notes by "name" (common-notation)
 
-;_C   = 0
-_Cqs = 1   ; C half-sharp
-;_Cs  = 2   ; C#
-_Cts = 3   ; C three-quarters-sharp
-;_D   = 4
-_Dqs = 5   ; D half-sharp
-;_Ds  = 6   ; D#
-_Dts = 7   ; D three-quarters-sharp
-;_E   = 8
-_Eqs = 9   ; E half-sharp
-;_F   = 10
-_Fqs = 11  ; F half-sharp
-;_Fs  = 12  ; F#
-_Fts = 13  ; F three-quarters-sharp
-;_G   = 14
-_Gqs = 15  ; G half-sharp
-;_Gs  = 16  ; G#
-_Gts = 17  ; G three-quarters-sharp
-;_A   = 18
-_Aqs = 19  ; A half-sharp
-;_As  = 20  ; A#
-_Ats = 21  ; A three-quarters-sharp
-;_B   = 22
-_Bqs = 23  ; B half-sharp
+;_C   = 8* 0
+_Cqs = 8* 1   ; C half-sharp
+;_Cs  = 8* 2   ; C#
+_Cts = 8* 3   ; C three-quarters-sharp
+;_D   = 8* 4
+_Dqs = 8* 5   ; D half-sharp
+;_Ds  = 8* 6   ; D#
+_Dts = 8* 7   ; D three-quarters-sharp
+;_E   = 8* 8
+_Eqs = 8* 9   ; E half-sharp
+;_F   = 8* 10
+_Fqs = 8* 11  ; F half-sharp
+;_Fs  = 8* 12  ; F#
+_Fts = 8* 13  ; F three-quarters-sharp
+;_G   = 8* 14
+_Gqs = 8* 15  ; G half-sharp
+;_Gs  = 8* 16  ; G#
+_Gts = 8* 17  ; G three-quarters-sharp
+;_A   = 8* 18
+_Aqs = 8* 19  ; A half-sharp
+;_As  = 8* 20  ; A#
+_Ats = 8* 21  ; A three-quarters-sharp
+;_B   = 8* 22
+_Bqs = 8* 23  ; B half-sharp
 
 
 ;;; Naturals and Flats (adding to your existing list)
 
-;_C   = 0
-_Db  = 2   ; D-flat (Same as C-sharp)
-_Dqb = 3   ; D-half-flat (Between C# and D)
-;_D   = 4
-_Eb  = 6   ; E-flat (Same as D-sharp)
-_Eqb = 7   ; E-half-flat (Between D# and E)
-;_E   = 8
-;_F   = 10
-_Gb  = 12  ; G-flat (Same as F-sharp)
-_Gqb = 13  ; G-half-flat (Between F# and G)
-;_G   = 14
-_Ab  = 16  ; A-flat (Same as G-sharp)
-_Aqb = 17  ; A-half-flat (Between G# and A)
-;_A   = 18
-_Bb  = 20  ; B-flat (Same as A-sharp)
-_Bqb = 21  ; B-half-flat (Between A# and B)
-;_B   = 22
-_Cb  = 22  ; C-flat (Same as B)
+;_C   = 8* 0
+_Db  = 8* 2   ; D-flat (Same as C-sharp)
+_Dqb = 8* 3   ; D-half-flat (Between C# and D)
+;_D   = 8* 4
+_Eb  = 8* 6   ; E-flat (Same as D-sharp)
+_Eqb = 8* 7   ; E-half-flat (Between D# and E)
+;_E   = 8* 8
+;_F   = 8* 10
+_Gb  = 8* 12  ; G-flat (Same as F-sharp)
+_Gqb = 8* 13  ; G-half-flat (Between F# and G)
+;_G   = 8* 14
+_Ab  = 8* 16  ; A-flat (Same as G-sharp)
+_Aqb = 8* 17  ; A-half-flat (Between G# and A)
+;_A   = 8* 18
+_Bb  = 8* 20  ; B-flat (Same as A-sharp)
+_Bqb = 8* 21  ; B-half-flat (Between A# and B)
+;_B   = 8* 22
+_Cb  = 8* 22  ; C-flat (Same as B)
 
 
 ;;; 24-TET Notes: German/Contemporary Flute Style
-;;; s = sharp, m = minus (1/4 flat), p = plus (1/4 sharp)
+;;; s = 8* sharp, m = 8* minus (1/4 flat), p = 8* plus (1/4 sharp)
 
-;_C  = 0
-_Cp = 1   ; C-plus (1/4 sharp)
-;_Cs = 2   ; Cis (C-sharp)
-_Dm = 3   ; D-minus (1/4 flat) -- often written _Dm
-;_D  = 4
-_Dp = 5   ; D-plus (1/4 sharp)
-;_Ds = 6   ; Dis (D-sharp)
-_Em = 7   ; E-minus (1/4 flat) -- often written _Em
-;_E  = 8
-_Fm = 9   ; F-minus (1/4 flat) OR E-plus
-;_F  = 10
-_Fp = 11  ; F-plus (1/4 sharp)
-;_Fs = 12  ; Fis (F-sharp)
-_Gm = 13  ; G-minus (1/4 flat)
-;_G  = 14
-_Gp = 15  ; G-plus (1/4 sharp)
-;_Gs = 16  ; Gis (G-sharp)
-_Am = 17  ; A-minus (1/4 flat)
-;_A  = 18
-_Ap = 19  ; A-plus (1/4 sharp)
-;_As = 20  ; Ais (A-sharp)
-_Bm = 21  ; B-minus (1/4 flat)
-;_B  = 22
-_Cm = 23  ; C-minus (1/4 flat) OR B-plus
+;_C  = 8* 0
+_Cp = 8* 1   ; C-plus (1/4 sharp)
+;_Cs = 8* 2   ; Cis (C-sharp)
+_Dm = 8* 3   ; D-minus (1/4 flat) -- often written _Dm
+;_D  = 8* 4
+_Dp = 8* 5   ; D-plus (1/4 sharp)
+;_Ds = 8* 6   ; Dis (D-sharp)
+_Em = 8* 7   ; E-minus (1/4 flat) -- often written _Em
+;_E  = 8* 8
+_Fm = 8* 9   ; F-minus (1/4 flat) OR E-plus
+;_F  = 8* 10
+_Fp = 8* 11  ; F-plus (1/4 sharp)
+;_Fs = 8* 12  ; Fis (F-sharp)
+_Gm = 8* 13  ; G-minus (1/4 flat)
+;_G  = 8* 14
+_Gp = 8* 15  ; G-plus (1/4 sharp)
+;_Gs = 8* 16  ; Gis (G-sharp)
+_Am = 8* 17  ; A-minus (1/4 flat)
+;_A  = 8* 18
+_Ap = 8* 19  ; A-plus (1/4 sharp)
+;_As = 8* 20  ; Ais (A-sharp)
+_Bm = 8* 21  ; B-minus (1/4 flat)
+;_B  = 8* 22
+_Cm = 8* 23  ; C-minus (1/4 flat) OR B-plus

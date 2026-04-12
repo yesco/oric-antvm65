@@ -83,7 +83,7 @@ antvmBLOCKEnd:
 ;;; 0 == no YIELD (sustain/legato) do manual WAIT for length
 ;;; (whole@120BPM =4  beats = 2.0s = 100 50Hz ticks
 WHOLETICKS=100
-VOLUME=10
+VOLUME=15
 
 values: 
         

@@ -1,43 +1,67 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use Getopt::Std;
 
-my $output_file = 'music.ym';
+# Setup options: -r for raw binary mode
+my %opts;
+getopts('r', \%opts);
+
+usage() unless @ARGV == 2;
+
+my ($input_path, $output_path) = @ARGV;
 my @frames;
 
-# 1. Parse the input (ignores non-AY lines automatically)
-while (<STDIN>) {
-    # Matches "AY:" followed by 14 pairs of hex digits
-    if (/AY:\s*([0-9a-fA-F\s]+)/) {
-        my $hex_string = $1;
-        # Extract the 14 hex bytes into an array
-        my @bytes = map { hex($_) } ($hex_string =~ /([0-9a-fA-F]{2})/g);
-        
-        if (@bytes >= 14) {
-            # Only keep the first 14 registers
-            push @frames, [ @bytes[0..13] ];
+# 1. Open Input (Handle '-' for STDIN)
+my $in_fh;
+if ($input_path eq '-') {
+    $in_fh = \*STDIN;
+} else {
+    open($in_fh, '<', $input_path) or die "Error: Cannot open input '$input_path': $!\n";
+}
+binmode($in_fh) if $opts{r};
+
+# 2. Extract Data
+if ($opts{r}) {
+    # RAW MODE: Read 14-byte chunks directly
+    while (read($in_fh, my $buffer, 14)) {
+        if (length($buffer) == 14) {
+            push @frames, [ unpack('C14', $buffer) ];
+        }
+    }
+} else {
+    # TEXT MODE: Parse AY: hex lines
+    while (<$in_fh>) {
+        if (/AY:\s*([0-9a-fA-F\s]+)/) {
+            my @bytes = ($1 =~ /([0-9a-fA-F]{2})/g);
+            if (@bytes >= 14) {
+                push @frames, [ map { hex($_) } @bytes[0..13] ];
+            }
         }
     }
 }
+close($in_fh) unless $input_path eq '-';
 
+# 3. Write Output
 my $num_frames = scalar @frames;
-die "No AY data found in input!\n" if $num_frames == 0;
+die "Error: No AY data found!\n" if $num_frames == 0;
 
-# 2. Write the YM3 file
-open(my $fh, '>', $output_file) or die "Cannot open $output_file: $!";
-binmode($fh);
+open(my $out_fh, '>', $output_path) or die "Error: Cannot open output '$output_path': $!\n";
+binmode($out_fh);
 
-# Header
-print $fh "YM3!";
-
-# 3. Interleaving Logic
-# YM3 requires: [All R0s], [All R1s] ... [All R13s]
+print $out_fh "YM3!";
 for my $reg_idx (0..13) {
-    for my $frame_idx (0..$num_frames - 1) {
-        # 'C' is an unsigned char (8-bit)
-        print $fh pack('C', $frames[$frame_idx][$reg_idx]);
+    for my $f_idx (0..$num_frames - 1) {
+        print $out_fh pack('C', $frames[$f_idx][$reg_idx]);
     }
 }
+close($out_fh);
 
-close($fh);
-print "Successfully converted $num_frames frames to $output_file\n";
+print "Done! Processed $num_frames frames into $output_path\n";
+
+sub usage {
+    print "Usage: perl $0 [-r] <input_file> <output_file>\n";
+    print "  <input_file>  Use '-' for STDIN\n";
+    print "  -r            Raw mode (input is binary 14-byte repeated chunks)\n";
+    exit 1;
+}

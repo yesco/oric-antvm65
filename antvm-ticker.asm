@@ -237,12 +237,7 @@ tickCHAN:
         ;; (TODO: YIELD could just be "jmp pushStream") ???
         jsr pushStream
 
-        
-;;; TODO: move to more generic place?
-.if ANTTRACE & AT_AY
-        jsr printAY
-.endif ; ANTTRACE
-
+      
 ;;; TODO: these shoudl be before?
 ;;;   no need apply, let's default do one tick at least?
         ldx tickX
@@ -264,9 +259,13 @@ tickVolENV:
 
         rts
 
+
 tickPitENV:     
         
         rts
+
+
+
 
 .if ANTTRACE & AT_AY
 printAY:        
