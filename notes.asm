@@ -547,21 +547,16 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
 
 cmdDRUM_KICK:     ; 11 111 000
-        jsr cmdKickS
-        jmp interpret
+        jmp cmdKickS
 
 cmdDRUM_SNARE:    ; 11 111 001
-        jsr cmdSnareSH
-        jmp interpret
+        jmp cmdSnareSH
 
 cmdDRUM_HH_CLS:   ; 11 111 010
-        jsr cmdHiHatClosedCH
-        jmp interpret
+        jmp cmdHiHatClosedCH
 
 cmdDRUM_HH_OPN:   ; 11 111 011
-        jsr cmdHiHatOpenTS
-        jmp interpret
-
+        jmp cmdHiHatOpenTS
 
 
 cmdEXTENDED_PAR:  ; 11 111 100|CTRL|BYTE|...

@@ -9,32 +9,20 @@
 
 DRUMSTART:      
 
-;;; TODO: a common init???
-
-        pha             ; Save Variation A (The "Mouth" shape)
-        
-        lda #$10        ; Use Hardware Envelope
-        ldy #10         ; R10 = Amplitude C
-        jsr setayr
-
-        dey             ; Y was 4
-        bmi cmdKickS
-        dey             ; Y was 5
-        bmi cmdSnareSH
-        dey             ; Y was 6
-        bmi cmdHiHatClosedCH
-        ;; Fall through to 7 (cmdHiHatOpenTS)
-
 ;;; COMBO "TS" (Open Hi-Hat / Long Sibilant 'S/Z/TS')
 ;;; A = Sibilant Pitch (0=Sizzle, 15=Hiss)
 cmdHiHatOpenTS:
+        pha
+
         lda #$24        ; Noise C ON, Tone C OFF
         jsr setMixerC
+
         pla             ; Get Variation
         clc
         adc #$02        ; Base "S" noise
         ldy #6          ; R6 = Noise Period
         jsr setayr
+
         ldx #$00        ; Env Fine
         lda #$25        ; Env Coarse (Long "Sssshh" fade)
         jmp trigger
@@ -42,13 +30,17 @@ cmdHiHatOpenTS:
 ;;; COMBO "CH" (Closed Hi-Hat / Hard Plosive 'CH/T/K')
 ;;; A = Sharpness (0=Thick 'CH', 15=Thin 'T')
 cmdHiHatClosedCH:
+        pha
+
         lda #$24        ; Noise C ON, Tone C OFF
         jsr setMixerC
+
         pla             ; Get Variation
         clc
         adc #$01        ; Very high noise
         ldy #6
         jsr setayr
+
         ldx #$00
         lda #$03        ; Env Coarse (Extremely short "Tick")
         jmp trigger
@@ -56,17 +48,23 @@ cmdHiHatClosedCH:
 ;;; COMBO "SH" (Snare / Fricative 'SH/ZH')
 ;;; A = Vowel Body (Changes the "mouth" tone)
 cmdSnareSH:     
+        pha
+
         lda #$00        ; Noise C ON, Tone C ON
         jsr setMixerC
+
         lda #$0F        ; Mid-range "Breath" noise
         ldy #6
         jsr setayr
+
         pla             ; Get Variation for Vowel Tone
         ldy #4          ; Fine Tone C
         jsr setayr
+
         lda #$01        ; Coarse Tone C
         ldy #5
         jsr setayr
+
         ldx #$00
         lda #$08        ; Env Coarse (Bust of noise)
         jmp trigger
@@ -74,16 +72,21 @@ cmdSnareSH:
 ;;; COMBO "S" (Kick / Deep Plosive 'B/P/D')
 ;;; A = Impact (0=Deep Thump, 15=Tight Pop)
 cmdKickS:       
+        pha
+
         lda #$20        ; Noise C OFF, Tone C ON
         jsr setMixerC
+
         pla             ; Get Variation for Impact
         clc
         adc #$05        ; Base low frequency
         ldy #5          ; Coarse Tone C
         jsr setayr
+
         lda #$00        ; Fine Tone C
         ldy #4
         jsr setayr
+
         ldx #$00
         lda #$0C        ; Env Coarse (Heavy thump)
         ;; fall through to trigger
@@ -91,13 +94,24 @@ cmdKickS:
 trigger:
         ldy #12         ; R12 = Env Period Coarse
         jsr setayr
+
         txa
         ldy #11         ; R11 = Env Period Fine
         jsr setayr
+
         lda #$09        ; Shape: Single Decay (\)
         ldy #13         ; R13 starts the one-shot
         jsr setayr
-        rts
+
+        lda #$10        ; Use Hardware Envelope
+        ldy #10         ; R10 = Amplitude C
+        jsr setayr
+
+        ;; "jsr"
+        jmp interpret
+
+;;; TODO: redundant? ayshadow?
+mixer_cache: .byte $FF
 
 setMixerC:
         pha
@@ -111,8 +125,7 @@ setMixerC:
         ldy #7
         lda mixer_cache
         jsr setayr
-        rts
 
-mixer_cache: .byte $FF
+        rts
 
 DRUMEND:        
