@@ -40,7 +40,6 @@
 
 .code
 
-
 ;;; summary:
 ;;; 
 ;;; bitshift: 102 b  59c-111c   work-horse
@@ -72,8 +71,13 @@
 
 .data
 
+NDATASTART:     
+
 hifreq:         .res 256
 lofreq:         .res 256
+
+NDATAEND:       
+IDATASTART:     
 
 cmdaddr:        .res 256
         ;; TODO: populate with:
@@ -81,6 +85,9 @@ cmdaddr:        .res 256
         ;; .byte cmdwait-jmpcmd-2
         ;; ...
         ;; .byte cmdwait-jmpcmd-2
+
+IDATAEND:       
+
 .code
 
 
@@ -123,8 +130,13 @@ cmdwait:
 ;;; TODO: actually oct 0-3: 96 words = 192 !
 ;;; TODO:          oct 4-7: 96 bytes =  96 !
 
+NDATASTART:     
+
 hifreq:         .res 192
 lofreq:         .res 192
+
+NDATAEND:       
+IDATASTART:     
 
 cmdaddr:        .res 64
 
@@ -134,6 +146,9 @@ cmdaddr:        .res 64
         ;; ...
         ;; .byte cmdwait-jmpcmd-2
 
+IDATAEND:       
+
+INTERPSTART:    
 
 ;;; decode=17c+3c command=14c  notes=15-31c
 
@@ -155,6 +170,9 @@ dispatch:
         sec
         bcs dispatch            ; lol
         
+INTERPEND:      
+NOTESTART:      
+
 note:   
 ;;; 1+ 14--31c
         ;; ? oct: 0-3: use byte pitch?
@@ -185,6 +203,8 @@ note:
         jmp interpret
 
 cmdwait:        
+
+NOTEEND:        
 
         
 .endif ; !BIGLUT = SMALLLUT
@@ -238,6 +258,8 @@ pow2:
 ;;; 48 bytes (Octave 0-3 base)
 WORDTABLE=1
 
+NDATASTART:     
+
 .ifdef WORDTABLE
 period_table:
         .word 3822, 3713, 3608, 3505, 3405, 3308, 3214, 3123
@@ -271,6 +293,8 @@ oct4_table:
         .byte $96, $92, $8E, $8A, $86, $82, $7E, $7A
 .endif
 
+NDATAEND:       
+
 .code
 
 
@@ -281,6 +305,7 @@ oct4_table:
 .endmacro
 
 
+INTERPSTART:    
 
 cmdSTOP:          ; 11 000 000
         ;; TODO: ... set high delay?
@@ -705,6 +730,90 @@ storeprocessmap:
 
 
 
+;;; antwryte: Writes a byte from stream
+;;;   X= param offset
+;;; 
+;;; returns: 
+;;;   A= value, X= offset, Y trashed
+antwryte:
+        ;; lo
+        ldy ipy
+        lda (stream),Y
+        inc ipy
+        sta antvmBLOCK,X
+        rts
+
+
+;;; Pushes current interpreter state on task stack
+;;; 
+;;; Y is preserved, A X used
+;;; 
+;;; TODO: make it relative to stack of task!
+;;; (the value pushed is "noramlized" stream += ipy)
+
+pushStream:     
+;;; 33 B  54 c (+5c if inc; +3 ? write  ,x?)
+        ;; Push old
+        ldx antsp
+        lda antlang
+        sta antstack,X
+        inx
+
+        ;; stream += ipy
+        clc
+        lda ipy
+        adc stream
+        sta stream
+        bcc :+
+        inc stream+1
+:       
+
+        ;; push current stream value
+        lda stream+1
+        sta antstack,X
+        inx
+
+        lda stream
+        sta antstack,X
+        inx
+
+        stx antsp
+
+        rts
+
+
+
+
+;;; TODO: cleanup
+        ;; 
+        ;; disable channel A ticker (?)
+;;; disable channel A?
+        and #%01111111
+
+andprocessmap:
+        and processmap
+        jmp storeprocessmap
+
+
+.include "antvm-aypdate.asm"
+
+
+
+
+
+INTERPEND:      
+
+
+
+
+
+
+
+NOTESTART:      
+
+
+
+
 ;;; Playing a NOTE command
 ;;;   A=comamnd Y=octave(0-7) (from dispatch)
 ;;; 
@@ -823,9 +932,10 @@ newenvelope:
 
 .endif ; BITSHIFT = !SUPERFAST
 
+NOTEEND:        
 
 
-
+IDATASTART:     
 
 ;;; --- Relative Dispatch Table (Base $C0) ---
 
@@ -901,78 +1011,7 @@ command_table:
     REL cmdPARAM_WORD   ; 11 111 110|PAR|WORD = PARAM WORD "param"
     REL cmdRETURN       ; 11 111 111 = RETURN ($ff - as "expected")
 
-
-
-
-
-
-;;; antwryte: Writes a byte from stream
-;;;   X= param offset
-;;; 
-;;; returns: 
-;;;   A= value, X= offset, Y trashed
-antwryte:
-        ;; lo
-        ldy ipy
-        lda (stream),Y
-        inc ipy
-        sta antvmBLOCK,X
-        rts
-
-
-;;; Pushes current interpreter state on task stack
-;;; 
-;;; Y is preserved, A X used
-;;; 
-;;; TODO: make it relative to stack of task!
-;;; (the value pushed is "noramlized" stream += ipy)
-
-pushStream:     
-;;; 33 B  54 c (+5c if inc; +3 ? write  ,x?)
-        ;; Push old
-        ldx antsp
-        lda antlang
-        sta antstack,X
-        inx
-
-        ;; stream += ipy
-        clc
-        lda ipy
-        adc stream
-        sta stream
-        bcc :+
-        inc stream+1
-:       
-
-        ;; push current stream value
-        lda stream+1
-        sta antstack,X
-        inx
-
-        lda stream
-        sta antstack,X
-        inx
-
-        stx antsp
-
-        rts
-
-
-
-
-;;; TODO: cleanup
-        ;; 
-        ;; disable channel A ticker (?)
-;;; disable channel A?
-        and #%01111111
-
-andprocessmap:
-        and processmap
-        jmp storeprocessmap
-
-
-.include "antvm-aypdate.asm"
-
+IDATAEND:       
 
 
 .if ANTTRACE & AT_CMD

@@ -189,7 +189,27 @@ putb:
 .endmacro
 
 
-;;; Move all here
+.macro PRSIZE letter,from,to
+        putc letter
+        putc ':'
+
+        sec
+        lda #<to
+        sbc #<from
+        tay
+
+        lda #>to
+        sbc #>from
+
+        tax
+        tya
+        jsr puth
+        NL
+.endmacro
+
+
+
+;;; Move all VM data here
 
 .include "ant-zp.asm"
 
@@ -224,23 +244,31 @@ _main:
 
         NL
 
-;;; 109
-DFROM=dispatch_br
-DTO=cmdVALUE
+;;; > ./ant | head -12 | ./unhex
 
-        putc 'c'
-        sec
-        lda #<DTO
-        sbc #<DFROM
-        tay
+;; P:  163 - drum.asm                - TOOD: can be improved
+;; v:   78 - antvm-vol-env.asm
+;; p:  102 - antvm-p(itch)-env.asm   - hmmm 24 B more than vol?
+;; N:   72 - notes pitch data        - 2*24+24
+;; n:   84 - notes code              - (+ 72 84) = 156 (< 256B LUT)
+;; I:   64 - dispatch data           - 6 bits dispatch (saves!)
+;; i:  519 - INTERP very big!        - TODO: look at simplify!
 
-        lda #>DTO
-        sbc #>DFROM
+;;; SUM: 1082 bytes - little too big, as not finished yet!
 
-        tax
-        tya
-        jsr puth
+
+
+;        PRSIZE 'V',dispatch_br,cmdVALUE
         NL
+        PRSIZE 'P',DRUMSTART,DRUMEND ; percussion
+        PRSIZE 'v',VOLSTART,VOLEND
+        PRSIZE 'p',PITCHSTART,PITCHEND
+        PRSIZE 'N',NDATASTART,NDATAEND
+        PRSIZE 'n',NOTESTART,NOTEEND
+        PRSIZE 'I',IDATASTART,IDATAEND
+        PRSIZE 'i',INTERPSTART,INTERPEND
+        NL
+        
 
 ;;; Enable if we only want info
 ;        jmp halt

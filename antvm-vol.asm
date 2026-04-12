@@ -5,6 +5,8 @@
 ; ;; 36 B - Final Zen Clamping (Uses ADC Carry for floor/ceil)
 ; ---------------------------------------------------------
 
+VOLSTART:       
+
 ; --- DS_V_INIT: A/X = Mask, Y = Config ---
 ds_v_init:
     sta ds_v_mask
@@ -71,3 +73,6 @@ ds_v_tick:
     sta ds_v_delay      ; Kill ($FF)
 @rts2:
     rts
+
+VOLEND: 
+

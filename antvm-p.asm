@@ -9,6 +9,8 @@
 ; ;; 60 B - Your EOR #$07 trick for (8-S) shift logic
 ; ---------------------------------------------------------
 
+PITCHSTART:     
+
 ; --- DS_P_INIT: A/X = Mask, Y = Config ---
 ds_p_init:
     sta ds_p_mask
@@ -101,3 +103,6 @@ ds_p_tick:
     sta ds_p_delay     ; One-Shot: Set delay to $FF (OFF)
 @rtsj:
     rts
+
+PITCHEND:       
+

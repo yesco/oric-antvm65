@@ -7,6 +7,8 @@
 ;;; Y=7 : DRUM TS (Open Hat / 'S/Z')      - High-noise, slow decay
 ;;; ================================================================
 
+DRUMSTART:      
+
 ;;; TODO: a common init???
 
         pha             ; Save Variation A (The "Mouth" shape)
@@ -112,3 +114,5 @@ setMixerC:
         rts
 
 mixer_cache: .byte $FF
+
+DRUMEND:        
