@@ -468,9 +468,59 @@ OCT=oct4
 
         ;; MAIN (play "song" will launch this automatic)
 phonem0: 
+        ;.byte QUARTER
+        .byte L32
         .byte _C  + OCT
         .byte _Cs + OCT
         .byte _Ds + OCT
+        .byte _E  + OCT
+        .byte _F  + OCT
+        .byte _Fs + OCT
+        .byte _G  + OCT
+        .byte _Gs + OCT
+        .byte _A  + OCT
+        .byte _As + OCT
+        .byte _B  + OCT
+
+        .byte L16
+        .byte _C  + OCT
+        .byte _Cs + OCT
+        .byte _Ds + OCT
+        .byte _E  + OCT
+        .byte _F  + OCT
+        .byte _Fs + OCT
+        .byte _G  + OCT
+        .byte _Gs + OCT
+        .byte _A  + OCT
+        .byte _As + OCT
+        .byte _B  + OCT
+
+        .byte L8
+        .byte _C  + OCT
+        .byte _Cs + OCT
+        .byte _Ds + OCT
+        .byte _E  + OCT
+        .byte _F  + OCT
+        .byte _Fs + OCT
+        .byte _G  + OCT
+        .byte _Gs + OCT
+        .byte _A  + OCT
+        .byte _As + OCT
+        .byte _B  + OCT
+
+        .byte L4
+        .byte _C  + OCT
+        .byte _Cs + OCT
+        .byte _Ds + OCT
+        .byte _E  + OCT
+        .byte _F  + OCT
+        .byte _Fs + OCT
+        .byte _G  + OCT
+        .byte _Gs + OCT
+        .byte _A  + OCT
+        .byte _As + OCT
+        .byte _B  + OCT
+
 
 ;        .byte %11001111         ; LEGATO
 ;        .byte %11001000         ; SUSTAIN

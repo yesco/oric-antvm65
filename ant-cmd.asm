@@ -25,7 +25,19 @@ VALUE5=  VALUE+5
 VALUE6=  VALUE+6
 LEGATO=  %11001111
 
+WHOLE		= VALUE1        ; 1     2s              100 T
+HALF		= VALUE2        ; 1/2   1s               50 T
+QUARTER		= VALUE3        ; 1/4   500 ms           25 T
+EIGTH		= VALUE4        ; 1/8   250 ms           12 T
+SIXTEENTH	= VALUE5        ; 1/16  125 ms            6 T
+THIRTYSECONDTH  = VALUE6        ; 1/32  625 ms            3 T
 
+L1	= WHOLE
+L2      = HALF
+L4      = QUARTER
+L8      = EIGTH
+L16     = SIXTEENTH
+L32     = THIRTYSECONDTH
 
 CALL1= %11010000+0
 CALL2= %11010000+1

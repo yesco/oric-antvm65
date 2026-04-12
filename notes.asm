@@ -437,8 +437,8 @@ interpret:
 .endif ; ANTTRACE & AT_CMD
 
         ;; Extract Y=iii from "11 ccc iii"
-        tax            
-        and #%00000111 
+        tax
+        and #%00000111
         tay
 
         ;; >= 11 xxx xxx => COMMAND! otherwise NOTE!
@@ -644,7 +644,7 @@ cmdVALUE:
         ;; TODO for all seleted channels
 :       
         dey
-        beq :+
+        bmi :+
         lsr
         ;; "always" (except zero==don't matter)
         bne :-
@@ -850,7 +850,7 @@ cmdNOTE:
         ;; nnnnn ooo => nnnn 0 use for LUT
         lsr
         lsr
-        and #%1111110
+        and #%01111110
 
 .if ANTTRACE & AT_NOTE
         jsr traceNOTE1
@@ -901,6 +901,16 @@ cmdNOTE:
 
 ;;; TODO: revsiit w pitch envelope
 @pitch_done:
+
+
+;;; TODO: detune not set!
+
+;;; Store A
+sta ayshadow+0
+stx ayshadow+1
+
+jmp donedone
+
         clc                 ; 2
         adc detune          ; 3
 
@@ -925,23 +935,24 @@ cmdNOTE:
         ;; no yield
         jmp interpret
 
+@hasvalue:
 
-@hasvalue:       
+donedone:       
 
 ;;; starts a new envelope
 ;;; A=value(A) 
 ;;; X= TODO: channel 0..3: ABCN
 newenvelope:    
 
-
         sta delayA
+        
+        ;; mixer tone A
+        lda #%00000110
+        sta ayshadow+7
 
         ;; volA
         lda #VOLUME
         sta ayshadow+8
-
-        ;; TODO: do min on all ?
-        ;;   possibly call with X
 
         DOYIELD
 
