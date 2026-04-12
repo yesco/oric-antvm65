@@ -280,7 +280,7 @@ _main:
 ;; N:   72 - notes pitch data        - 2*24+24
 ;; n:   84 - notes code              - (+ 72 84) = 156 (< 256B LUT)
 ;; I:   64 - dispatch data           - 6 bits dispatch (saves!)
-;; i:  500 - INTERP very big!        - TODO: look at simplify!
+;; i:  498 - INTERP very big!        - TODO: look at simplify!
 
 ;;; - Parts of 'i'
 ;; w:   22 - cmdSTOP, cmdWAIT
@@ -289,26 +289,27 @@ _main:
 ;; j:   65 - interpret: actual dispatch jmp
 ;; (+ 22 46 65) = 133
 
-;; k:   61 - cmdRET, cmdCALL.local/cmdCALL.lang
-;; K:   32 - pushStream
+;; k:   60 - cmdRET, cmdCALL.local/cmdCALL.lang
+;; K:   31 - pushStream
 ;; DRUM 12 = cmdDRUMxxx (4x jmp)
 ;; v:   65 - cmdVALUE, SUSTAIN/LEGATO
 ;; p:   21 - cmdEXTEND, cmdPARAMBYTE, cmdPARAMWORD
-;; (+ 61 32 12 65 21) = 191
+;; (+ 60 31 12 65 21) = 189
 
 ;; y:  166 - cmdSETAY/cmdAYPDATE/cmdAYDUMP
 ;;(Y:   53 - AYUPDATE)
 ;;(S:   65 - SETAYR w vol hack)
 ;((s:   43  - only "set"))
-;; (+ 133 191 166) = 490 (some after BRANCH location=AY)
+;; (+ 133 189 166)= 488 (some after BRANCH location=AY)
 
-;;; (+ 97 78 102 72 84 64 500) = 997 B total
+;;; (+ 97 78 102 72 84 64 498) = 995 B total
 
 ;;; SUM: 1082 bytes - little too big, as not finished yet!
 ;;;      1010 - Drum improved -72 B!
 ;;;      1009 - YIELD save 1 B
 ;;;      1007 - ayshadow instead of jsr
 ;;;       997 - simplify RET/CALL/stacks
+;;;       995 - fix swap stack hi/lo, opt inc/dec sp
 
 
 ;;; Enable if we only want info

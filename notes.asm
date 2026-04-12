@@ -522,27 +522,25 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
         jsr pushStream
         
-        ;; set new stream
-        ;; (lng)
-        sty savey
+        ;; set new "default" language
+        sty antlang
 
-        ;; TODO: do something w lang vector
-        
+;;; TODO: seems to be limited to 0--(256-2) entries, lol
+
+;;; TODO: do something w lang vector (>128)
         pla
+        asl
+        tax
         ;; skip 4 bytes header
-        iny
-        iny
+        inx
+        inx
         bmi @overflowTODO
 @overflowTODO: ;; LOL TODO:
-        asl
-        tay
-
         ;; TODO: check index is within range?
 
         ;; get new stream addr from index pos Y (PHONEM)
 
 ;;; TODO: handle more than "one" language
-
         lda language,Y
         sta stream
         iny
@@ -556,8 +554,8 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
 cmdRET:        ; 11 111 111
         ;; Restore
-        ldx antsp
-        dex
+        dec antsp
+        lda antsp
 
         lda slostack,X
         sta stream
@@ -568,8 +566,6 @@ cmdRET:        ; 11 111 111
         sta langstack,X
         sta antlang
         
-        stx antsp
-
         ;; reset ipy
         ldx #0
         stx ipy
@@ -789,9 +785,10 @@ KALLSUBSSTART:
 ;;; (the value pushed is "noramlized" stream += ipy)
 
 pushStream:     
-;;; 32 B  ?54 c (+5c if inc; +3 ? write  ,x?)
-        ;; Push old
+;;; 31 B  ?54 c (+5c if inc; +3 ? write  ,x?)
         ldx antsp
+
+        ;; push current lang
         lda antlang
         sta langstack,X
 
@@ -806,13 +803,12 @@ pushStream:
 
         ;; push current stream value
         lda stream+1
-        sta slostack,X
-
-        lda stream
         sta shistack,X
 
-        inx
-        stx antsp
+        lda stream
+        sta slostack,X
+
+        inc antsp
 
         rts
 
