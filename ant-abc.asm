@@ -1,71 +1,66 @@
-; --- Driver Command Constants (Modify to match your driver) ---
-CMD_OCTAVE   = $80
-CMD_LENGTH   = $81
-CMD_VOLUME   = $82
-CMD_TEMPO    = $83
-CMD_MIXER    = $84
-CMD_ENVELOPE = $85
-CMD_STOP     = $FF
+; --- Global Parser State ---
+.set _CUR_OCT    = 4        ; Default Octave
+.set _CUR_LEN    = 4        ; Default Length (Denominator)
+.set _PEND_ACC   = 0        ; Pending accidental (^ = +1, _ = -1)
 
 .macro GEN_ABC_SPN Arg
-    .local @Char, @Next, @ArgVal, @I, @NoteVal
+    .local @Char, @I, @TmpOct, @TmpLen, @FinalNote
     
     @I = 0
     .repeat .strlen(Arg)
-        ; Check if we've skipped indices (because of multi-char commands)
         .if @I < .strlen(Arg)
             @Char = .strat(Arg, @I)
-            
-            ; --- 1. HANDLE OCTAVE (O, o, K) ---
-            .if @Char = 'O' | @Char = 'o' | @Char = 'K'
+
+            ; --- ACCIDENTALS (Prefix) ---
+            .if @Char = '^'
+                .set _PEND_ACC, 1
                 @I = @I + 1
-                @ArgVal = .strat(Arg, @I) - '0'
-                .byte CMD_OCTAVE, @ArgVal
-                
-            ; --- 2. HANDLE VOLUME (V, v, !) ---
-            .elseif @Char = 'V' | @Char = 'v'
+                @Char = .strat(Arg, @I)
+            .elseif @Char = '_'
+                .set _PEND_ACC, -1
                 @I = @I + 1
-                ; TODO: Handle hex (A-F) vs Dec logic for @ArgVal
-                @ArgVal = .strat(Arg, @I) - '0' 
-                .byte CMD_VOLUME, @ArgVal
+                @Char = .strat(Arg, @I)
+            .endif
+
+            ; --- NOTE HANDLING ---
+            .if (@Char >= 'A' & @Char <= 'G') | @Char = 'H' | (@Char >= 'a' & @Char <= 'h')
+                @TmpOct = _CUR_OCT
                 
-            ; --- 3. HANDLE LENGTH (L) ---
+                ; 1. Handle ABC Case-Sensitivity
+                .if @Char >= 'a' & @Char <= 'h'
+                    @TmpOct = @TmpOct + 1
+                .endif
+
+                ; 2. Map Letter to Base Index (0-11 or 0-23)
+                ; TODO: Implement NoteMapping(@Char) -> 0, 2, 4, 5, 7, 9, 11...
+                @FinalNote = 0 ; Placeholder
+
+                ; 3. Look-ahead for ABC modifiers (',', ''')
+                ; TODO: Loop @I+1 to catch multiple ,,, or ''' and adjust @TmpOct
+
+                ; 4. Look-ahead for SPN modifiers (A4, A416)
+                ; TODO: If @I+1 is a digit, @TmpOct = Digit. 
+                ; TODO: If @I+2 is also a digit, start capturing @TmpLen.
+
+                ; 5. Handle ABC Length (A/16)
+                ; TODO: If @Char = '/', capture following digits for @TmpLen.
+
+                ; 6. OUTPUT: Final Value = (@TmpOct * 12) + @FinalNote + _PEND_ACC
+                .byte (@TmpOct * 12) + @FinalNote + _PEND_ACC
+                
+                .set _PEND_ACC, 0 ; Reset accidental after note is placed
+
+            ; --- STICKY COMMANDS ---
+            .elseif @Char = 'O' | @Char = 'o' | @Char = 'K'
+                @I = @I + 1
+                .set _CUR_OCT, .strat(Arg, @I) - '0'
             .elseif @Char = 'L'
                 @I = @I + 1
-                ; TODO: Capture 1 or 2 digits (L4 vs L16)
-                @ArgVal = .strat(Arg, @I) - '0'
-                .byte CMD_LENGTH, @ArgVal
-
-            ; --- 4. HANDLE ENVELOPE (E) ---
-            .elseif @Char = 'E'
-                @I = @I + 1
-                @ArgVal = .strat(Arg, @I) - '0'
-                ; TODO: Capture optional "llhh" 16-bit pitch if present
-                .byte CMD_ENVELOPE, @ArgVal
-
-            ; --- 5. HANDLE TEMPO (T) ---
-            .elseif @Char = 'T'
-                @I = @I + 1
-                ; TODO: Handle 3-digit BPM (T120)
-                .byte CMD_TEMPO ; (followed by arg)
-
-            ; --- 6. HANDLE STOP (S) ---
-            .elseif @Char = 'S'
-                .byte CMD_STOP
-
-            ; --- 7. HANDLE NOTES (A-H, z, R, P) ---
-            .elseif (@Char >= 'A' & @Char <= 'H') | (@Char >= 'a' & @Char <= 'h') | @Char = 'z' | @Char = 'R' | @Char = 'P'
-                ; TODO: Map letter to note index (0-11)
-                ; TODO: Check @I+1 for sharps (#, ^) or flats (b, _)
-                ; TODO: Check @I+1 for ABC octave markers (',')
-                ; TODO: Check @I+1 for SPN octave number (A4) or length (A44)
-                .byte $01 ; Placeholder for Note Byte
+                ; TODO: Capture multi-digit length
+                .set _CUR_LEN, 4 
             .endif
 
             @I = @I + 1
         .endif
     .endrepeat
 .endmacro
-
-; --- Usage Example ---
-; GEN_ABC_SPN "O4 V15 A#44 R8 E1 V16 A41 S"
