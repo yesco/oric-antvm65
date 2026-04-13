@@ -16,21 +16,21 @@ WAIT7= WAIT+7
 
 
 SUSTAIN= %11001000
-VALUE =  %11001000
-VALUE1=  VALUE+1
-VALUE2=  VALUE+2
-VALUE3=  VALUE+3
-VALUE4=  VALUE+4
-VALUE5=  VALUE+5
-VALUE6=  VALUE+6
+LENGTH =  %11001000
+LENGTH1=  LENGTH+1
+LENGTH2=  LENGTH+2
+LENGTH3=  LENGTH+3
+LENGTH4=  LENGTH+4
+LENGTH5=  LENGTH+5
+LENGTH6=  LENGTH+6
 LEGATO=  %11001111
 
-WHOLE		= VALUE1        ; 1     2s              100 T
-HALF		= VALUE2        ; 1/2   1s               50 T
-QUARTER		= VALUE3        ; 1/4   500 ms           25 T
-EIGTH		= VALUE4        ; 1/8   250 ms           12 T
-SIXTEENTH	= VALUE5        ; 1/16  125 ms            6 T
-THIRTYSECONDTH  = VALUE6        ; 1/32  625 ms            3 T
+WHOLE		= LENGTH1        ; 1     2s              100 T
+HALF		= LENGTH2        ; 1/2   1s               50 T
+QUARTER		= LENGTH3        ; 1/4   500 ms           25 T
+EIGTH		= LENGTH4        ; 1/8   250 ms           12 T
+SIXTEENTH	= LENGTH5        ; 1/16  125 ms            6 T
+THIRTYSECONDTH  = LENGTH6        ; 1/32  625 ms            3 T
 
 L1	= WHOLE
 L2      = HALF

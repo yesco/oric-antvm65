@@ -245,7 +245,7 @@ _main:
         NL
 
 
-;        PRSIZE 'V',dispatch_br,cmdVALUE
+;        PRSIZE 'V',dispatch_br,cmdLENGTH
         NL
         PRSIZE 'P',DRUMSTART,DRUMEND ; percussion
         PRSIZE 'v',VOLSTART,VOLEND
@@ -263,7 +263,7 @@ _main:
         NL
         PRSIZE 'k',CALLSTART,CALLEND
         PRSIZE 'K',KALLSUBSSTART,KALLSUBSEND
-        PRSIZE 'v',VALUESTART,VALUEEND
+        PRSIZE 'v',LENGTHSTART,LENGTHEND
         PRSIZE 'p',PARAMSTART,PARAMEND
         NL
         PRSIZE 'y',AYSTART,AYEND
@@ -292,7 +292,7 @@ _main:
 ;; k:   60 - cmdRET, cmdCALL.local/cmdCALL.lang
 ;; K:   31 - pushStream
 ;; DRUM 12 = cmdDRUMxxx (4x jmp)
-;; v:   65 - cmdVALUE, SUSTAIN/LEGATO
+;; v:   65 - cmdLENGTH, SUSTAIN/LEGATO
 ;; p:   21 - cmdEXTEND, cmdPARAMBYTE, cmdPARAMWORD
 ;; (+ 60 31 12 65 21) = 189
 
@@ -383,7 +383,7 @@ init:
         ;; INIT state
 
         ldy #WHOLETICKS*3/4
-        sty valueA
+        sty lengthA
         ldy #WHOLETICKS/4       ; (little silence 1/4 rel)
         sty restA
 
@@ -608,18 +608,11 @@ phonem0:
         .byte _B  + OCT
 
 
-;        .byte %11001111         ; LEGATO
-;        .byte %11001000         ; SUSTAIN
-;        .byte %11001110        ; VALUE6
-;        .byte %11001100        ; VALUE4
-;        .byte %11001001         ; VALUE1 = WHOLE
-;        .byte %11001010         ; VALUE2 = HALF
-
 ;;; just to get offset right
 ;.byte %11000000                 ; cmdSTOP
 
         ;; minimal length => 1,1
-        .byte %11001110       ; VALUE6
+        .byte LENGTH6
 
         .byte _Ds + OCT
         .byte _E  + OCT
@@ -630,6 +623,7 @@ phonem0:
         ;; Explicit timing (SUSTAIN/LEGATO)
         .byte SUSTAIN
 
+;;; TODO: are these correct?
         .byte WAIT1
         .byte WAIT2
 
@@ -645,6 +639,9 @@ phonem0:
         ;; return from non-call? lol
         .byte RET
 
+
+
+;;; TODO: remove? or add real ISR (for oric)
 
 
 

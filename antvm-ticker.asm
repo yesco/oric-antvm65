@@ -137,6 +137,11 @@ PUTC '!'
         stx tickX
         sta tickermap
 
+        ;; TODO: for now, just make freerunning (length0 safe)
+        ;;   SUSTAIN & LEGATO
+        lda #1
+        sta delays,X
+
 ;;; Process A tick for a bit set
 ;;;  X= channel 0..7
 ;;;  (A,B,C,N, E.F.C.T == (Echo,Follow,Chrous,Tglissado))
@@ -205,23 +210,23 @@ tickCHAN:
 
         ;; PLAYING
 
-        ;; if valueA then need to invoke restA
-        lda valueA
+        ;; if lengthA then need to invoke restA
+        lda lengthA
         beq nextTickBit
 
         ;; do REST
         lda restA
         sta delayA
-        ;; - turn off channel sound
+
+        ;; - turn off channel sound (A-C)
+;;; TODO: Noise (bit?)
+        cpx #3
+        beq nextTickBit
+
         lda #0
         sta ayshadow+8,X
-
-;;; TODO: move to more generic place?
-.if ANTTRACE & AT_AY
-        jsr printAY
-.endif ; ANTTRACE
-
-        jmp nextTickBit
+:       
+        beq nextTickBit
 
 
 @notedone:
@@ -247,7 +252,7 @@ tickCHAN:
         jsr tickPitENV
 
         ;; TOOD:: make sure delay,X is updated to "min"
-        lda valueA
+        lda lengthA
         sta delayA
         
 ;;; TODO: how to handle rest?

@@ -46,8 +46,8 @@ Tag-line: "AntVM65 isn't just a player; it’s a Sound Language that treats spee
 ;;; - volume
 ;;; - note/pitch/period (quarter-notes: 24-TET)
 ;;; - a detune (quarter-note resolution shifter)
-;;; - VALUE (whole half quarter ... 32th)
-;;; - REST  (VALUE >> "relative-rest")
+;;; - LENGTH (whole half quarter ... 32th)
+;;; - REST  (LENGTH >> "relative-rest")
 ;;; - DELTAS: 16 bits of a bit-delta modulator
 ;;;   - volume (speed + step)
 ;;;   - pitch  (speed + step)
@@ -73,7 +73,7 @@ The stream is an simple byte-coded VM: it has two types of commands:
  11 pgg iii = commands (pgg: group bits 0-7, iii: data bits 0-7)
 ```
 
-A note, after being set is "played", and it yields. That is it plays it's VALUE time ticks, and then it's REST specifedc ticks. If VALUE is 0, then it doesn't yield *(TODO:!)* and WAIT can be used.
+A note, after being set is "played", and it yields. That is it plays it's LENGTH time ticks, and then it's REST specifedc ticks. If LENGTH is 0, then it doesn't yield *(TODO:!)* and WAIT can be used.
 
 Each channel (A,B,C,Noise) typically has it's own "cursor" (and stack) that does the interpreation.
 
@@ -90,15 +90,15 @@ nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
 11 000 000 = STOP wait for event/sync/spawn
 11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
-11 000 ppp = WAIT.music:  VALUE>>(ppp-1): 1 /2 /4 /8 /16 /32
+11 000 ppp = WAIT.music:  LENGTH>>(ppp-1): 1 /2 /4 /8 /16 /32
 
 11 001 000 = SUSTAIN
-11 001 001 = VALUE1
-11 001 010 = VALUE/2
-11 001 011 = VALUE/4
-11 001 100 = VALUE/8
-11 001 101 = VALUE/16
-11 001 110 = VALUE/32
+11 001 001 = LENGTH1
+11 001 010 = LENGTH/2
+11 001 011 = LENGTH/4
+11 001 100 = LENGTH/8
+11 001 101 = LENGTH/16
+11 001 110 = LENGTH/32
 11 001 111 = LEGATO
 
 11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)
@@ -418,7 +418,7 @@ The "First Byte" of Language 0:
 For your first test of the AntVM65, I'd suggest starting with a Calibration Pulse:
 
    1. SET VOLUME 15 (Max)
-   2. VALUE (Quarter Note)
+   2. LENGTH (Quarter Note)
    3. NOTE (Middle C)
    4. WAIT 12 (8th note rest)
    5. RETURN
@@ -444,7 +444,7 @@ In startTick, you LDA processmap and then STA tickermap.
 Logic Check: BPL $FF
 The BPL (Branch on Plus) works because your ticktable offsets are calculated to be positive. Since the Negative flag (N) is 0 after the LDA ticktable,X, the jump is guaranteed. This is essentially a "Fast Jump Table."
 Is tickX in Zero Page? If so, those LDX/STX instructions are only 3 cycles, keeping your "Action" overhead at that slim 14c you calculated.
-What is the first task for tickCHAN—will it just decrement the VALUE/REST counters and call the Greedy Interpreter when they hit zero?
+What is the first task for tickCHAN—will it just decrement the LENGTH/REST counters and call the Greedy Interpreter when they hit zero?
 Next Step: Propose the tickCHAN logic or the EFCT delta-math?
 
 That "handwaving" is where the 6502 magic happens! Using a Shared Minimum (the "Next Event" timer) is the secret to making a complex VM feel like a hardware chip.
@@ -543,7 +543,7 @@ http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
                     = TPS (ticks/second)
 
                     = BPM
-                    = VALUE
+                    = LENGTH
                     = REST
 
 http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
@@ -606,26 +606,26 @@ This setup gives you a high-resolution "low end" for speech and rhythmic "utilit
 * 000 (STOP): This is your sync/yield point. Very useful for multi-threading or waiting for a sprite to hit a coordinate.
 * 001-111 (www):
 * Speech Mode: Fixed linear ticks ($iii \times 20\text{ms}$). This is perfect for dialogue where you want constant speed regardless of music.
-   * Music Mode: Power-of-two divisions (Binary fractions). This is the "Aha!" moment—by using VALUE >> (ppp-1), you can change the tempo of the entire song just by updating one VALUE register, and all notes will scale relatively ($1/2, 1/4, 1/8$, etc.).
+   * Music Mode: Power-of-two divisions (Binary fractions). This is the "Aha!" moment—by using LENGTH >> (ppp-1), you can change the tempo of the entire song just by updating one LENGTH register, and all notes will scale relatively ($1/2, 1/4, 1/8$, etc.).
 
 
 ## 2. The Value Logic (11001)
 
 * Sustain/Legato: Using $iii$ here as a bitmask or index for how long the envelope stays open is much better than a simple ON/OFF. It allows for "slurred" transitions between those 24 quarter-tones.
 
-That makes perfect sense. You’ve designed a Modal Synth. The VM's behavior fundamentally changes based on the VALUE (Envelope/Gate) register:
+That makes perfect sense. You’ve designed a Modal Synth. The VM's behavior fundamentally changes based on the LENGTH (Envelope/Gate) register:
 
-   1. Automatic Mode (VALUE > 0): The note command is "Atomic." It triggers the pitch, waits for the VALUE duration, handles the REST (staccato gap), and then returns control. This keeps the bytecode tiny for standard melodies.
-   2. Manual/Sustain Mode (VALUE == 0): The note command is "Non-Blocking." It just updates the oscillator's frequency and moves to the next instruction immediately. You are responsible for the timing.
+   1. Automatic Mode (LENGTH > 0): The note command is "Atomic." It triggers the pitch, waits for the LENGTH duration, handles the REST (staccato gap), and then returns control. This keeps the bytecode tiny for standard melodies.
+   2. Manual/Sustain Mode (LENGTH == 0): The note command is "Non-Blocking." It just updates the oscillator's frequency and moves to the next instruction immediately. You are responsible for the timing.
 
 
 ## Why this is great for Legato:
 
 In Legato, you don't want the volume envelope to close between notes.
 
-* Source: VALUE0 C D E VALUE2
+* Source: LENGTH0 C D E LENGTH2
 
-* Result: The VM updates pitch C, then immediately D, then E, all while the "gate" is open. Only when you switch back to VALUE2 (or whatever your auto-mode is) does the VM start closing the gate after notes again.
+* Result: The VM updates pitch C, then immediately D, then E, all while the "gate" is open. Only when you switch back to LENGTH2 (or whatever your auto-mode is) does the VM start closing the gate after notes again.
 
 
 
@@ -652,7 +652,7 @@ TODO: cleanup, one table for SPEECH and one for MUSIC mode
 | 15  |  200 |    4s   |  wait   | Ambient fade-out | Scene change
 
 
-## Consider using LENGTH (NOTE VALUE)/ GATE (FACTOR)
+## Consider using LENGTH (NOTE LENGTH)/ GATE (FACTOR)
 
 In the world of synthesis and sequencing, Gate is the industry-standard term for the concept you are describing. [1, 2] 
 ## How GATE is typically defined
@@ -661,18 +661,18 @@ In the world of synthesis and sequencing, Gate is the industry-standard term for
 * Gate Time / Gate Length: This refers to the active portion of a note's duration—the time the sound is actually "on" before it begins its release.
 * Duty Cycle: In step-sequencing, this is often expressed as a percentage (e.g., 50% Gate means the note is "on" for half the step and "silent" for the rest). [1, 3, 4, 5, 6] 
 
-## Is "VALUE" confusing for Note Length?
-Using VALUE to represent the "Total Note Length" (the rhythmic grid position including the silence) is not inherently confusing, but it differs from standard terminology: [7] 
+## Is "LENGTH" confusing for Note Length?
+Using LENGTH to represent the "Total Note Length" (the rhythmic grid position including the silence) is not inherently confusing, but it differs from standard terminology: [7] 
 
 * Standard term: Most systems call this Duration or Note Value (e.g., a "Quarter Note Value").
-* Your logic: Since your VALUE sets the total ticks (the rhythmic "slot"), and your REST subtracts from that to create the gap, your system is technically a Gate Duration Controller. [8, 9, 10] 
+* Your logic: Since your LENGTH sets the total ticks (the rhythmic "slot"), and your REST subtracts from that to create the gap, your system is technically a Gate Duration Controller. [8, 9, 10] 
 
 ## Recommendation: Naming Improvements
 If you want your code to be more "musical" to an outside reader, consider these renames:
 
 | Your Current Term [11, 12, 13, 14, 15] | Industry Equivalent | Why? |
 |---|---|---|
-| VALUE | DURATION or LENGTH | It defines the rhythmic space (e.g., 100 ticks for a whole note). |
+| LENGTH | DURATION or LENGTH | It defines the rhythmic space (e.g., 100 ticks for a whole note). |
 | REST | GATE or DUTY | It defines the "cut-off" point within that duration. |
 | TICKER | ARTICULATOR | As we discussed, this "runs" the program of the note. |
 
@@ -700,14 +700,14 @@ Since REST 0 results in no subtraction (a 100% full note), you could call this "
 
 
 In the MIDI standard, "Value" is a universal term for any parameter's data (0–127), but your specific bit-pattern logic aligns beautifully with several "official" MIDI concepts. If you were to map your Articulator commands to standard MIDI [Control Change (CC)](https://studiocode.dev/resources/midi-cc/) or messages, it would look like this: [1] 
-## 1. VALUE/Rhythmic Length → MIDI Ticks
+## 1. LENGTH/Rhythmic Length → MIDI Ticks
 In MIDI files, the "length" of a note isn't a single command; it's the gap between a Note On and a Note Off event. [2] 
 
-* Your System: Your VALUE sets a fixed number of ticks (e.g., 100 for a whole note).
+* Your System: Your LENGTH sets a fixed number of ticks (e.g., 100 for a whole note).
 * MIDI equivalent: This is called Delta Ticks. Most modern sequencers use 480 or 960 [Pulses Per Quarter Note (PPQN)](https://en.wikipedia.org/wiki/MIDI_beat_clock). [2, 3] 
 
 ## 2. REST/Gate → MIDI Gate Time
-What you call REST (the subtraction from your VALUE) is almost universally called Gate Time or Gate Length in MIDI. [4, 5, 6] 
+What you call REST (the subtraction from your LENGTH) is almost universally called Gate Time or Gate Length in MIDI. [4, 5, 6] 
 
 * Gate 100%: Equivalent to your REST=0 (the note plays the full duration of the slot).
 * Gate 50%: Equivalent to a note that plays for half its value and "rests" for the other half. [7] 
@@ -720,18 +720,18 @@ MIDI has specific CC numbers for the types of "envelopes" you’re building into
 |---|---|---|
 | SUSTAIN | CC 64 | Holds the note's release phase. |
 | LEGATO | CC 68 | Turns on/off smooth transitions between notes. |
-| VALUE (Pitch) | Pitch Bend | Dedicated high-resolution message for sliding frequency. |
-| VALUE (Filter) | CC 74 | Standard for "Brightness" or Cutoff frequency. |
-| VALUE (Attack) | CC 73 | Controls how fast the sound reaches max volume. |
-| VALUE (Release) | CC 72 | Controls how long the sound fades out after the "Rest" starts. |
+| LENGTH (Pitch) | Pitch Bend | Dedicated high-resolution message for sliding frequency. |
+| LENGTH (Filter) | CC 74 | Standard for "Brightness" or Cutoff frequency. |
+| LENGTH (Attack) | CC 73 | Controls how fast the sound reaches max volume. |
+| LENGTH (Release) | CC 72 | Controls how long the sound fades out after the "Rest" starts. |
 
 ## Is it confusing?
-It is not confusing to use VALUE for rhythmic length within your own engine, but if you ever interface with other gear, remember:
+It is not confusing to use LENGTH for rhythmic length within your own engine, but if you ever interface with other gear, remember:
 
 * MIDI "Value" usually means "How much?" (e.g., How loud? How bright?).
 * MIDI "Duration" usually means "How long?". [1, 15, 16, 17] 
 
-By treating REST as a function that modifies your rhythmic VALUE, you have essentially built a [Step Sequencer with variable Gate Time](https://forums.steinberg.net/t/how-to-control-gate-time-of-repeating-evolving-note-sequences/825642). [4, 7] 
+By treating REST as a function that modifies your rhythmic LENGTH, you have essentially built a [Step Sequencer with variable Gate Time](https://forums.steinberg.net/t/how-to-control-gate-time-of-repeating-evolving-note-sequences/825642). [4, 7] 
 Would you like to see how to implement a "Slur" or "Tie" logic using your REST=0/Sustain pattern?
 
 [1] [https://nickfever.com](https://nickfever.com/music/midi-cc-list)
@@ -796,7 +796,7 @@ Would you like to refine how your LEGATO flag interacts with the REST logic to p
 The VM calculates timing using Bit-Shifts against a Whole Note (BPS) value (default: 200 ticks @ 50Hz). This ensures "Staccato" and "Gate" remain proportional to the note length.
 
 
-### VALUE+REST: Articulation & Rhythm
+### LENGTH+REST: Articulation & Rhythm
 
 Defines the note's base length (Total_Ticks)
 
@@ -834,9 +834,9 @@ Defines the note's base length (Total_Ticks)
 
 That is a mathematically elegant way to handle swing and articulation without needing more bits. By using a Bit-Shift Relative Rest, you turn your REST parameter into a "Gate" or "Staccato" control.
 ## How the "Shift-Rest" Logic Works:
-If your current VALUE (sustain) is, say, 24 ticks (a Quarter Note):
+If your current LENGTH (sustain) is, say, 24 ticks (a Quarter Note):
 
-| Parameter | Logic (VALUE >> n) | Rest Duration | Note Duration (Active) | Musical Effect |
+| Parameter | Logic (LENGTH >> n) | Rest Duration | Note Duration (Active) | Musical Effect |
 |---|---|---|---|---|
 | 0 | 24 >> 1 (50%) | 12 ticks | 12 ticks | Standard Portato |
 | 1 | 24 >> 2 (25%) | 6 ticks | 18 ticks | Standard Detached |
@@ -847,7 +847,7 @@ If your current VALUE (sustain) is, say, 24 ticks (a Quarter Note):
 
    1. Zero Overhead: A LSR (Logical Shift Right) is only 2 cycles. Calculating a relative rest on the fly is faster than fetching a second byte from memory.
    2. Automatic Scaling: If you change the BPM (Master Tempo), all your rests scale perfectly. You don't have to re-calculate every "dash" in the song.
-   3. Speech Synthesis: This is perfect for Consonants. You can set a long VALUE for a vowel but use a Shift-Rest to create a tiny "stop" (silence) before the next phoneme, making the speech much clearer.
+   3. Speech Synthesis: This is perfect for Consonants. You can set a long LENGTH for a vowel but use a Shift-Rest to create a tiny "stop" (silence) before the next phoneme, making the speech much clearer.
 
 ## The "WAIT" vs "Relative REST" Synergy:
 
@@ -857,7 +857,7 @@ If your current VALUE (sustain) is, say, 24 ticks (a Quarter Note):
 ## One Implementation Detail:
 Since you have a 3-bit budget, you could use the 8 values (0–7) as:
 
-* 0-3: The VALUE >> (n+1) relative shifts.
+* 0-3: The LENGTH >> (n+1) relative shifts.
 * 4-7: Fixed Tick values (1, 2, 4, 8 ticks) for when you need absolute precision regardless of the BPM.
 
 This "Hybrid Rest" gives you the musicality of a tracker and the precision of a speech synth in a single byte.
@@ -866,7 +866,7 @@ Next Step: Define the Bit-Pattern for this Hybrid Rest?
 
 
 
-## VALUE/REST: Articulation Presets (note+rest lengths)
+## LENGTH/REST: Articulation Presets (note+rest lengths)
 *realtive* idea
 
 ```
@@ -1161,7 +1161,7 @@ echo? B delay A less vol
 
 ## Timing/Channel modifications
 
-(also see 011 for only VALUE/length changes)
+(also see 011 for only LENGTH/length changes)
 
 
 TODO: ???
@@ -1174,7 +1174,7 @@ TODO: ???
 11 000 000 + 00 = YIELD/STOP (wait for "event")
 11 111 000 + 0l = SILENCE pause set REST rest: 1-7
 11 111 000 + v0 = SUSTAINED vol:0-15
-11 111 000 + vl = DURATION  vol:0-15 set VALUE:1-7
+11 111 000 + vl = DURATION  vol:0-15 set LENGTH:1-7
 11 111 001 + WW = DELTAS volume
 11 111 010 + WW = DELTAS pitch
 11 111 011 + WW = DELTAS noise
@@ -1905,11 +1905,11 @@ The Logic: Sets the Noise Period to one of 8 specific "colors" (e.g.,
 
 # Articulator
 
-The Articulator is the mechanism that "runs" a note, controls its envelope, handles VALUE/REST states, and can perform complex, multi-sample, delta-encoded articulations (like Hammond "tune-in" or reverb tails)—the term you are looking for is likely one of the following: [1, 2, 3, 4] 
+The Articulator is the mechanism that "runs" a note, controls its envelope, handles LENGTH/REST states, and can perform complex, multi-sample, delta-encoded articulations (like Hammond "tune-in" or reverb tails)—the term you are looking for is likely one of the following: [1, 2, 3, 4] 
 
 There are several options for doing articulation:
 
-a. **VALUE+REST:** a simple default "beeper"
+a. **LENGTH+REST:** a simple default "beeper"
 b. **+ DELTAs:** a custom vol/pitch-envelop shaper
 c. **LEGATO+phonem setup:** a "mini-program" setting up a "custom" sequence. These may require specific WAITs for timing, as well as manipulation of delta speeds etc.
 
@@ -1921,7 +1921,8 @@ While an ADSR envelope handles the shape, an articulator defines the specific, o
 * It covers the 1-bit delta-encoded volume/pitch envelopes, as it treats the envelope not as a simple curve, but as a "program" that articulates the note. [6] 
 
 ## 2. Step Sequencer / Modulation Sequencer
-Since you mentioned the "ticker" and "VALUE and REST" mechanism, you are essentially talking about a step sequencer, but one that controls audio parameters (amplitude/pitch) directly at audio or high control rates, rather than musical notes. [7] 
+
+Since you mentioned the "ticker" and "LENGTH and REST" mechanism, you are essentially talking about a step sequencer, but one that controls audio parameters (amplitude/pitch) directly at audio or high control rates, rather than musical notes. [7] 
 
 * Why it fits: The "1-bit delta-encoded" description matches high-resolution modulation sequencing. [8] 
 

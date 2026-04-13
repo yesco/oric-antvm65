@@ -318,14 +318,14 @@ cmdSTOP:          ; 11 000 000
 
 
 cmdWAIT:          ; 11 000 www / 11 000 ppp
-        ;; Y=value parameter
+        ;; Y=3 bit parameter
 
         ;; TODO: speech mode?
 
         ;; TODO: use a lookup table!!!
         ;; (but for different BPM???)
 
-        ;; TODO: share code with cmdVALUE?
+        ;; TODO: share code with cmdLENGTH?
         ;; (- (* 2 8) (+ 8 1 (* 2 3)))
         ;; (would save 1 byte if used only 2 places)
 
@@ -633,21 +633,21 @@ cmdSUSTAIN:       ; 11 001 000
 cmdLEGATO:        ; 11 001 111
         jmp cmdLEGATO_cont 
 
-cmdVALUE1:        ; 11 001 001  w)hole
-cmdVALUE2:        ; 11 001 010  h)alf
-cmdVALUE4:        ; 11 001 011  q)uarter
-cmdVALUE8:        ; 11 001 100  e)igth
-cmdVALUE16:       ; 11 001 101  s)ixteenth
-cmdVALUE32:       ; 11 001 110  t)hirtysecond
-;cmdVALUE:       
-        jmp cmdVALUE_cont
+cmdLENGTH1:        ; 11 001 001  w)hole
+cmdLENGTH2:        ; 11 001 010  h)alf
+cmdLENGTH4:        ; 11 001 011  q)uarter
+cmdLENGTH8:        ; 11 001 100  e)igth
+cmdLENGTH16:       ; 11 001 101  s)ixteenth
+cmdLENGTH32:       ; 11 001 110  t)hirtysecond
+;cmdLENGTH:       
+        jmp cmdLENGTH_cont
     
 
 
 AYSTART:        
 
 cmdSETAY:         ; 11 10 rrrr
-        ;; A=value, X=6-bit command
+        ;; A=byte value, X=6-bit command (4 bit register)
         tay
 
         ;; reconstruct 4-bit register from command (X)
@@ -695,7 +695,7 @@ AYEND:
 ;;;   X= param offset
 ;;; 
 ;;; returns: 
-;;;   A= value, X= offset, Y trashed
+;;;   A= byte value, X= offset, Y trashed
 antwryte:
         ;; lo
         ldy ipy
@@ -705,7 +705,7 @@ antwryte:
         rts
 
 
-VALUESTART:     
+LENGTHSTART:     
 
 cmdSUSTAIN_cont:       ; 11 001 000
 ;;; TODO: = sustain
@@ -713,15 +713,15 @@ cmdSUSTAIN_cont:       ; 11 001 000
         ;; just no implicit YIELD (use WAIT)
         lda #0
         ;; TODO: not correct, this turns off envelopes
-
 cmdLEGATO_cont:        ; 11 001 111
         ;; DISABLE restart envelope
         lda #0
-        sta valueA
+        sta lengthA
 
         jmp interpret
 
-cmdVALUE_cont:       
+
+cmdLENGTH_cont:       
         lda #WHOLETICKS
         ;; TODO for all seleted channels
 :       
@@ -734,7 +734,7 @@ cmdVALUE_cont:
         lda #1
 :       
 ;PUTC '@'
-        sta valueA
+        sta lengthA
 
 ;jsr put2h
         ;; Calculate "prooportional" rest ticks
@@ -755,19 +755,19 @@ cmdVALUE_cont:
 ;pla
 
 ;;; TDOO: this doesn't work if can cahnge REST later???
-;;;   require update of VALUE
+;;;   require update of LENGTH
 
-        ;; subtract from value ticks
+        ;; subtract from length ticks
         eor #$ff
         sec
-        adc valueA
+        adc lengthA
         ;; can't be 0
         bne :+
         lda #1
 :       
 ;;; safetey valve if underflow
 ;;; TODO: revise? tones take at lesat 2 ticks
-        sta valueA
+        sta lengthA
 ;pha
 ;jsr put2h
 ;pla
@@ -792,7 +792,7 @@ andprocessmap:
         and processmap
         jmp storeprocessmap
 
-VALUEEND:       
+LENGTHEND:       
 
 
 KALLSUBSSTART:  
@@ -802,7 +802,7 @@ KALLSUBSSTART:
 ;;; Y is preserved, A X used
 ;;; 
 ;;; TODO: make it relative to stack of task!
-;;; (the value pushed is "noramlized" stream += ipy)
+;;; (the address pushed is "normalized": stream += ipy)
 
 pushStream:     
 ;;; 31 B  ?54 c (+5c if inc; +3 ? write  ,x?)
@@ -821,7 +821,7 @@ pushStream:
         inc stream+1
 :       
 
-        ;; push current stream value
+        ;; push current stream pos
         lda stream+1
         sta shistack,X
 
@@ -948,22 +948,29 @@ jmp donedone
         and #%1111
         sta ayshadow,Y
 
+;;; TODO: is this general logic in YIELD? not for WAIT!
+
         ;; If SUSTAIN/LEGATO return
-        ;; (value => interpret)
-        lda valueA
-        bne @hasvalue
+        ;; (length => interpret)
+        lda lengthA
+        bne @haslength
+
+        ;; - no length
+        lda #1
+        sta delayA
+
         ;; no yield
         jmp interpret
 
-@hasvalue:
+
+@haslength:
 
 donedone:       
 
 ;;; starts a new envelope
-;;; A=value(A) 
+;;; A= byte value
 ;;; X= TODO: channel 0..3: ABCN
-newenvelope:    
-
+newenvelope:
         sta delayA
         
         ;; mixer tone A
@@ -1006,18 +1013,18 @@ command_table:
     PREL cmdSTOP    ; 11 000 000 = STOP wait for event/sync/spawn
 
     ; 11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
-    ; 11 000 ppp = WAIT.music:  VALUE>>(ppp-1): 1 /2 /4 /8 /16 /32
+    ; 11 000 ppp = WAIT.music:  LENGTH>>(ppp-1): 1 /2 /4 /8 /16 /32
     .repeat 7
         PREL cmdWAIT
     .endrepeat
 
     REL cmdSUSTAIN  ; 11 001 000 = SUSTAIN
-    REL cmdVALUE1   ; 11 001 001 = VALUE1
-    REL cmdVALUE2   ; 11 001 010 = VALUE/2
-    REL cmdVALUE4   ; 11 001 011 = VALUE/4
-    REL cmdVALUE8   ; 11 001 100 = VALUE/8
-    REL cmdVALUE16  ; 11 001 101 = VALUE/16
-    REL cmdVALUE32  ; 11 001 110 = VALUE/32
+    REL cmdLENGTH1  ; 11 001 001 = LENGTH1
+    REL cmdLENGTH2  ; 11 001 010 = LENGTH/2
+    REL cmdLENGTH4  ; 11 001 011 = LENGTH/4
+    REL cmdLENGTH8  ; 11 001 100 = LENGTH/8
+    REL cmdLENGTH16 ; 11 001 101 = LENGTH/16
+    REL cmdLENGTH32 ; 11 001 110 = LENGTH/32
     REL cmdLEGATO   ; 11 001 111 = LEGATO
 
     ; 11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)

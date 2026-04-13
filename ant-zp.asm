@@ -1,3 +1,15 @@
+;;; AntVM defaults:
+
+;;; BPM 120 
+
+WHOLETICKS=100
+
+;;; default LOUD! (it's ORIC after all!)
+
+VOLUME=15
+
+
+
 .zeropage
 
 channels:       .res 1
@@ -33,7 +45,8 @@ langarr:        .res 2*8
 ANTLEVELS=8
 antstack:       .res 3*ANTLEVELS*4      ; 3B * 8 levels * 4 ch
 
-;;; The stack values for "RET" are stored striped
+;;; The stack for "RET" are stored striped and staggerred
+;;; for fast access!
 ;;; 
 ;;; lang: AAAAAAAA BBBBBBBB CCCCCCCC DDDDDDDD
 ;;; slo:  AAAAAAAA BBBBBBBB CCCCCCCC DDDDDDDD
@@ -79,21 +92,20 @@ processmap:     .byte 0
 
 antvmBLOCKEnd:     
 
-;;; VALUE is length of note in ticks
+;;; LENGTH of note in ticks
 ;;; 0 == no YIELD (sustain/legato) do manual WAIT for length
 ;;; (whole@120BPM =4  beats = 2.0s = 100 50Hz ticks
-WHOLETICKS=100
-VOLUME=15
-
-values: 
+;;; (at last 1, otherwise becomes $ff and long time...)
+lengths: 
         
-valueA:         .byte WHOLETICKS*3/4
-valueB:         .byte WHOLETICKS*3/4
-valueC:         .byte WHOLETICKS*3/4
-valueN:         .byte WHOLETICKS*3/4
+lengthA:         .byte WHOLETICKS*3/4
+lengthB:         .byte WHOLETICKS*3/4
+lengthC:         .byte WHOLETICKS*3/4
+lengthN:         .byte WHOLETICKS*3/4
 
 
-rests:  
+;;; RESTS is ticks to be quiet (at least 1)
+rests:
 
 restA:          .byte WHOLETICKS/4
 restB:          .byte WHOLETICKS/4
