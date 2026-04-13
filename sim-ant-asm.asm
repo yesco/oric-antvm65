@@ -612,7 +612,7 @@ phonem0:
 ;.byte %11000000                 ; cmdSTOP
 
         ;; minimal length => 1,1
-        .byte LENGTH6
+        .byte L32
 
         .byte _Ds + OCT
         .byte _E  + OCT
@@ -620,8 +620,12 @@ phonem0:
 ;;; TODO: Crashes! (because does yield?)
 ;        .byte %11000000
 
+;;; TODO:
+
         ;; Explicit timing (SUSTAIN/LEGATO)
-        .byte SUSTAIN
+;        .byte SUSTAIN
+
+
 
 ;;; TODO: are these correct?
         .byte WAIT1
@@ -638,6 +642,9 @@ phonem0:
 
         ;; return from non-call? lol
         .byte RET
+
+
+
 
 
 

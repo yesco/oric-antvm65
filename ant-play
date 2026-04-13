@@ -1,11 +1,11 @@
 ./ant | tee ant.ant | grep -a AY | tee ant.ay | perl ymdump2ym3.pl - ant.ym ;./ym2wav ant.ym ant.wav
 
 echo
-ls -l ant.ant ant.ay ant.ym ant.wav.
+ls -l ant.ant ant.ay ant.ym ant.wav
 echo
 
 play ant.wav
 
 echo
-ls -l ant.ant ant.ay ant.ym ant.wav.
+ls -l ant.ant ant.ay ant.ym ant.wav
 echo

@@ -4,10 +4,8 @@
 
 WHOLETICKS=100
 
-;;; default LOUD! (it's ORIC after all!)
-
-VOLUME=15
-
+;VOLUME=15 ;; make it ORIC LOUD!
+VOLUME=13
 
 
 .zeropage

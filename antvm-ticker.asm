@@ -69,7 +69,6 @@ startTick:
         stx tickX
 
 nextTickBit:
-putc 'n'
         ;; 10c(+1c)
         ;; done: 9c+6c(RTS)
         ldx tickX
@@ -142,52 +141,58 @@ PUTC '!'
         lda #1
         sta delays,X
 
+
 ;;; Process A tick for a bit set
 ;;;  X= channel 0..7
 ;;;  (A,B,C,N, E.F.C.T == (Echo,Follow,Chrous,Tglissado))
 ;;;
 tickerX:
 ;;; 14c
-        lda @ticktable,X
+        lda @tickbranches,X
         sta @patchbpl+1
         ;; N=0 always
 @patchbpl:
         bpl @patchbpl
 
-@ticktable:
+@tickbranches:
         .byte tickCHAN -@patchbpl-2
         .byte tickCHAN -@patchbpl-2
         .byte tickCHAN -@patchbpl-2
+        ;; TODO: special?
         .byte tickCHAN -@patchbpl-2
+
 
         .byte tickECHO      -@patchbpl-2
         .byte tickFOLLOW    -@patchbpl-2
-        .byte tickCHORUS    -@patchbpl-2
+        .byte tickKHORUS    -@patchbpl-2
         .byte tickTGLISSADO -@patchbpl-2
 
 
 
 
-;;; === Global Effectecs
+;;; === Global EFfeKTs :-D
 
 tickECHO:
         ;; B echo A
 
         jmp nextTickBit
 
+
 tickFOLLOW:
         ;; C follows A
 
         jmp nextTickBit
 
+
 tickPULSEWIDTH: 
 ;;; TODO:
 
 
-tickCHORUS:
+tickKHORUS:
         ;; TODO: is this on all channels
 
         jmp nextTickBit
+
 
 tickTGLISSADO:
         ;; TODO: is this on all channels
@@ -208,20 +213,24 @@ tickCHAN:
         ; and #%1111            ; if using ENV (drum?)
         beq @notedone
 
-        ;; PLAYING
+        ;; "Articulator" Playing the note
 
         ;; if lengthA then need to invoke restA
-        lda lengthA
+        lda lengths,x
         beq nextTickBit
 
-        ;; do REST
-        lda restA
-        sta delayA
+        ;; - do REST
+        lda rests,x
+        sta delays,x
 
         ;; - turn off channel sound (A-C)
-;;; TODO: Noise (bit?)
+
+
+;;; TODO: Noise (bit?), just have differnt dispatch routine!
         cpx #3
         beq nextTickBit
+
+
 
         lda #0
         sta ayshadow+8,X

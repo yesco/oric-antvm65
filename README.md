@@ -4,7 +4,7 @@
 
 **Status: very early implementation in progress**
 
-*Note: this paper contains fragments of Gemeni discussionsin trying to understand and refine as well as define, not only the functionality, but as well as description. Eventually, it should be edited out.
+*Note: this document contains fragments of Gemeni discussions in trying to understand and refine as well as define, not only the functionality, but as well as description. Eventually, it should be edited out.*
 
 AntVM65 is a high-performance, 24-TET micro-synth designed for elite 8-bit music, organic speech synthesis, and custom FX. It’s a specialized VM that interprets "in-band" command streams alongside quarter-note data.
 
