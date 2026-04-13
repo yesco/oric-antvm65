@@ -1,3 +1,11 @@
+;;; 
+;;; Testing:
+;;; 
+;;; >   ca65 -t sim6502 abc.asm -l abc.lst && cat abc.lst
+;;; 
+
+
+
 .listbytes unlimited
 
 ;.include "ant-abc.asm"
@@ -43,10 +51,11 @@ M_TMP  = 120
     .else
         .byte _p,00,00,_n*8 + _o
         ;; Garbage? new note?
-        ABC Arg, _p, _o, 0
+        ABC Arg, _p
     .endif
     
 .endmacro ; POSTNOTE
+
 
 
 .macro NOTE Arg, _p, _o, _n
@@ -120,15 +129,17 @@ M_TMP  = 120
 .endmacro ; NOTE
 
 
+
 .macro ABC Arg, Pos, Oct
+
     ; Setup position pointer
     .ifblank Pos
         _p .set 0
-;        .byte "data"
     .else
         _p .set Pos
     .endif
 
+    ; The end is nigh 
     .if _p >= .strlen(Arg)
         .exitmacro
     .endif
@@ -148,38 +159,48 @@ M_TMP  = 120
 ;    .if @c = '^' || @c = '_' || (@c >= 'A' && @c <= 'H') || (@c >= 'a' && @c <= 'h') || @c = 'R' || @c = 'P' || @c = 'r' || @c = 'p'
 ;;; ok
 ;    .if @c = '^' || @c = '_'
+
     .if @c = '^'  || @c = 'A'
         NOTE Arg, _p, _o, 0
         .exitmacro
-
     .endif
 
     ; --- COMMANDS (O, L, V, T, W, E, S) ---
     .if @c = 'O' || @c = 'o' || @c = 'K'
+        ;; o0 -- o7 K:0 -- K:7
         ;; TODO: K:3
         M_OCT := (.strat(Arg, _p + 1) - '0')
         ABC Arg, (_p + 2)
+
     .elseif @c = 'L'
-        M_LEN := (.strat(Arg, _p + 1) - '0')
+        ;; Gives 1,2,4,8,1(6),3(2),6(4)
+        ;; TODO: 16 is not distinguaishable
+        M_LEN := (.strat(Arg, _p + 1) - '0') ;
         ABC Arg, (_p + 2)
+
     .elseif @c = 'V' || @c = 'v'
         M_VOL := (.strat(Arg, _p + 1) - '0')
         ABC Arg, (_p + 2)
+
     .elseif @c = 'T'
         ; TODO: Handle multi-digit tempo
         ABC Arg, (_p + 2)
+
     .elseif @c = 'W' || @c = 'N'
-        ; TODO: Mixer logic
+        ; TODO: Mixer logic 0 1 2 3
         ABC Arg, (_p + 2)
     .elseif @c = 'E'
         ; TODO: Envelope logic
         ABC Arg, (_p + 2)
+
     .elseif @c = 'S'
         .byte $FE ; Stop code
         ABC Arg, (_p + 1)
     .else 
+        NOTE Arg, _p, M_OCT, 0
         ;; Skip spaces or unknown chars
-        ABC Arg, (_p + 1)
+        ;; TODO: give error (but no good context?)
+;        ABC Arg, (_p + 1)
     .endif
 
 .endmacro ; ABC
@@ -207,59 +228,18 @@ NOTE "H", 0, 4, 0
 NOTE "B", 0, 4, 0
 NOTE "Bpm", 0, 4, 0
 
+ABC "CC"
+ABC "CC#DbD#EbEFF#"
+ABC "F#GbGG#AA#BbA"
+;;; Max-len: too manyh tested IFs!
+ABC "CC#DbD#EbEFF#GbGG#AA#BbA"
+;;;  123456789012345 = 15 notes max?
+ABC "AAAAAAAAAAAAAAA"
+ABC "AAAAAAA     "              ; lol spaces take more "IFs"
+
+;ABC "CC#DbDD#EbEFF#GbGG#AA#HbBbHBBpm"
+
 ;GEN_ABC_SPN "HAGFEDC"
 ;GEN_ABC_SPN "BAGFEDC"
 
 .end
-
-.macro NOTE Arg, _p, _o, _n
-
-    .if _p >= .strlen(Arg)
-        ABC Arg, (_p+1)
-    .else
-        .local @c
-        @c = .strat(Arg, _p)
-        
-        .if @c = '^' || @c = '#'
-            POSTNOTE Arg, (_p+1), (_n+2)
-        .elseif @c= '_' || @c = 'b'
-            POSTNOTE Arg, (_p+1), (_n-2)
-;        .elseif @nc = 'C'
-;            NOTE Arg, (_p+1), (_n+0)
-        .elseif @nc = 'D'
-            POSTNOTE Arg, (_p+1), (_n+2)
-        .elseif @nc = 'E'
-            POSTNOTE Arg, (_p+1), (_n+4)
-        .elseif @nc = 'F'
-            POSTNOTE Arg, (_p+1), (_n+10)
-        .elseif @nc = 'G'
-            POSTNOTE Arg, (_p+1), (_n+14)
-        .elseif @nc = 'A'
-            POSTNOTE Arg, (_p+1), (_n+18)
-        .elseif @nc = 'H' || @nc = 'B'
-            POSTNOTE Arg, (_p+1), (_n+22)
-        .elseif @nc = 'z' || @nc = 'R' || @nc = 'P'
-            POSTNOTE ARG, (_p+1), $FF ; Rest
-        .endif
-
-     .endif
-
-.endmacro
-
-
-.macro NOTE Arg, _p, _o, _n
-
-    .if _p < .strlen(Arg)
-        .local @c
-        @c = .strat(Arg, _p)
-        
-
-
-        ABC Arg, (_p+1)
-
-    .else
-        .exitmacro
-    .endif
-
-.endmacro
-
