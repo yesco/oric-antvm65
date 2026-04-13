@@ -263,24 +263,29 @@ _main:
         NL
         PRSIZE 'k',CALLSTART,CALLEND
         PRSIZE 'K',KALLSUBSSTART,KALLSUBSEND
-        PRSIZE 'v',LENGTHSTART,LENGTHEND
         PRSIZE 'p',PARAMSTART,PARAMEND
         NL
         PRSIZE 'y',AYSTART,AYEND
         PRSIZE 'Y',AYPDATESTART,AYPDATEEND
         PRSIZE 'S',SETAYRSTART,SETAYREND
         PRSIZE 's',setSTART,setEND
+        PRSIZE 'v',LENGTHSTART,LENGTHEND
 
         
 ;;; > ./ant | head -12 | ./unhex
+
+;;; ALL
 
 ;; P:   97 - drum.asm                - TOOD: can be improved
 ;; v:   78 - antvm-vol-env.asm
 ;; p:  102 - antvm-p(itch)-env.asm   - hmmm 24 B more than vol?
 ;; N:   72 - notes pitch data        - 2*24+24
-;; n:   84 - notes code              - (+ 72 84) = 156 (< 256B LUT)
+;; n:  102 - notes code              - (+ 72 84) = 156 (< 256B LUT)
 ;; I:   64 - dispatch data           - 6 bits dispatch (saves!)
-;; i:  498 - INTERP very big!        - TODO: look at simplify!
+;; i:  530 - INTERP very big!        - TODO: look at simplify!
+;;; 
+;; (+ 97 78 102 72 102 64 530) = 1045
+
 
 ;;; - Parts of 'i'
 ;; w:   22 - cmdSTOP, cmdWAIT
@@ -289,10 +294,9 @@ _main:
 ;; j:   65 - interpret: actual dispatch jmp
 ;; (+ 22 46 65) = 133
 
-;; k:   60 - cmdRET, cmdCALL.local/cmdCALL.lang
+;; k:   79 - cmdRET, cmdCALL.local/cmdCALL.lang
 ;; K:   31 - pushStream
 ;; DRUM 12 = cmdDRUMxxx (4x jmp)
-;; v:   65 - cmdLENGTH, SUSTAIN/LEGATO
 ;; p:   21 - cmdEXTEND, cmdPARAMBYTE, cmdPARAMWORD
 ;; (+ 60 31 12 65 21) = 189
 
@@ -300,14 +304,14 @@ _main:
 ;;(Y:   53 - AYUPDATE)
 ;;(S:   65 - SETAYR w vol hack)
 ;((s:   43  - only "set"))
-;; (+ 133 189 166)= 488 (some after BRANCH location=AY)
 
-;;; (+ 97 78 102 72 84 64 498) = 995 B total
+;; v:   69 - cmdLENGTH, SUSTAIN/LEGATO
 
 ;;; CHEMA (!compact): 1165: 893 B code / 272 B data / 48 B zp
 ;;; CHEMA COMPACT     1014: 960 B code /  54 B data / 48 B zp
-;;; ANTVM:             995: 859 B code / 136 B data / ?? B zp
-;;;  (antvm not working yet...)
+;;; ANTVM:            1045: 909 B code / 136 B data / ?? B zp
+;;;    (antvm not fully working yet...)
+
 
 ;;; DATA: (+ 72 64) = 136 B
 
@@ -317,7 +321,7 @@ _main:
 ;;;      1007 - ayshadow instead of jsr
 ;;;       997 - simplify RET/CALL/stacks
 ;;;       995 - fix swap stack hi/lo, opt inc/dec sp
-
+;;;      1045 - subroutines workling, LENGTHs better...
 
 ;;; Enable if we only want info
 ;        jmp halt
