@@ -359,6 +359,7 @@ init:
         ;lda #%11111111
         sta processmap
 
+        
 .if ANTTRACE & AT_AY
         ;; print AY header for debuggin
         putc 9
@@ -385,6 +386,9 @@ init:
         sty valueA
         ldy #WHOLETICKS/4       ; (little silence 1/4 rel)
         sty restA
+
+        ldy #3
+        sty restRatioA
 
         ldy #1
         ;; needs to be 1 for not wait first tick!

@@ -626,22 +626,12 @@ cmdPARAM_WORD:    ; 11 111 110
 
 
 PARAMEND:       
-VALUESTART:     
 
 cmdSUSTAIN:       ; 11 001 000
-;;; TODO: = sustain
-        ;; Allow envelop restart at new note
-        ;; just no implicit YIELD (use WAIT)
-        lda #0
-        ;; TODO: not correct, this turns off envelopes
+        jmp cmdSUSTAIN_cont
 
 cmdLEGATO:        ; 11 001 111
-        ;; DISABLE restart envelope
-        lda #0
-        sta valueA
-
-        jmp interpret
-
+        jmp cmdLEGATO_cont 
 
 cmdVALUE1:        ; 11 001 001  w)hole
 cmdVALUE2:        ; 11 001 010  h)alf
@@ -649,79 +639,9 @@ cmdVALUE4:        ; 11 001 011  q)uarter
 cmdVALUE8:        ; 11 001 100  e)igth
 cmdVALUE16:       ; 11 001 101  s)ixteenth
 cmdVALUE32:       ; 11 001 110  t)hirtysecond
-cmdVALUE:       
-        lda #WHOLETICKS
-        ;; TODO for all seleted channels
-:       
-        dey
-        bmi :+
-        lsr
-        ;; "always" (except zero==don't matter)
-        bne :-
-        ;; undeflow -> 1 tick
-        lda #1
-:       
-;PUTC '@'
-        sta valueA
-
-;jsr put2h
-        ;; Calculate "prooportional" rest ticks
-        ldy restRatioA
-:       
-        dey
-        bmi :+
-        lsr
-        ;; "always" (except zero==don't matter)
-        bne :-
-        ;; bottomed out, maybe make it one tick?
-        lda #1
-:       
-        sta restA
-
-;pha
-;jsr put2h
-;pla
-
-;;; TDOO: this doesn't work if can cahnge REST later???
-;;;   require update of VALUE
-
-        ;; subtract from value ticks
-        eor #$ff
-        sec
-        adc valueA
-;;; safetey valve if underflow
-;;; TODO: revise? tones take at lesat 2 ticks
-        sta valueA
-;pha
-;jsr put2h
-;pla
-        
-        ;; enable channel ticker
-        lda #%10000000
-
-orprocessmap:
-        ora processmap
-storeprocessmap:       
-        sta processmap
-        jmp interpret
-
-
-;;; TODO: cleanup
-        ;; 
-        ;; disable channel A ticker (?)
-;;; disable channel A?
-        and #%01111111
-
-andprocessmap:
-        and processmap
-        jmp storeprocessmap
-
-
-
-
-
-
-VALUEEND:       
+;cmdVALUE:       
+        jmp cmdVALUE_cont
+    
 
 
 AYSTART:        
@@ -783,6 +703,96 @@ antwryte:
         inc ipy
         sta antvmBLOCK,X
         rts
+
+
+VALUESTART:     
+
+cmdSUSTAIN_cont:       ; 11 001 000
+;;; TODO: = sustain
+        ;; Allow envelop restart at new note
+        ;; just no implicit YIELD (use WAIT)
+        lda #0
+        ;; TODO: not correct, this turns off envelopes
+
+cmdLEGATO_cont:        ; 11 001 111
+        ;; DISABLE restart envelope
+        lda #0
+        sta valueA
+
+        jmp interpret
+
+cmdVALUE_cont:       
+        lda #WHOLETICKS
+        ;; TODO for all seleted channels
+:       
+        dey
+        bmi :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+        ;; undeflow -> 1 tick
+        lda #1
+:       
+;PUTC '@'
+        sta valueA
+
+;jsr put2h
+        ;; Calculate "prooportional" rest ticks
+        ldy restRatioA
+:       
+        dey
+        bmi :+
+        lsr
+        ;; "always" (except zero==don't matter)
+        bne :-
+        ;; bottomed out
+        lda #1
+:       
+        sta restA
+
+;pha
+;jsr put2h
+;pla
+
+;;; TDOO: this doesn't work if can cahnge REST later???
+;;;   require update of VALUE
+
+        ;; subtract from value ticks
+        eor #$ff
+        sec
+        adc valueA
+        ;; can't be 0
+        bne :+
+        lda #1
+:       
+;;; safetey valve if underflow
+;;; TODO: revise? tones take at lesat 2 ticks
+        sta valueA
+;pha
+;jsr put2h
+;pla
+        
+        ;; enable channel ticker
+        lda #%10000000
+
+orprocessmap:
+        ora processmap
+storeprocessmap:       
+        sta processmap
+        jmp interpret
+
+
+;;; TODO: cleanup
+        ;; 
+        ;; disable channel A ticker (?)
+;;; disable channel A?
+        and #%01111111
+
+andprocessmap:
+        and processmap
+        jmp storeprocessmap
+
+VALUEEND:       
 
 
 KALLSUBSSTART:  
@@ -978,8 +988,11 @@ IDATASTART:
 ;;; --- Relative Dispatch Table (Base $C0) ---
 
 .macro REL target
-;    .assert (target - dispatch_br + 2)>127,ERROR,"%% REL: too far away"
-    .byte (target - dispatch_br - 2+256) .mod 256
+    .if (target - dispatch_br -2)>127
+        .byte 10000+(target+2 - dispatch_br)
+    .endif                    
+;    .assert (target+2 - dispatch_br)>127,ERROR,"%% REL: too far away"
+    .byte target - dispatch_br -2
 .endmacro
 
 .macro PREL target
@@ -1031,8 +1044,20 @@ command_table:
     .repeat 14
         REL cmdSETAY
     .endrepeat
-    REL cmdAYPDATE    ; 11 10 1110|MASK|...= AYPDATE (3-13 B)
-    REL cmdDUMPAY    ; 11 10 1111|.{14 B}.= DUMPAY (14 regs)
+
+
+
+;;; TODO: fix fake!!!
+
+        REL cmdSETAY
+        REL cmdSETAY
+
+;;; TODO: these are too far away, for now not needed...
+
+;    REL cmdAYPDATE    ; 11 10 1110|MASK|...= AYPDATE (3-13 B)
+;    REL cmdDUMPAY    ; 11 10 1111|.{14 B}.= DUMPAY (14 regs)
+
+
 
     ; 11 110 lng|PNM = CALL.lng PNM
     .repeat 8
