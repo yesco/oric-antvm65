@@ -221,7 +221,7 @@ cmd_char:
         ;; sustain whole half quarter eight 16th 32th legato
         .byte "swhqestl"
         ;; CALL local.num
-        .byte "01234567"
+        .byte "12345678"
         ;; CHANNEL A; B; C; Noise; ex)tenedd Yield Quiet Kill
         .byte "ABCNxYQK"
 
@@ -230,7 +230,7 @@ cmd_char:
         ;; SETAY: vol x 3; ENV: pitch env (AY)Update DumpAY
         .byte "vvvppeUD"
         ;; CALL.lang(0-7( phonem (0-255)
-        .byte "language"
+        .byte "LLLLLLLL"
         ;; kick, snare, close/opne (hihat), Byte Word Return
         .byte "kscoXBWR"
 
@@ -492,7 +492,7 @@ no_param:
         ;; Do relative BRANCH
         sec
 dispatch_br:
-        bcs *                   ; Jumps directly to cmd via SMC offset
+        bcs cmdRET              ; Jumps directly to cmd via SMC offset
 
 
 JUMPEND:
@@ -511,6 +511,7 @@ JUMPEND:
 CALLSTART:      
 
 cmdCALL_LOCAL:    ; 11 010 pnm
+        iny
         tya       ; pnm
         ldy #antlang
 
@@ -520,6 +521,7 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
         ;; A= PHONEM Y= lng
         pha
 
+        ;; (doesn't disturbe Y)
         jsr pushStream
         
         ;; set new "default" language
@@ -529,11 +531,15 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
 ;;; TODO: do something w lang vector (>128)
         pla
+lda #1
         asl
-        tax
         ;; skip 4 bytes header
-        inx
-        inx
+        clc
+        adc #4
+        ;; double to index words
+        tay
+ldy #6
+
         bmi @overflowTODO
 @overflowTODO: ;; LOL TODO:
         ;; TODO: check index is within range?
@@ -552,23 +558,27 @@ cmdCALL_LNG:      ; 11 110 lng|PHONEM
 
         jmp interpret
 
+
 cmdRET:        ; 11 111 111
+putc '@'
+putc 'R'
+NL
         ;; Restore
         dec antsp
-        lda antsp
+        ldx antsp
 
-        lda slostack,X
+        lda slostack,x
         sta stream
 
-        lda shistack,X
+        lda shistack,x
         sta stream+1
 
-        sta langstack,X
+        lda langstack,x
         sta antlang
         
         ;; reset ipy
-        ldx #0
-        stx ipy
+        ldy #0
+        sty ipy
 
         jmp interpret
 
@@ -969,7 +979,7 @@ IDATASTART:
 
 .macro REL target
 ;    .assert (target - dispatch_br + 2)>127,ERROR,"%% REL: too far away"
-    .byte target - dispatch_br + 2
+    .byte (target - dispatch_br - 2+256) .mod 256
 .endmacro
 
 .macro PREL target
@@ -1048,6 +1058,9 @@ traceCMD1:
         NL
         putc 9
         putc 9
+
+        lda antsp
+        jsr putdigit
         putc '@'
         LDAX stream
         jsr puth
@@ -1056,7 +1069,7 @@ traceCMD1:
         lda ipy
         jsr put2h
         putc ':'
-
+        putc ' '
         rts
 
 traceCMD2:      
@@ -1119,14 +1132,14 @@ traceNOTE1:
 
         PUTC 'N'
         lda savey
-        clc
-        adc #'0'
         jsr putdigit
         putc ':'
         SPC
 
-        ;; Show note 2 char
+        ;; Show note 2 char >nnnnn< ooo
         lda savex
+        lsr
+        lsr
         lsr
         pha
         tax

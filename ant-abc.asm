@@ -1,3 +1,9 @@
+;;; TODO: not working, an almost working prototype 
+;;;   in abc.asm  !
+
+
+
+
 ; === Global Music State (Initialize at top) ===
 M_OCT  = 4
 M_LEN  = 4
@@ -87,3 +93,53 @@ M_TMP  = 120
         .endif
     .endif
 .endmacro
+
+
+
+.macro GEN_NOTES Arg
+    .local @Char, @Next, @Val
+    ; Loop through each character in the string
+    .repeat .strlen(Arg), I
+        @Char = .strat(Arg, I)
+        
+        ; Only process if this isn't a '#' (since '#' is handled by the previous note)
+        .if @Char <> '#'
+            @Val = 0
+            
+            ; Map the note letter
+            .if @Char = 'C' | @Char = 'c'
+                @Val = NOTE_C
+            .elseif @Char = 'D' | @Char = 'd'
+                @Val = NOTE_D
+            .elseif @Char = 'E' | @Char = 'e'
+                @Val = NOTE_E
+            .elseif @Char = 'F' | @Char = 'f'
+                @Val = NOTE_F
+            .elseif @Char = 'G' | @Char = 'g'
+                @Val = NOTE_G
+            .elseif @Char = 'A' | @Char = 'a'
+                @Val = NOTE_A
+            .elseif @Char = 'H' | @Char = 'h'
+                @Val = NOTE_H
+            .endif
+
+            ; Check if the NEXT character is a sharp '#'
+            .if I + 1 < .strlen(Arg)
+                @Next = .strat(Arg, I + 1)
+                .if @Next = '#'
+                    @Val = @Val + 1 ; Shift to the sharp value
+                .endif
+            .endif
+
+            ; Output the byte if a valid note was found
+            .if @Val > 0
+                .byte @Val
+            .endif
+        .endif
+    .endrepeat
+.endmacro
+
+; --- Usage ---
+MyMelody:
+    GEN_NOTES "C#DF#GAH" 
+    ; Results in: .byte $02, $03, $07, $08, $0A, $0C

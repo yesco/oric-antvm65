@@ -12,7 +12,7 @@ my $manual_mode = 0;
 my %vol_map = (
     'ppp' => 2, 'pp' => 4, 'p' => 6, 'mp' => 8, 
     'mf' => 10, 'f' => 12, 'ff' => 14, 'fff' => 15
-);
+    );
 
 # Fixed Gearbox: Strictly power-of-two mapping for the 3-bit value +1 LOL
 my %gearbox = ( 1=>1, 2=>2, 4=>3, 8=>4, 16=>5, 32=>6, 64=>7 );
@@ -34,6 +34,7 @@ while (<>) {
 
     foreach my $token (split(/\s+/, $_)) {
         next if $token eq "";
+
         my $t = $token;
         while ($t ne "") {
             if ($t =~ s/^\|([ABCN]+)//) {
@@ -53,7 +54,7 @@ while (<>) {
                 foreach my $ch (@active_ch) {
                     my $reg= $ch*2;
                     my $name= (qw/A B C N/)[$ch];
-#                    printf "CHANNEL= $ch REG= $reg NAME=$name\n";
+                    #                    printf "CHANNEL= $ch REG= $reg NAME=$name\n";
                     printf "  .byte %%1110%04b,\$%02x ;; %-14s (SETAY.R%d $%02x)\n", $reg, $lo, "|$token", $reg; #, $lo;
                     printf "  .byte %%1110%04b,\$%02x ;; %-14s (SETAY.R%d $%02x)\n", $reg+1, $hi, "|$token", $reg+1; #, $hi;
                 }
@@ -78,7 +79,7 @@ while (<>) {
             elsif ($t =~ s/^@?(WAIT|VALUE|VOL)(\d+)//) {
                 my ($cmd, $val) = ($1, $2);
 
-# TODO: VOL mapped wrong??? should be using SETAY!
+                # TODO: VOL mapped wrong??? should be using SETAY!
 
                 my %pre = (WAIT=>"11000", VALUE=>"11001", VOL=>"10111");
                 $manual_mode = ($cmd eq "VALUE" && $val == 0) ? 1 : 0;
@@ -95,7 +96,7 @@ while (<>) {
                 my %pre = (STOP=>"11000", WAIT=>"11000", VALUE=>"11001", SUSTAIN=>"11001", LEGATO=>"11001");
                 $manual_mode = ($cmd eq "SUSTAIN" || $cmd eq "LEGATO" || ($cmd eq "VALUE" && $val == 0)) ? 1 : 0;
                 if ($pre{$cmd}) {
-                  printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}, $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
+                    printf "  .byte %%%s%03b ;; %-14s (Ext: %s %s)\n", $pre{$cmd}, $val & 0x07, "@".$cmd.$val_str, $cmd, $val_str;
                 } else {
                     goto FAIL;
                 }
@@ -127,7 +128,7 @@ while (<>) {
                 printf "  .byte %%11000%03b ;; %-14s (Wait: 1/%d)\n", $ppp & 0x07, $1 . ($2||""), 2**($ppp||0) if defined $ppp;
             }
             else {
-FAIL:
+              FAIL:
                 # notmatched: report failure
                 printf "  ;; FAIL: $token\n";
                 printf STDERR "%%FAIL: $token\n";

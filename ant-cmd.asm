@@ -209,19 +209,6 @@ _Ap = 8* 19  ; A-plus (1/4 sharp)
 _Bm = 8* 21  ; B-minus (1/4 flat)
 ;_B  = 8* 22
 _Cm = 8* 23  ; C-minus (1/4 flat) OR B-plus
-; Define your Note-to-Byte mapping here
-NOTE_C  = $01
-NOTE_Cs = $02
-NOTE_D  = $03
-NOTE_Ds = $04
-NOTE_E  = $05
-NOTE_F  = $06
-NOTE_Fs = $07
-NOTE_G  = $08
-NOTE_Gs = $09
-NOTE_A  = $0A
-NOTE_As = $0B
-NOTE_H  = $0C  ; Using H for B as requested
 
 
 ;;; Macro for music string:
@@ -285,50 +272,4 @@ NOTE_H  = $0C  ; Using H for B as requested
 ;;;    : "E1 V16 A41"  - V16 sets 5th bit to enablew env
 
 
-.macro GEN_NOTES Arg
-    .local @Char, @Next, @Val
-    ; Loop through each character in the string
-    .repeat .strlen(Arg), I
-        @Char = .strat(Arg, I)
-        
-        ; Only process if this isn't a '#' (since '#' is handled by the previous note)
-        .if @Char <> '#'
-            @Val = 0
-            
-            ; Map the note letter
-            .if @Char = 'C' | @Char = 'c'
-                @Val = NOTE_C
-            .elseif @Char = 'D' | @Char = 'd'
-                @Val = NOTE_D
-            .elseif @Char = 'E' | @Char = 'e'
-                @Val = NOTE_E
-            .elseif @Char = 'F' | @Char = 'f'
-                @Val = NOTE_F
-            .elseif @Char = 'G' | @Char = 'g'
-                @Val = NOTE_G
-            .elseif @Char = 'A' | @Char = 'a'
-                @Val = NOTE_A
-            .elseif @Char = 'H' | @Char = 'h'
-                @Val = NOTE_H
-            .endif
-
-            ; Check if the NEXT character is a sharp '#'
-            .if I + 1 < .strlen(Arg)
-                @Next = .strat(Arg, I + 1)
-                .if @Next = '#'
-                    @Val = @Val + 1 ; Shift to the sharp value
-                .endif
-            .endif
-
-            ; Output the byte if a valid note was found
-            .if @Val > 0
-                .byte @Val
-            .endif
-        .endif
-    .endrepeat
-.endmacro
-
-; --- Usage ---
-MyMelody:
-    GEN_NOTES "C#DF#GAH" 
-    ; Results in: .byte $02, $03, $07, $08, $0A, $0C
+;;; TODO: ABC macro in abc.asm almost working....!

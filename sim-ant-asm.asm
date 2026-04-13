@@ -428,7 +428,7 @@ halt2:
 
 
 
-;;; ----- Example
+;;; ----- Example "language"
 
 .include "ant-cmd.asm"
 
@@ -436,13 +436,14 @@ language:
         ;; HEADER
         ;; TODO: "n"?
         ;; TODO: title?
-        .byte 0,1,2,3
+        .byte 0,1
+        .byte 2,3
 
         ;; MAIN
         .word phonem0
 
         ;; phonem 1-8
-        .word phonem1
+        .word scale1
         .word phonem2
         .word phonem3
         .word phonem4
@@ -453,7 +454,7 @@ language:
 
         ;; phonems 9--255
 
-phonem1:
+scale1: 
         .byte _C  + OCT
         .byte _Cs + OCT
         .byte _Ds + OCT
@@ -482,6 +483,13 @@ OCT=oct4
 
         ;; MAIN (play "song" will launch this automatic)
 phonem0: 
+        .byte L32, CALL1
+        .byte L16, CALL1
+        .byte L8,  CALL1
+        .byte L4,  CALL1
+        .byte L2,  CALL1
+        .byte L1,  CALL1
+
         .byte L1, _A  + OCT
 
         .byte L2, _A  + OCT
