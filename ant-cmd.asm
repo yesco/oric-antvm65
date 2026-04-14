@@ -4,7 +4,6 @@
 STOP= %11000000
 
 WAIT= %11000000
-WAIT0= WAIT+0
 WAIT1= WAIT+1
 WAIT2= WAIT+2
 WAIT3= WAIT+3
@@ -13,8 +12,17 @@ WAIT5= WAIT+5
 WAIT6= WAIT+6
 WAIT7= WAIT+7
 
-;;; TODO: relative?
+;;; relative names
 
+W2s     = WAIT1
+W1s     = WAIT2
+W500ms  = WAIT3
+W250ms  = WAIT4
+W125ms  = WAIT5
+W62ms   = WAIT6
+W31ms   = WAIT7
+
+;;; TOOD: REST, but these need VOL0 first!
 
 
 SUSTAIN= %11001000

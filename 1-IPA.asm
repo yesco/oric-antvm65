@@ -41,16 +41,20 @@
 
 ;;; TODO: phonem subroutiunes, this one must be phonem1 !!!
 
+SHORT = W250ms                  ; 250ms short wovel  "EIGHT"
+LONG  = W500ms                  ; 500ms long  wovel  "QUARTER"
+
+
 SHOFT_SAW= CALL1
 
 swe_short_saw: 
-        .byte ENV,LOOP_SAW, WAIT5, RET
+        .byte MIXER,$fb, ENV,LOOP_SAW, SHORT, RET
 
 
 LONG_SAW= CALL2
 
 swe_long_saw: 
-        .byte ENV,LOOP_SAW, WAIT3, RET
+        .byte MIXER, $fb, ENV,LOOP_SAW, LONG, RET
 
 
 ; --- A Group ---
@@ -71,24 +75,24 @@ speech_o_short:                ; /ʊ/ (Bott)
         .byte R11,$08, R12,$00
         .byte R4,$4f, R5,$00
         .byte NOISE,$0e
-        .byte ENV,LOOP_TRI, WAIT5, RET
+        .byte MIXER, $fb, ENV,LOOP_TRI, SHORT, RET
 speech_o_long:                  ; /uː/ (Bo)
         .byte R11,$07, R12,$00
         .byte R4,$4a, R5,$00
         .byte NOISE,$0d
-        .byte ENV,LOOP_TRI, WAIT3, RET
+        .byte MIXER, $fb, ENV,LOOP_TRI, LONG, RET
 
 ; --- U Group --- ROUNDED
 speech_u_short:                 ; /ɵ/ (Hund)
         .byte R11,$09, R12,$00
         .byte R4,$3d, R5,$00
         .byte NOISE,$0e
-        .byte ENV,LOOP_TRI, WAIT5, RET
+        .byte MIXER, $fb, ENV,LOOP_TRI, SHORT, RET
 speech_u_long:                  ; /ʉː/ (Hus)
         .byte R11,$0d, R12,$00
         .byte R4,$29, R5,$00
         .byte NOISE,$0e
-        .byte ENV,LOOP_TRI, WAIT3, RET
+        .byte MIXER, $fb, ENV,LOOP_TRI, LONG, RET
 
 
 ; --- UE / Y Group ---
