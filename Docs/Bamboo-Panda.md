@@ -398,3 +398,188 @@ If a Panda hits a generator like 1..100, instead of running all 100 values in on
 How should the Scheduler prioritize "Squeezing"? Should a Panda that is currently finishing a SUM{{ }} get more CPU time than one that is just generating numbers?
 Should we define the 6502 "Bytecode" that these Pandas are actually executing?
 
+
+
+Compiling to Datalog first is a brilliant architectural move for a 6502. It shifts the burden from a heavy runtime to a relational query planner. Since Datalog is essentially a set of facts and rules about data relationships, your "Panda" becomes a Nested-Loop Join Engine.
+By hoisting all sub-expressions before function calls, you turn the BAMBOO pipeline into a flat, predictable execution plan.
+## 1. The Datalog Compilation Strategy
+Your Panda source:
+$input square <= 15 print
+Compiles to a Datalog-style plan:
+
+   1. result1(X) :- input(X), square(X, Y).
+   2. result2(Y) :- result1(X), Y <= 15.
+   3. goal(Y) :- result2(Y), print(Y).
+
+On the 6502, this is literally a nested for-loop. The "Hoisting" ensures that by the time you reach print, every dependency has been resolved and is sitting in a fixed memory location (Zero Page or a dedicated register bank).
+## 2. The "Single Panda" Hoisting Logic
+Instead of managing a complex stack, the compiler allocates Static Slots for every expression result.
+
+* Slot A: Stores the current value from the generator.
+* Slot B: Stores the result of the hoisted function call.
+* The Execution:
+
+; Nested loop for: 1..10 => $a; $a square => $b; $b <= 15
+LOOP_A:
+    jsr GET_NEXT_A    ; Hoisted: Get next from 1..10
+    bcs DONE          ; If empty, fail/exit
+
+    jsr SQUARE_A_TO_B ; Hoisted: Calculate sqr($a) store in $b
+
+    lda $b            ; Hoisted: The "IF" check
+    cmp #15
+    bcs LOOP_A        ; "Fail" semantics: jump back to start of loop
+
+    jsr PRINT_B       ; Survival: Final gate
+    jmp LOOP_A
+
+
+## 3. Avoiding the "Small Function" Trap
+By discouraging tiny, granular function reuse and focusing on "Useful Functions," you keep the jump table small.
+
+* Instantiation: When you call a "Panda Subroutine," the engine treats it as a new Join Context.
+* Instead of an expensive "call/return" stack, you use a Frame Pointer that points to a 64-byte block of RAM for that specific routine's variables.
+
+## 4. Parallelism via "Join Partitioning"
+Since the code is now a series of loops, running them in parallel is a matter of Iterator Splitting.
+
+* Panda 1: Processes input values 1–50.
+* Panda 2: Processes input values 51–100.
+* They share the same hoisted logic (code) but have different Iterator State in their respective Task Control Blocks.
+
+## 5. Memory Management: The "Fact Base"
+The 65KB RAM acts as your Datalog Fact Base.
+
+* Memoized Basins: These are materialized views (tables).
+* The Scheduler: Simply picks which "Nested Loop" to increment next.
+
+This approach makes the 6502 extremely fast because it minimizes branching and stack manipulation, favoring absolute addressing (optimized for the 6502) for all the hoisted "slots."
+Does the "Panda Scheduler" need to handle priorities, or should it just iterate through all active "Goal" loops until the bamboo is gone?
+
+That is the most pragmatic way to get BAMBOO running on silicon. By using a data-driven compiler (similar to your MeteoriC approach), you can map the "Panda" grammar directly to 6502 assembly templates.
+Since BAMBOO is essentially a linear pipeline, the "hoisting" you mentioned allows the compiler to generate a linear block of machine code that simulates the nested logic without a heavy runtime.
+## 1. The "Template-Driven" 6502 Generator
+Your "Inline BNF" approach would look like this for a BAMBOO pipeline:
+BNF Rule for Function Application:
+
+<func_call> ::= <name> <params> 
+    [[ 
+       ; Template for 'add'
+       LDA current_val_zp
+       CLC
+       ADC #param1
+       STA current_val_zp
+    ]]
+
+## 2. Implementation: The "Survival" Jump
+To implement the "0, 1, or more" results logic in machine code:
+
+* 0 results (Fail): The compiler generates a conditional jump back to the start of the nearest "hoisted" generator loop.
+* More results (Generator): The compiler generates a loop header.
+* 1 result (Transform): The compiler generates straight-line math.
+
+## 3. Machine Code Layout
+For the pipeline 1..10 square <= 15 print, the compiler would emit:
+
+; --- 1..10 (Generator Loop) ---
+    LDA #$01       ; Init loop
+    STA $20        ; Store $a in Zero Page
+LOOP_START:
+; --- square (Transform) ---
+    LDA $20
+    JSR FP_SQUARE  ; Call math routine
+    STA $21        ; Store $b
+; --- <= 15 (Filter/Survival) ---
+    LDA $21
+    CMP #$0F
+    BEQ OK         ; If equal, continue
+    BCC OK         ; If less, continue
+    JMP NEXT_ITER  ; FAIL: Jump to loop increment
+OK:
+; --- print (Sink) ---
+    LDA $21
+    JSR FP_PRINT
+; --- Loop Back ---
+NEXT_ITER:
+    INC $20        ; Increment $a
+    LDA $20
+    CMP #$0B       ; Check end (11)
+    BNE LOOP_START
+
+## 4. The "MeteoriC" Advantage
+By using your MeteoriC-style encoder, you can handle the "Universal Cartesian Product" by nesting these templates.
+
+* The compiler tracks a "Backtrack Label Stack".
+* Every time it hits a , or a generator, it pushes a new label.
+* Every time it hits a "Failure" condition (like a filter), it emits a JMP to the top of that label stack.
+
+## 5. Managing the 65KB
+Since you're compiling to machine code:
+
+* Static Allocation: Every $variable in the BAMBOO source is assigned a fixed address in RAM or Zero Page during the "Hoisting" phase.
+* No Overhead: There is no "VM" or "Interpreter." The 6502 is just running a highly optimized set of nested loops.
+
+This is the fastest possible way to run the Panda. The code is blocking (single-tasking), but because it's machine code, it will tear through that bamboo.
+Would you use Zero Page for all the "Hoisted" variables to keep the code short and fast, or would that be too limiting for complex pipelines?
+
+Got it—my mistake. The ,, was a typo in my reading of your logic. If a single , is the infix tuple builder, then your Oric example is a clean, flat 4-parameter call where the Cartesian product does the heavy lifting.
+Let's re-trace that line correctly:
+line 0..1=>$x * 199, 0, 199-$x, for(0, 199, 10).
+## The Execution Trace:
+
+   1. **The $x Slot:** `0..1` yields `0`. `$xis now0`.
+   2. The Constant Slots: 0 and 199-$x (which is 199).
+   3. The Generator Slot: for(0, 199, 10) starts its loop.
+   4. The Cartesian Product: The line function is called for:
+   * line(0, 0, 199, 0)
+      * line(0, 0, 199, 10)
+      * line(0, 0, 199, 20) ... and so on.
+   5. Backtrack: Once the for is exhausted, the Panda backtracks to the first slot. $x becomes 1.
+   6. The Second Pass: The line function is called for:
+   * line(199, 0, 0, 0)
+      * line(199, 0, 0, 10) ... and so on.
+   
+## The Oric Result:
+This draws two fans of lines originating from the top corners (0,0) and (199,0) and sweeping across the opposite vertical axis.
+## Implementation on the 6502:
+Using your MeteoriC-style machine code generation:
+
+* The compiler sees the , as separators for a function call's parameter list.
+* It identifies 0..1 and for(...) as generators that require hoisted loops.
+* It emits the outer loop for $x, the inner loop for the for, and a JSR to the line-drawing routine in the middle.
+
+The "Panda" Memory: Because $x is defined in the first parameter, it stays "live" and stable in its Zero Page slot while the for loop (the last generator) spins through its 20 iterations.
+Should the for generator be a standard keyword, or would a Panda prefer the simpler 0..199:10 (using the colon as a step-size constructor) to keep it consistent with our other types?
+How do you want to handle Coordinate Clipping? If the Panda tries to eat a coordinate outside 0-239, should it Fail (0 results) and skip the line, or Error (Red)?
+
+Based on the Universal Cartesian Rule, your two lines of code would create a stunning symmetry by sweeping across all four borders of the Oric's 240x200 HIRES screen.
+Here is how the Panda "eats" those coordinates:
+## 1. The Top-to-Bottom Sweep (Fans from Top Corners)
+line 0..1=>$x * 199, 0, 199-$x, for(0, 199, 10).
+
+* $x=0$: Draws from (0, 0) to (199, y) where y is 0, 10, 20... 190.
+* This creates a fan from the Top-Left corner sweeping down the Right border.
+* $x=199$: Draws from (199, 0) to (0, y) where y is 0, 10, 20... 190.
+* This creates a fan from the Top-Right corner sweeping down the Left border.
+
+## 2. The Side-to-Side Sweep (Fans from Left Corners)
+line 0, 0..1=>$y * 199, for(0, 199, 10), 199-y
+
+* $y=0$: Draws from (0, 0) to (x, 199) where x is 0, 10, 20... 190.
+* This sweeps from the Top-Left corner across the Bottom border.
+* $y=199$: Draws from (0, 199) to (x, 0) where x is 0, 10, 20... 190.
+* This sweeps from the Bottom-Left corner across the Top border.
+
+## The Result:
+By the time the Panda is done, you have four converging fans. Because the coordinates cross-pollinate through the generators, you get a "string art" or "moiré" effect where every corner is connected to its opposite borders at 10-pixel intervals.
+## Compiling to 6502 Machine Code:
+With your MeteoriC-style compiler, this isn't just a slow draw; it's a tight loop of JSR calls to the Oric's line routine.
+
+* Outer Loop: 2 iterations (Corners).
+* Inner Loop: 20 iterations (Border points).
+* Performance: On a 1MHz 6502, the Oric screen would "fill up" with these patterns almost instantly as the Panda "crunches" the Cartesian product.
+
+Should we add a COLOR generator to the stream to make each fan a different hue?
+0..7 => $c; PAPER $c; ...
+What happens if we "Squeeze" the drawing? COUNT{{ ... line ... }} would tell you exactly how many lines were drawn to the screen!
+
