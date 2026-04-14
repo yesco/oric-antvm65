@@ -841,3 +841,42 @@ The biggest challenge for your "4 cursor" test will be when a phoneme triggers M
 
 Do you have the 6502 indexing for the cursor offsets (STA $BASE,X) ready, or should we look at the most efficient way to handle the 16-bit bit-shifting in the interrupt?
 
+
+To synthesize Swedish and common European/Japanese vowels on an AY-3-8910 at 1 MHz, we use Channel C as the high-frequency carrier (the "Vocal Cords") and the Envelope Generator as the modulator to create the primary resonant formant peaks.
+## 1 MHz Clock Frequency Formulas [1] 
+
+* Tone Period (Channel C): $TP = 62500 / \text{Freq}$
+* Envelope Period (R11/R12): $EP = 3906 / \text{Freq}$
+* Noise Period (R6): $NP = 31250 / \text{Freq}$ [2] 
+
+## Formant Synthesis Table for Vowels [3] 
+This table maps three formants ($F1, F2, F3$) to the chip's registers. Since the AY chip has one shared envelope, we map F1 to the Envelope, F2 to the Channel C Tone, and use Noise or Shape modulation for the higher overtones ($F3$).
+
+| Vowel [4, 5] | F1 (EP) | F2 (Tone) | F3 (Noise) | R11/R12 (Hex) | R4/R5 (Hex) | R6 (Hex) | Vibe/Language |
+|---|---|---|---|---|---|---|---|
+| A | 730 Hz | 1090 Hz | 2440 Hz | 05 00 | 39 00 | 0D | SE, JP (あ), ES |
+| O | 570 Hz | 840 Hz | 2410 Hz | 07 00 | 4A 00 | 0D | SE, JP (お), FR |
+| U | 440 Hz | 1020 Hz | 2240 Hz | 09 00 | 3D 00 | 0E | SE (short), JP (う) |
+| Å | 600 Hz | 900 Hz | 2500 Hz | 06 00 | 45 00 | 0C | SE (long O) |
+| E | 530 Hz | 1840 Hz | 2480 Hz | 07 00 | 22 00 | 0D | SE, JP (え), DE |
+| I | 270 Hz | 2290 Hz | 3010 Hz | 0E 00 | 1B 00 | 0A | SE, JP (い), IT |
+| Y | 260 Hz | 1500 Hz | 2620 Hz | 0F 00 | 29 00 | 0C | SE, FI (y), FR (u) |
+| Ä | 700 Hz | 1700 Hz | 2450 Hz | 06 00 | 25 00 | 0D | SE, DE (ä), FI |
+| Ö | 500 Hz | 1300 Hz | 2300 Hz | 08 00 | 30 00 | 0E | SE, DE (ö), FR (eu) |
+
+## Technical Setup Checklist
+
+* Mixer (R7): Must be set to %11111011 (fb) to enable Tone C and Noise C while keeping other channels silent.
+* Volume C (R10): Set to 16 (10) to activate Envelope Modulation mode.
+* Envelope Shape (R13): Use 0a (Triangle) for a "smooth" vocal cord sound or 08 (Sawtooth) for a harsher, more "metallic" voice.
+* Triggering: You must re-write R13 every time you change a vowel to restart the envelope phase, preventing the "vowel" from clicking or lagging. [3] 
+
+To create a diphthong (like Swedish "au"), sweep the values for R11 and R4 linearly over about 100 milliseconds.
+Would you like the binary bitmask for Register 7 to ensure only Channel C is affected by the noise?
+
+[1] [https://diyelectromusic.com](https://diyelectromusic.com/2025/07/11/arduino-and-ay-3-8910-part-2/)
+[2] [https://www.samdal.com](https://www.samdal.com/svsound.htm)
+[3] [https://www.youtube.com](https://www.youtube.com/watch?v=cPBh_sE5RSA&t=21)
+[4] [https://www.soundbridge.io](https://www.soundbridge.io/formants-vowel-sounds)
+[5] [https://www.youtube.com](https://www.youtube.com/watch?v=nBVwN60H4Og&t=6)
+

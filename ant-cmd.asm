@@ -13,6 +13,8 @@ WAIT5= WAIT+5
 WAIT6= WAIT+6
 WAIT7= WAIT+7
 
+;;; TODO: relative?
+
 
 
 SUSTAIN= %11001000
@@ -39,6 +41,8 @@ L8      = EIGTH
 L16     = SIXTEENTH
 L32     = THIRTYSECONDTH
 
+
+
 CALL1= %11010000+0
 CALL2= %11010000+1
 CALL3= %11010000+2
@@ -56,10 +60,9 @@ SELECT_N= %11011011
 
 
 EXTENDED= %11011100
-YIELD=    %11011101
+YIELD=    %11011101             ; TODO: remoe same as wait 1 tick?
 QUIET=    %11011110
 KILL=     %11011111
-
 
 
 
@@ -68,9 +71,60 @@ KILL=     %11011111
 
 ;;; SETAYR+rrrr
 
-SETAYR=  %11100000
+SETAYR=  
 AYPDATE= %11101110
 DUMPAY=  %11101111
+
+R0 = %11100000
+R1 = %11100001
+R2 = %11100010
+R3 = %11100011
+R4 = %11100100
+R5 = %11100101
+R6 = %11100110
+R7 = %11100111
+
+R8 = %11100000
+R9 = %11100001
+R10= %11100010
+R11= %11100011
+R12= %11100100
+R13= %11100101
+
+;;; Functional names
+
+NOISE = R6
+MIXER = R7
+
+VOLA  = R8
+VOLB  = R9
+VOLC  = R10
+
+EPLO  = R11
+EPHO  = R12
+ENV   = R13
+
+;;; Prefix with ENV and one value
+;;; -----------------------------
+
+;;; Components
+HOLD      = %0001  ; Bit 0: hold at end of first cycle \_ (DOWN)
+ALTERNATE = %0010  ; Bit 1: full cycle /\
+ATTACK    = %0100  ; Bit 2: fade-in /^ (UP)
+CONTINUE  = %1000  ; Bit 3: repeat pattern
+
+
+; Single Shot
+FADE_OUT  = $00  ; \_ (standard decay)   00
+FADE_IN   = $04  ; /_ (standard attack)  ATTACK
+
+; Repeating (Vocal/Buzzer)
+LOOP_SAW  = $08  ; \\\\ (Harsh/Speech)   CONT
+LOOP_TRI  = $0a  ; /\/\ (Smooth/Hollow)  CONT + ALTERNATE
+LOOP_ISAW = $0c  ; //// (Inverted Saw)   CONT + ATTACK
+LOOP_ITRI = $0e  ; \/\/ (Inverted Tri)   CONT + ATTACK + HOLD
+
+
 
 
 CALL_LOCAL= %1110000
