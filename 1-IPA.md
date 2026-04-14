@@ -880,3 +880,503 @@ Would you like the binary bitmask for Register 7 to ensure only Channel C is aff
 [4] [https://www.soundbridge.io](https://www.soundbridge.io/formants-vowel-sounds)
 [5] [https://www.youtube.com](https://www.youtube.com/watch?v=nBVwN60H4Og&t=6)
 
+In Swedish phonology, the relationship between long and short vowels is primarily a matter of duration (quantity) and quality, rather than pitch or "tone." While musical analogies can be helpful for chiptune programming, the actual linguistic ratio is slightly different from your quarter/sixteenth note suggestion. [1, 2, 3] 
+## Vowel Duration Ratios
+In standard Swedish, a long vowel is roughly twice as long as a short vowel in stressed syllables. [4, 5] 
+
+* Long Vowel: Often represented as a quarter note in terms of relative weight within a measure.
+* Short Vowel: Typically equivalent to an eighth note (rather than a sixteenth).
+* The Complementary Rule: Swedish follows a "long-short" or "short-long" rhythm.
+* Long Vowel + Short Consonant (e.g., glas /glɑːs/) $\approx$ Quarter + Eighth.
+   * Short Vowel + Long Consonant (e.g., glass /glasː/) $\approx$ Eighth + Quarter. [1, 4, 6] 
+
+## Updated Assembly Table for 1 MHz
+To implement this in your code, you should adjust the WAIT values to reflect these relative durations. If WAIT4 represents a sixteenth note, use WAIT8 for short vowels and WAIT16 for long ones. [2, 7] 
+
+| Vowel Type | Linguistic Ratio | Musical Equivalent | Suggested WAIT |
+|---|---|---|---|
+| Short Vowel | $1.0$ | Eighth Note | WAIT8 |
+| Long Vowel | $\approx 2.0$ | Quarter Note | WAIT16 |
+
+## Why not a sixteenth note?
+A sixteenth note (WAIT4) is often too short for a human ear to recognize the specific "formant" quality you've programmed into the AY chip registers. Because you are using complex Intermodulation (modulating Tone C with the Envelope), the sound needs enough time for the cycle to be perceived as a vowel rather than just a percussive "blip."
+## Refined Vowel Quality Distinction [8] 
+Remember that long and short vowels in Swedish also differ in spectrum (quality): [5, 9, 10] 
+
+* Long vowels are "tenser" and more peripheral in the mouth (e.g., /iː/, /uː/).
+* Short vowels are more "lax" and centered (e.g., /ɪ/, /ʊ/). [4, 5, 11, 12] 
+
+In your code, this is why you must change both the R11/R12 (Env Period) and R4/R5 (Tone Period) when switching between long and short versions of the same letter.
+Would you like the consonant "noise" timings to match this quarter/eighth note rhythmic structure? [8] 
+
+[1] [https://www.yorku.ca](http://www.yorku.ca/earmstro/scandinavia/Swedish/Swedish%20breakdown.pdf)
+[2] [https://www.reddit.com](https://www.reddit.com/r/linguistics/comments/o6bqex/swedish_long_vowels/)
+[3] [https://www.clozemaster.com](https://www.clozemaster.com/blog/swedish-alphabet/)
+[4] [https://www.isca-archive.org](https://www.isca-archive.org/icslp_1998/behne98_icslp.pdf)
+[5] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Swedish_phonology)
+[6] [https://www.youtube.com](https://www.youtube.com/watch?v=6_ssFjqncBM)
+[7] [https://www.youtube.com](https://www.youtube.com/shorts/LtObQcBsOj4)
+[8] [https://www.augustana.edu](https://www.augustana.edu/swenson/genealogy/vowels)
+[9] [https://www.diva-portal.org](http://www.diva-portal.org/smash/record.jsf?pid=diva2:1905467)
+[10] [https://www.glottopedia.org](http://www.glottopedia.org/index.php/Swedish_Phonology)
+[11] [https://www.iastatedigitalpress.com](https://www.iastatedigitalpress.com/psllt/article/id/15326/download/pdf/)
+[12] [https://www.tandfonline.com](https://www.tandfonline.com/doi/full/10.1080/02699206.2021.1988147)
+
+
+In Swedish phonology, the relationship between long and short vowels is primarily a matter of duration (quantity) and quality, rather than pitch or "tone." While musical analogies can be helpful for chiptune programming, the actual linguistic ratio is slightly different from your quarter/sixteenth note suggestion. [1, 2, 3] 
+## Vowel Duration Ratios
+In standard Swedish, a long vowel is roughly twice as long as a short vowel in stressed syllables. [4, 5] 
+
+* Long Vowel: Often represented as a quarter note in terms of relative weight within a measure.
+* Short Vowel: Typically equivalent to an eighth note (rather than a sixteenth).
+* The Complementary Rule: Swedish follows a "long-short" or "short-long" rhythm.
+* Long Vowel + Short Consonant (e.g., glas /glɑːs/) $\approx$ Quarter + Eighth.
+   * Short Vowel + Long Consonant (e.g., glass /glasː/) $\approx$ Eighth + Quarter. [1, 4, 6] 
+
+## Updated Assembly Table for 1 MHz
+To implement this in your code, you should adjust the WAIT values to reflect these relative durations. If WAIT4 represents a sixteenth note, use WAIT8 for short vowels and WAIT16 for long ones. [2, 7] 
+
+| Vowel Type | Linguistic Ratio | Musical Equivalent | Suggested WAIT |
+|---|---|---|---|
+| Short Vowel | $1.0$ | Eighth Note | WAIT8 |
+| Long Vowel | $\approx 2.0$ | Quarter Note | WAIT16 |
+
+## Why not a sixteenth note?
+A sixteenth note (WAIT4) is often too short for a human ear to recognize the specific "formant" quality you've programmed into the AY chip registers. Because you are using complex Intermodulation (modulating Tone C with the Envelope), the sound needs enough time for the cycle to be perceived as a vowel rather than just a percussive "blip."
+## Refined Vowel Quality Distinction [8] 
+Remember that long and short vowels in Swedish also differ in spectrum (quality): [5, 9, 10] 
+
+* Long vowels are "tenser" and more peripheral in the mouth (e.g., /iː/, /uː/).
+* Short vowels are more "lax" and centered (e.g., /ɪ/, /ʊ/). [4, 5, 11, 12] 
+
+In your code, this is why you must change both the R11/R12 (Env Period) and R4/R5 (Tone Period) when switching between long and short versions of the same letter.
+Would you like the consonant "noise" timings to match this quarter/eighth note rhythmic structure? [8] 
+
+[1] [https://www.yorku.ca](http://www.yorku.ca/earmstro/scandinavia/Swedish/Swedish%20breakdown.pdf)
+[2] [https://www.reddit.com](https://www.reddit.com/r/linguistics/comments/o6bqex/swedish_long_vowels/)
+[3] [https://www.clozemaster.com](https://www.clozemaster.com/blog/swedish-alphabet/)
+[4] [https://www.isca-archive.org](https://www.isca-archive.org/icslp_1998/behne98_icslp.pdf)
+[5] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Swedish_phonology)
+[6] [https://www.youtube.com](https://www.youtube.com/watch?v=6_ssFjqncBM)
+[7] [https://www.youtube.com](https://www.youtube.com/shorts/LtObQcBsOj4)
+[8] [https://www.augustana.edu](https://www.augustana.edu/swenson/genealogy/vowels)
+[9] [https://www.diva-portal.org](http://www.diva-portal.org/smash/record.jsf?pid=diva2:1905467)
+[10] [https://www.glottopedia.org](http://www.glottopedia.org/index.php/Swedish_Phonology)
+[11] [https://www.iastatedigitalpress.com](https://www.iastatedigitalpress.com/psllt/article/id/15326/download/pdf/)
+[12] [https://www.tandfonline.com](https://www.tandfonline.com/doi/full/10.1080/02699206.2021.1988147)
+
+In Swedish phonology, the relationship between long and short vowels is primarily a matter of duration (quantity) and quality, rather than pitch or "tone." While musical analogies can be helpful for chiptune programming, the actual linguistic ratio is slightly different from your quarter/sixteenth note suggestion. [1, 2, 3] 
+## Vowel Duration Ratios
+In standard Swedish, a long vowel is roughly twice as long as a short vowel in stressed syllables. [4, 5] 
+
+* Long Vowel: Often represented as a quarter note in terms of relative weight within a measure.
+* Short Vowel: Typically equivalent to an eighth note (rather than a sixteenth).
+* The Complementary Rule: Swedish follows a "long-short" or "short-long" rhythm.
+* Long Vowel + Short Consonant (e.g., glas /glɑːs/) $\approx$ Quarter + Eighth.
+   * Short Vowel + Long Consonant (e.g., glass /glasː/) $\approx$ Eighth + Quarter. [1, 4, 6] 
+
+## Updated Assembly Table for 1 MHz
+To implement this in your code, you should adjust the WAIT values to reflect these relative durations. If WAIT4 represents a sixteenth note, use WAIT8 for short vowels and WAIT16 for long ones. [2, 7] 
+
+| Vowel Type | Linguistic Ratio | Musical Equivalent | Suggested WAIT |
+|---|---|---|---|
+| Short Vowel | $1.0$ | Eighth Note | WAIT8 |
+| Long Vowel | $\approx 2.0$ | Quarter Note | WAIT16 |
+
+## Why not a sixteenth note?
+A sixteenth note (WAIT4) is often too short for a human ear to recognize the specific "formant" quality you've programmed into the AY chip registers. Because you are using complex Intermodulation (modulating Tone C with the Envelope), the sound needs enough time for the cycle to be perceived as a vowel rather than just a percussive "blip."
+## Refined Vowel Quality Distinction [8] 
+Remember that long and short vowels in Swedish also differ in spectrum (quality): [5, 9, 10] 
+
+* Long vowels are "tenser" and more peripheral in the mouth (e.g., /iː/, /uː/).
+* Short vowels are more "lax" and centered (e.g., /ɪ/, /ʊ/). [4, 5, 11, 12] 
+
+In your code, this is why you must change both the R11/R12 (Env Period) and R4/R5 (Tone Period) when switching between long and short versions of the same letter.
+Would you like the consonant "noise" timings to match this quarter/eighth note rhythmic structure? [8] 
+
+[1] [https://www.yorku.ca](http://www.yorku.ca/earmstro/scandinavia/Swedish/Swedish%20breakdown.pdf)
+[2] [https://www.reddit.com](https://www.reddit.com/r/linguistics/comments/o6bqex/swedish_long_vowels/)
+[3] [https://www.clozemaster.com](https://www.clozemaster.com/blog/swedish-alphabet/)
+[4] [https://www.isca-archive.org](https://www.isca-archive.org/icslp_1998/behne98_icslp.pdf)
+[5] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Swedish_phonology)
+[6] [https://www.youtube.com](https://www.youtube.com/watch?v=6_ssFjqncBM)
+[7] [https://www.youtube.com](https://www.youtube.com/shorts/LtObQcBsOj4)
+[8] [https://www.augustana.edu](https://www.augustana.edu/swenson/genealogy/vowels)
+[9] [https://www.diva-portal.org](http://www.diva-portal.org/smash/record.jsf?pid=diva2:1905467)
+[10] [https://www.glottopedia.org](http://www.glottopedia.org/index.php/Swedish_Phonology)
+[11] [https://www.iastatedigitalpress.com](https://www.iastatedigitalpress.com/psllt/article/id/15326/download/pdf/)
+[12] [https://www.tandfonline.com](https://www.tandfonline.com/doi/full/10.1080/02699206.2021.1988147)
+
+
+To complete your speech library for a 1 MHz clock, consonants are categorized by how they use Noise (R6) and Tone (R4/R5). Unlike vowels, many consonants require the Mixer (R7) to switch between pure noise, pure tone, or a combination.
+## Consonant Sub-routines
+You’ll need these basic types for your CALL logic:
+
+; --- Consonant Types ---
+STOP_POP = CALL5 ; Short burst of noise/tone for P, T, K
+swe_stop_pop: 
+        .byte MIXER, $c7, ENV, ENV_FADE_OUT, W31ms, RET ; %11000111: Noise on C, Tone off
+
+FRICATIVE = CALL6 ; Pure noise hiss for S, F, SH
+swe_fricative: 
+        .byte MIXER, $df, ENV, ENV_FADE_OUT, W125ms, RET ; %11011111: Noise on C ONLY
+
+VOICED_CONS = CALL7 ; Voiced buzz for V, Z, L, R
+swe_voiced_cons: 
+        .byte MIXER, $fb, ENV, LOOP_SAW, W125ms, RET
+
+## Complete Consonant Table (1 MHz)
+
+| Phoneme | Type | R11/R12 (Env) | R4/R5 (Tone) | R6 (Noise) | Assembler String |
+|---|---|---|---|---|---|
+| S | Fricative | $0000 | $0000 | $01 | .byte R6,$01, FRICATIVE |
+| F | Fricative | $0000 | $0000 | $08 | .byte R6,$08, FRICATIVE |
+| SJ / SH | Fricative | $0000 | $0000 | $03 | .byte R6,$03, FRICATIVE |
+| P | Plosive | $0000 | $0100 | $1f | .byte R4,$00, R5,$01, R6,$1f, STOP_POP |
+| T | Plosive | $0000 | $0080 | $02 | .byte R4,$80, R5,$00, R6,$02, STOP_POP |
+| K | Plosive | $0000 | $0060 | $05 | .byte R4,$60, R5,$00, R6,$05, STOP_POP |
+| B | Voiced Stop | $0600 | $0200 | $1f | .byte R11,$00, R12,$06, R4,$00, R5,$02, R6,$1f, VOICED_CONS |
+| D | Voiced Stop | $0400 | $0180 | $1a | .byte R11,$00, R12,$04, R4,$80, R5,$01, R6,$1a, VOICED_CONS |
+| G | Voiced Stop | $0300 | $0100 | $10 | .byte R11,$00, R12,$03, R4,$00, R5,$01, R6,$10, VOICED_CONS |
+| R (Rolling) | Voiced | $0a00 | $0150 | $00 | .byte R11,$00, R12,$0a, R4,$50, R5,$01, VOICED_CONS |
+| L | Voiced | $0c00 | $0200 | $00 | .byte R11,$00, R12,$0c, R4,$00, R5,$02, VOICED_CONS |
+| M | Nasal | $1000 | $0300 | $00 | .byte R11,$00, R12,$10, R4,$00, R5,$03, VOICED_CONS |
+| N | Nasal | $0e00 | $0280 | $00 | .byte R11,$00, R12,$0e, R4,$80, R5,$02, VOICED_CONS |
+
+## Phonetic Tips for Swedish Synthesis
+
+* The "SJ" Sound: This is famously difficult. Use a very low noise period (R6=$03) with a sudden volume drop to mimic the raspy, guttural [ɧ] sound.
+* Retroflex Consonants (RT, RD, RN): These occur when R precedes certain letters. To simulate this, slightly lower the Tone Period (higher pitch) and add a tiny bit more noise compared to the standard T or D.
+* Voiced vs. Unvoiced: For S, F, P, T, K, ensure the mixer disables the Tone (Bit 2 = 1) so there is no musical hum behind the hiss.
+
+Would you like to see how to string these together into a common Swedish word like "Hej" or "Tack"?
+
+Here is the sequence using your existing upper-case call indices. This assumes your parser jumps to the corresponding phoneme label and returns.
+
+; --- "Go'morron Sverige" Phrase Sequence ---
+
+phrase_gomorron_sverige:
+    ; "Go-" (G + Long O)
+    .byte SPEECH_G
+    .byte SPEECH_O_LONG
+
+    ; "-morr-" (M + Short O + R)
+    .byte SPEECH_M
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_R
+
+    ; "-on" (Short O + N)
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_N
+
+    ; (Brief Pause between words)
+    .byte R10,$00,W62ms
+
+    ; "Sve-" (S + V/B-type voiced fricative + Short E)
+    .byte SPEECH_S
+    .byte SPEECH_B ; Using B-voiced setup for the 'V' sound
+    .byte SPEECH_E_SHORT
+
+    ; "-ri-" (R + Long I)
+    .byte SPEECH_R
+    .byte SPEECH_I_LONG
+
+    ; "-ge" (G + Short E)
+    ; Note: In SE "Sverige", this G is often soft, like SPEECH_Y_SHORT
+    .byte SPEECH_G
+    .byte SPEECH_E_SHORT
+
+    ; End of Phrase
+    .byte R10,$00,RET
+
+## Technical Note:
+
+* The "V" sound: Since we didn't explicitly define a SPEECH_V, I used SPEECH_B above. For a more accurate "V," you can use the SPEECH_B register values but with a longer W125ms (FRICATIVE style) timing.
+
+* Registers: Since the labels already contain the R4/R5/R11/R12 data, this sequence is extremely memory-efficient.
+
+Would you like the hex definitions for any other Swedish-specific consonant clusters like "STJ" or "TJ"?
+
+
+
+To expand your library for 1 MHz, we need to handle "fricative" noise more precisely. For sounds like the Dutch 'G' or Swedish 'SJ', we use a "dirty" noise (higher values in R6) to create that guttural friction.
+
+; --- Extended Consonants & Clusters ---
+
+speech_ch:                         ; German 'ch' / Dutch 'g' (Guttural)
+    .byte R6,$0f
+    .byte FRICATIVE
+
+speech_sh:                         ; English 'sh' / Swedish 'sj'
+    .byte R6,$03
+    .byte FRICATIVE
+
+speech_tsch:                       ; 'ch' in 'chair' (T + SH)
+    .byte R4,$80,R5,$00,R6,$02,STOP_POP
+    .byte R6,$03,FRICATIVE
+
+speech_j_se:                       ; Swedish 'j' / American 'y'
+speech_y_am:
+    .byte R11,$0e,R12,$00,R4,$1e,R5,$00,R6,$0a,SHORT_SAW
+
+speech_j_am:                       ; American 'j' (D + SH)
+    .byte R11,$00,R12,$04,R4,$80,R5,$01,R6,$1a,VOICED_CONS
+    .byte R6,$03,FRICATIVE
+
+speech_v:                          ; 'v' / 'w' (Voiced friction)
+speech_w:
+    .byte R11,$00,R12,$08,R4,$00,R5,$02,R6,$15,VOICED_CONS
+
+speech_z:                          ; 'z' (Voiced 's')
+    .byte R11,$00,R12,$04,R4,$80,R5,$01,R6,$01,VOICED_CONS
+
+speech_x:                          ; 'x' (K + S)
+    .byte R4,$60,R5,$00,R6,$05,STOP_POP
+    .byte R6,$01,FRICATIVE
+
+speech_h:                          ; 'h' (Breath)
+    .byte R6,$1f,FRICATIVE         ; Maximum noise period (softest hiss)
+
+speech_q:                          ; 'q' (K + W)
+    .byte R4,$60,R5,$00,R6,$05,STOP_POP
+    .byte R11,$00,R12,$0d,R4,$29,R5,$00,R6,$0e,VOICED_CONS
+
+## Phonetic Breakdown:
+
+* Dutch 'G' / Turkish 'Ğ': I used R6,$0f (low-frequency noise) to simulate the vibration in the back of the throat.
+* Swedish 'J': This is essentially a very short "i" vowel, so it uses SHORT_SAW with high pitch.
+* Rolling R: Already defined in your previous list as SPEECH_R, which uses a vibrating VOICED_CONS.
+* W / V: These share a similar profile on the AY chip; the difference is mostly how quickly you transition into the following vowel.
+
+Would you like to combine these into a complex word like "Sjökapten" (Sea Captain) to test the SJ and K transitions?
+
+
+To adapt the greeting for German, Dutch, and English, we map the phonemes to your established 1 MHz library. Note how the "G" sound changes significantly between the guttural Dutch, the hard German, and the soft English "J".
+## 1. German: "Guten Morgen"
+German requires a harder "G" and the specific "en" schwa-ending.
+
+phrase_guten_morgen:
+    ; "Gu-" (G + Long U)
+    .byte SPEECH_G
+    .byte SPEECH_U_LONG
+    ; "-ten" (T + Short E + N)
+    .byte SPEECH_T
+    .byte SPEECH_E_SHORT
+    .byte SPEECH_N
+    ; "Mor-" (M + Short O + R)
+    .byte SPEECH_M
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_R
+    ; "-gen" (G + Short E + N)
+    .byte SPEECH_G
+    .byte SPEECH_E_SHORT
+    .byte SPEECH_N
+    .byte R10,$00,RET
+
+## 2. Dutch: "Goedemorgen"
+Dutch uses the Guttural G (SPEECH_CH) and the unique Dutch "oe" (which is like a long U).
+
+phrase_goedemorgen:
+    ; "Goe-" (Guttural G + Long U/oe)
+    .byte SPEECH_CH
+    .byte SPEECH_U_LONG
+    ; "-de-" (D + Short E)
+    .byte SPEECH_D
+    .byte SPEECH_E_SHORT
+    ; "mor-" (M + Short O + R)
+    .byte SPEECH_M
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_R
+    ; "-gen" (Guttural G + Short E + N)
+    .byte SPEECH_CH
+    .byte SPEECH_E_SHORT
+    .byte SPEECH_N
+    .byte R10,$00,RET
+
+## 3. English: "Good Morning"
+English uses the American J style for the "G" if pronounced colloquially, but here we use a standard hard G and the "ing" nasal/vowel cluster.
+
+phrase_good_morning:
+    ; "Good" (G + Short U + D)
+    .byte SPEECH_G
+    .byte SPEECH_U_SHORT
+    .byte SPEECH_D
+    ; "Mor-" (M + Short O + R)
+    .byte SPEECH_M
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_R
+    ; "-ning" (N + Short I + G)
+    .byte SPEECH_N
+    .byte SPEECH_I_SHORT
+    .byte SPEECH_G
+    .byte R10,$00,RET
+
+## Synthesis Notes:
+
+* The Dutch 'G': Using SPEECH_CH (Register 6 at $0f) provides that "scraping" throat sound essential for Dutch.
+* The Nasal 'N': In all three, the SPEECH_N label provides the necessary voiced resonance to bridge the vowels.
+* Timing: You might find W250ms (Short) sounds more natural for the "-en" and "-ing" suffixes to keep the speech moving.
+
+Would you like to try "Sjökapten" next to see how the Swedish SJ cluster handles the transition to a K?
+
+To synthesize the Swedish "Sjökapten" (Sea Captain), we need to handle the complex "SJ" sound followed by a sharp "K" transition. At 1 MHz, this showcases the chip's ability to switch rapidly between fricative noise and melodic formants.
+Here is the sequence using your upper-case call indices:
+
+; --- "Sjökapten" Sequence ---
+; Pronunciation: [ɧøːkapˈteːn]
+
+phrase_sjokapten:
+    ; "Sjö-" (SJ-hiss + Long Ö)
+    .byte SPEECH_SH
+    .byte SPEECH_OE_LONG
+
+    ; "-kap-" (K + Short A + P)
+    .byte SPEECH_K
+    .byte SPEECH_A_SHORT
+    .byte SPEECH_P
+
+    ; "-ten" (T + Long E + N)
+    .byte SPEECH_T
+    .byte SPEECH_E_LONG
+    .byte SPEECH_N
+
+    .byte R10,$00,RET ; Silence and end
+
+## Technical Breakdown:
+
+   1. SPEECH_SH to SPEECH_OE_LONG: This is the "money shot." The noise period (R6) resets while the Envelope Period (R11/R12) and Tone Period (R4/R5) instantly snap to the vowel formants. The ENV_LOOP_TRI in the vowel call ensures the "Ö" sounds hollow and rounded.
+   2. The "K" Articulation: Your SPEECH_K uses STOP_POP (W31ms). This creates a very fast, percussive burst that mimics the back-of-the-throat closure.
+   3. The Long "E": In Swedish, the 'e' in kapten is long and tense. SPEECH_E_LONG uses a higher pitch carrier (R4/R5) to distinguish it from the shorter, lazier 'e'.
+
+Pro-Tip: If the "SJ" doesn't sound "breathy" enough, try changing the SPEECH_SH label's noise value from $03 to $05—this lowers the noise pitch, making it sound more like the "dark" Swedish sju-ljud.
+Would you like to try a diphthong next, like the word "Hej", to see how to slide between two vowel labels?
+
+To synthesize "Hej" (Hi) and "Hej då" (Goodbye), we need to handle the diphthong (the sliding 'ey' sound) and the specific Swedish 'å'.
+For "Hej", the "j" is actually a very short, high-pitched "i" sound. To make it sound like a natural slide, we use a shorter timing (W125ms) for the second half of the diphthong.
+## 1. Hej (Hi)
+
+; --- "Hej" Sequence ---
+; Pronunciation: [hɛj]
+
+phrase_hej:
+    ; "He-" (H + Short E)
+    .byte SPEECH_H
+    .byte SPEECH_E_SHORT
+
+    ; "-j" (The 'j' glide - high/tight like a short I)
+    .byte SPEECH_I_SHORT
+    
+    .byte R10,$00,RET
+
+## 2. Hej då (Goodbye)
+In Swedish, "Hej då" has a distinct rhythmic emphasis on the "då". We use the Triangle envelope shape (SPEECH_AO_LONG) to give the 'å' its characteristic rounded, resonant "back-of-the-mouth" quality.
+
+; --- "Hej då" Sequence ---
+; Pronunciation: [hɛjˈdoː]
+
+phrase_hej_da:
+    ; "Hej" (Reuse the logic from above)
+    .byte SPEECH_H
+    .byte SPEECH_E_SHORT
+    .byte SPEECH_I_SHORT
+
+    ; (Micro pause for word separation)
+    .byte R10,$00,W62ms
+
+    ; "-då" (D + Long Å)
+    .byte SPEECH_D
+    .byte SPEECH_AO_LONG
+
+    .byte R10,$00,RET
+
+## Technical Refinement:
+
+* The Glide: Because SPEECH_I_SHORT uses a very high frequency for the tone and envelope, placing it immediately after SPEECH_E_SHORT mimics the tongue moving upward and forward, which is exactly how a human creates that "j" sound.
+* The 'Å' Quality: Since your SPEECH_AO_LONG routine calls ENV_LOOP_TRI, it will sound much smoother and more "vocalic" than the buzzy Sawtooth used for the 'E' in "Hej". This contrast makes the "då" sound much more authentic.
+
+Should we define a "nasal" transition for words ending in 'm' or 'n' to avoid a sharp "cutoff" at the end of a word?
+
+
+
+To make the endings of words like "morron" or "kapten" sound more natural, we use a nasal fade. Instead of a sharp cutoff, we shift the mixer to a pure tone and slowly drop the volume (or increase the envelope period) to simulate the sound escaping through the nose.
+## The Nasal Transition Sub-routine
+This uses a very low-frequency buzz with a single-shot decay to "taper" the sound.
+
+NASAL_FADE = CALL8
+swe_nasal_fade:
+    .byte MIXER,$fb, ENV,ENV_FADE_OUT, W125ms, RET
+
+## Updated "Hej då" with a "Sigh"
+We can also use a soft H (SPEECH_H) at the very end of "då" to simulate a natural breath release.
+
+phrase_hej_da_natural:
+    .byte SPEECH_H
+    .byte SPEECH_E_SHORT
+    .byte SPEECH_I_SHORT
+    .byte R10,$00,W62ms        ; Word break
+    .byte SPEECH_D
+    .byte SPEECH_AO_LONG
+    .byte SPEECH_H             ; Soft breath out at the end
+    .byte R10,$00,RET
+
+## Complete Word Example: "Morron" (Morning)
+Note how the NASAL_FADE at the end makes the "N" sound like it's vibrating in the nasal cavity.
+
+phrase_morron:
+    .byte SPEECH_M
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_R
+    .byte SPEECH_O_SHORT
+    .byte SPEECH_N
+    .byte NASAL_FADE           ; Smoothly ends the 'N'
+    .byte R10,$00,RET
+
+## Technical Summary for the "Nasal" Effect:
+
+* Physics: A nasal consonant is basically a very low-frequency formant. By using ENV_FADE_OUT on the SPEECH_N settings, you mimic the mouth closing while the sound briefly continues through the nose.
+* Mixing: Keep the Noise (R6) at $00 (off) during this phase to keep the "hum" clean.
+
+Would you like to try the Swedish "R" variants, such as the difference between the rolling "R" used in the North and the guttural "R" used in the South (Skåne)?
+
+To handle the distinct Swedish "R" variants, we adjust the balance between the "vibration" (the Envelope) and the "friction" (the Noise).
+## 1. The Rolling "R" (Standard/Northern)
+This is an alveolar trill. We use a fast, vibrating envelope to mimic the tongue hitting the roof of the mouth.
+
+; Rolling R: Fast vibration, moderate pitch
+SPEECH_R_ROLL:
+    .byte R11,$0a,R12,$00           ; Fast envelope vibration
+    .byte R4,$50,R5,$01             ; Mid-low tone
+    .byte R6,$00                    ; No noise
+    .byte VOICED_CONS
+
+## 2. The Guttural "R" (Skanian/Southern)
+This is a uvular fricative (like the French or German 'r'). Instead of a tongue-roll, it uses throat friction. We swap the vibration for a specific "dirty" noise.
+
+; Skanian R: Throat friction, no tongue roll
+SPEECH_R_SKANE:
+    .byte R11,$15,R12,$00           ; Slower, "heavier" envelope
+    .byte R4,$80,R5,$01             ; Lower tone
+    .byte R6,$0e                    ; Heavy throat noise (Formant 3)
+    .byte VOICED_CONS
+
+## 3. The Retroflex "R" (Central/East)
+When 'R' is followed by D, T, N, or L (e.g., in "Märta" or "Barn"), it disappears and turns the next letter into a "thick" sound. We simulate this by lowering the pitch and adding a tiny bit of noise to the following consonant.
+
+; Thick 'RT' (The sound in 'Märta')
+SPEECH_RT_THICK:
+    .byte R4,$b0,R5,$00             ; Lowered, "thicker" T-pitch
+    .byte R6,$04                    ; Extra resonance noise
+    .byte STOP_POP
+
+## Comparative Example: "Märta"
+You can hear the difference by how you transition from the 'Ä' to the 'T'.
+
+| Style | Sequence |
+|---|---|
+| Northern | SPEECH_M, SPEECH_AE_SHORT, SPEECH_R_ROLL, SPEECH_T, SPEECH_A_SHORT |
+| Skanian | SPEECH_M, SPEECH_AE_SHORT, SPEECH_R_SKANE, SPEECH_T, SPEECH_A_SHORT |
+| Stockholm | SPEECH_M, SPEECH_AE_SHORT, SPEECH_RT_THICK, SPEECH_A_SHORT |
+
+Which Swedish dialect or specific regional phrase should we try to replicate next using these different "R" sounds?
+
+
