@@ -1,3 +1,10 @@
+;;; Notice: This isn't actually 1-IPA yet, lol
+
+;;; This is just how Google AI tried to make up
+;;; direct register AY combinations t create wovels
+;;; and consonants for speech.
+	
+
 ;;; 1-IPA wovels by AY directly, lol
 ;;; (see 1-IPA.md for session)
 

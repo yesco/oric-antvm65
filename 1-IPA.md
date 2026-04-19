@@ -1,3 +1,10 @@
+;; TODO: this is a long conversation, it started with the idea of creating a universal IPA implementation, but the end of the document is a reduced set for "Swedish" wovels implemented in 1-IPA.asm, and extensions for other.
+
+The basic idea is that speech can be simplified to use a single tone-generator and noise, together with a kind of envelope.
+
+1-IPA.asm: The latter simlified incarnation is using specific AY register settings to recreate wovels and consonants, with a simple encoding of formants to the C tone-generator and using added Noise when appropriate, as well as setting the envelop generator to generate additional lower formant (frequeny) using triangle shapes or saw-tooth envelopes. If this works well or not remains to be seen!
+
+
 TODO: add pauses!!! fixed length ("WAIT")
 TODO: maybe also some volume macros in 1-General
 
