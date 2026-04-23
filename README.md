@@ -4,13 +4,17 @@
 
 **Status: very early implementation in progress**
 
-*Note: this document contains fragments of Gemeni discussions in trying to understand and refine as well as define, not only the functionality, but as well as description. Eventually, it should be edited out.*
+
+*Note: this document contains extensive fragments of Gemeni discussions in trying to understand and refine as well as define, not only the functionality, but as well as description. Eventually, it should be edited out.*
+
+
 
 AntVM65 is a high-performance, 24-TET micro-synth designed for elite 8-bit music, organic speech synthesis, and custom FX. It’s a specialized VM that interprets "in-band" command streams alongside quarter-note data.
 
+
 ## The Architecture:
 
-Precision Tuning: Native 24-TET support across 8 octaves (0–7), bridging the gap between clinical Western scales and natural, microtonal speech.
+Precision Tuning: Native 24-TET support across 8 octaves (0–7), bridging the gap between clinical Western scales and Asian/Arabic scales, as well as natural, microtonal speech.
 
 Channel Routing: Independent cursors for Tone Channels A, B, C, plus a dedicated Virtual Noise (N) channel.
 
@@ -20,12 +24,15 @@ The Ticker Engine: A savage 1-bit delta engine with 16-bit patterns. It drives h
 
 - ECHO: A-to-B delay with a 1–16 step buffer (switching to a 2-tick "cheat" for deep rhythmic repeats).
 - LINK: C mirrors A with relative detuning and volume attenuation.
+- GLISSANDO: glide from current frequency to new note. Automatically calculates pitchchanges/speed.
 
 The Logic & Control: Commands that trigger channel shifts, control flow, or raw AY-register overrides.
 
-The Language System: Install up to 8 independent "Languages." Zero is your main program. Each can hold up to 256 Phonemes (subroutines). There is a 4.-level stack for caLLs, which stores language+pos, which are restored at return.
+The Language System: Install up to 8 independent "Languages". Each can hold up to 256 Phonemes (subroutines). The zero:th slot the main program, 1-8 are "fast-call" 1 byte command slots subroutines. There is an 8-level stack for calls for each cursor. The stack stores current interpretive state: language+pos, which are restored at RETurn.
 
-Extensibility: Execute JSR calls to host code with AXY register passing. Use the AX return for zero-flag relative branching, enabling true algorithmic sound design.
+Flexibility: The AntVM allows for extreem custom manipulation: timning, ticks, BPS, note lengths/gate factor control, as well as providing convenient mini-synth features based on logical music operations, modules and subroutine notations for re-use, but allows explicit setting of the AY registers; either individual registers, or a flexible subset or a plain 14-bytes register dump.
+
+Extensibility: Execute JSR calls to host code with AXY register passing. Use the AX return for zero-flag relative branching, enabling true algorithmic sound design, as well as multi-media synchronization. Roll a dice; random selection from a set of subroutines. Make your own wurfel-spiel Bach-style music. Add your own commands!
 
 Tag-line: "AntVM65 isn't just a player; it’s a Sound Language that treats speech and synthesis as one unified, programmable beast."
 
@@ -33,281 +40,117 @@ Tag-line: "AntVM65 isn't just a player; it’s a Sound Language that treats spee
 **Feature summary:**
 
 ```
-;;; Interpretes with 4 voices with 3 "cursors"
-;;; - A,B,C: tone generators w independent cursors
-;;; - N    : noise generator (on A, B, or C)
+;;; Interprets 4 voices with 4 "cursors"
+;;; - A,B,C,(N/D): (3) tone generators w independent cursors
 ;;; 
-;;; Each cursor interprets a stream of a phonem.
-;;; A set of phonems are called Language.
+;;; Each cursor interprets a stream of phonems.
+;;; A set of phonems are called a Language.
 ;;;
-;;; The Articulator plays each note.
+;;; The Articulator plays each note. The default
+;;; is LENGTH=DURATION+REST. However, it can be shaped by
+;;; using a delta modulation of volume and/or pitch.
 ;;;
-;;; Each cursor has the following state parameters:
-;;; - volume
-;;; - note/pitch/period (quarter-notes: 24-TET)
-;;; - a detune (quarter-note resolution shifter)
+;;; Each cursor has the following states/parameters:
+;;; - VOLUME
+;;; - note/PITCH/period (quarter-notes: 24-TET)
 ;;; - LENGTH (whole half quarter ... 32th)
 ;;; - REST  (LENGTH >> "relative-rest")
+;;; - TRANPOSE notes by offsetting
+;;; - GLISSANDO
 ;;; - DELTAS: 16 bits of a bit-delta modulator
-;;;   - volume (speed + step)
-;;;   - pitch  (speed + step)
+;;;   - volume shape  (speed + step)
+;;;   - pitch detuner (speed + step)
 ;;; - EFFECTS
 ;;;   - LINK: C linked to A, detuned by:
-;;;         pitch +- = pitch >> 1..12
-;;;         vol    - = dvol
+;;;        - pitch +- = pitch >> 1..12
+;;;        - vol    - = dvol
 ;;;   - ECHO: B follows A, delayed in 8 element buffer
 ;;;        - delay 1-8  : 
 ;;;        - delay 9-16 : every second swample
 ;;;        - ? optional feedback? w >> 1 (?)
 
 
-
-
 # COMMAND BITPATTERN FORMATS
 
-The stream is an simple byte-coded VM: it has two types of commands:
+Commands from a stream are interpreted by a simplistic byte-coded VM.
+It has two types of commands:
 
 ```
- nnnnn oct = Note (5 bits for note value 0-23, 3 bits for octave 0-7)
-                 [01=sub 23=bass 45=melody 67=clarity]
- 11 pgg iii = commands (pgg: group bits 0-7, iii: data bits 0-7)
+ nnnnn  oct = NOTE (5 bits for note value 0-23, 3 bits for octave 0-7)
+                   [01=sub 23=bass 45=melody 67=clarity]
+ 11 pgg iii = COMMAND (pgg: group bits 0-7, iii: data bits 0-7, p: has extra byte parameter)
 ```
 
-A note, after being set is "played", and it yields. That is it plays it's LENGTH time ticks, and then it's REST specifedc ticks. If LENGTH is 0, then it doesn't yield *(TODO:!)* and WAIT can be used.
+A *note*, after being set is "played", and then it YIELDS.
 
-Each channel (A,B,C,Noise) typically has it's own "cursor" (and stack) that does the interpreation.
+Each channel (A/B/C/DN) has it's own "cursor" (program counter), and stack (8 calls deep) that controls the interpretation.
 
-It's important to set volume and other parameters "before" the note commences. Most such settings are per channel (A,B,C,Noise) and are sticky - that is they are permanent until explicitly changed.
-
+In general it's important to set volume and other parameters "before" the note commences as it directly plays the note. Most such settings are per channel (A/B/C/Noise) and are "sticky" - that is they are permanent until explicitly changed. If LENGTH is 0, the normal LENGTH and REST is disabled, and one can do custom envopes by explicitly yielding using WAITxx values.
 
 
 ## Groups of commands
  
-Here is a rough overview of how the bit-patterns define commands
+Here is a rough overview of how the bit-patterns defined commands:
 
 ```
 nn nnn oct = NOTE nnnnn:0-23 oct:0-7
 
-11 000 000 = STOP wait for event/sync/spawn
-11 000 www = WAIT.speech: 1-7 ticks: iii*20ms (32th,16th)
-11 000 ppp = WAIT.music:  LENGTH>>(ppp-1): 1 /2 /4 /8 /16 /32
+11 000 000 = STOP current cursor; wait for event/sync/spawn
+11 000 001 = REST (quiet note; VOL=0, WAIT "length")
+11 000 www = WAIT 1 /2 /4  /8 /16 /32 == $TPS * 2^(www-1)$
 
-11 001 000 = SUSTAIN
-11 001 001 = LENGTH1
-11 001 010 = LENGTH/2
-11 001 011 = LENGTH/4
-11 001 100 = LENGTH/8
-11 001 101 = LENGTH/16
-11 001 110 = LENGTH/32
-11 001 111 = LEGATO
+11 001 000 = MANUAL; free run (notes don't yield - no waiting)
+11 001 001 = LENGTH= 1/1 current default note length
+11 001 010 = LENGTH= 1/2
+11 001 011 = LENGTH= 1/4
+11 001 100 = LENGTH= 1/8
+11 001 101 = LENGTH= 1/16
+11 001 110 = LENGTH= 1/32
+11 001 111 = LENGTH= 1/64
 
-11 010 pnm = CALL pnm (0-7 => CALL.0: local 1-8)
+11 010 pnm = CALL.0 pnm - calls local language phonem: 1-8 (0-7)
 
-11 011 000 = CHANNEL A - select
-11 011 001 = CHANNEL B - select
-11 011 010 = CHANNEL C - select
-11 011 011 = NOISE   N - select
-
-;; TODO: nah, it's only two bytes with SETAY.R8+ch= VOL;
-11 011 100 = VOL.A = 0
-11 011 101 = VOL.B = 0
-11 011 110 = VOL.C = 0
-11 011 111 = YIELD
-
-;;TODO: revisit, 4 free commands!!!!
-
-11 011 100|CTRL = EXTENDED command    - TODO: redundant
-11 011 101      = YIELD - why need??? - TODO: ?
-11 011 110      = QUIET (mute: all)   - TODO: AYPDATE: 5 bytes
-11 011 111      = KILL  (all) )       - TODO: long extend?
+11 011 vvv = VOLUME vvv : 0, (1-7: 4,7,9, 11,13,14,15) - "linear for ear"
 
 
-**with parameter(s):**
 
-11 10 rrrr|BYTE    = SETAY AY[rrrr]= BYTE (2 B)
-11 10 1110|MASK|...= AYPDATE              (3-13 B)
-11 10 1111|.{14 B}.= DUMPAY (14 regs)
+**WITH PARAMETER(S):**
 
-11 110 lng|PNM  = CALL.lng PNM
+11 10 rrrr|BYTE       = SETAY AY[rrrr]= BYTE (   2 B) [0-13]
+11 10 1110|MASK|..... = AYPDATE              (3-13 B) [14]
+11 10 1111|<--14_B--> = DUMPAY 14-regs       (  15 B) [15]
 
+11 110 lng|PNM  = CALL.lng PNM (lng: 0=current 1-7 PNM: 0-25x)
 
-11 111 000|BYTE     = DRUM kick "s"
-11 111 0011BYTE     = DRUM snare "sh"
-11 111 010|BYTE     = DRUM hihat(closed) "ch"
-11 111 0d11BYTE     = DRUM hihat(open) "ts"
+11 111 000|BYTE = DRUM S  (kick/plosive)  : 0=Deep thump    15=pop
+11 111 0011BYTE = DRUM SH (snare/sibliant): Body "mouth tone"
+11 111 010|BYTE = DRUM CH (close hat):fast decay 0=Thick CH 15=Thin T,K
+11 111 011|BYTE = DRUM TS (open hat) :slow decay 0=Sizzle   15=Hiss
 
-11 111 100|CTRL|... = EXTENDED commands param and w data
-11 111 101|PAR|BYTE = PARAM BYTE "PARam"
-11 111 110|PAR|WORD = PARAM WORD "PARam"
-11 111 111          = RETURN ($ff - as "expected")
+11 111 100|CTRL|...  = EXTENDED various irregular commands w params
+11 111 101|PARM|BYTE = PARAM BYTE "PARam" - sets one byte  of "register"
+11 111 110|PARM|WORD = PARAM WORD "PARam" - sets two bytes of "register"
+11 111 111           = RETURN ($ff - as "expected")
+
+Regarding EXTENDED commands see separate section.
 ```
 
 
-### EXTENDED COMMANDS
+## NOTE commands
 
-*TODO: just ideas*
-
-
-```
-11 111 100|CTRL|... = EXTENDED commands
-
-# maybe just dispatch of 4 bits and 4 bits inline data+BYTE?
-
-11 111 100| 0000  ????|BYTE   = WAIT ticks
-11 111 100| 0001  lang|PHON   = TAIL.CALL PHONem
-11 111 100| 0010  0000        = ENDLANG
-11 111 100| 0010  lang|BYTE   = BEGIN lang (1-7)
-11 111 100| 0011  nnnn|....   = RANDOM.CALL? lang:rand(nnnn)
-11 111 100| 0100  ....|ADDR   = $4c JMP addr (ret with RTS, A= ....)
-11 111 100| 0101  12bt|BYTE   = GOTO 12bt|BYTE (offset lang)
-11 111 100| 0110  cond|BYTE   = BRA relative using cond flags?
-11 111 100| 0111  chan|PHON   = SPAWN on chan PHONem
-
-11 111 100| 1........         = need 7 bit parameter?
-
-TODO: note-delta encoding?
-
+A note a one-byte command, setting up for playing a 24-TET note. It is encoded as:
 
 ```
-
-
-## Octaves reversed, lol
-
-Standard Octave Numbering
-The numbering follows an ascending order, where each new octave begins on the note C. 
-hamburgmusicnotation.com
-hamburgmusicnotation.com
- +1
-Octave 0 (or lower): These are the lowest frequencies. Octave 0 is the lowest full register on a piano, sitting at the bottom edge of human hearing (around 16–20 Hz).
-Octave 4: This is the "middle" register. C4 is specifically defined as Middle C.
-Octave 7 & 8: These are the highest frequencies. On a standard 88-key piano, C8 is the highest
-
-
-## PARAMETER commands
-
-Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
-
-
-```
-**Zero Page BLOCK/16 B**
-(offset)
-  $00: bitmap: ENVELOP: ABCNabcn (PTCHvolu) ???
-  $01: bitmap: EFFECTS: LinkEcho543210
-
-  -- A
-    (maybe just one with "min"? and keep counters in block)
-    $03: delay
-
-  -- B
-    ...
-  -- C
-    ...
-  -- N
-    ...
-
-**A Parameter Block/16 B:**
-  -- HEADER
-  $00: stuff todo (bitmask)/8-bit, 0=nothing to do (STOPped)
-    (these bits already coveredc in ZP: block?)
-    - bit 0: vol deltas
-    - bit 1: pitch deltas
-
-    - bit 2: 
-    - bit 3: 
-    - bit 4: 
-    - bit 5: 
-    - bit 6: (easy to test!)
-    - bit 7: (easy to test!)
-
-  $01: delay timer/8-bit
-  $02: speed (delay between ticks)
-  $03: last command (?)
-  $04:
-  $05: 
-  $06: 
-  $07: 
-  ...
-
-  -- VOLUME ENV DELTAS/4 B
-  $f8: speed
-  $f9: delta
-  $fa-fb: bitmap delta/16-bit
-
-  -- PITCH ENV DELTAS/4 B
-  $fc: speed
-  $fd: delta
-  $fe-ff: bitmap delta/16-bit
-
-
-**B Parameter Block/16 B**
-  $20: ...
-
-
-**C Parameter Block/16 B**
-  $40: ...
-
-
-**N Parameter Block/16 B:**
-  $60: ...
-
-
-**EFFECTS Block/16 B**
-  $80: ...
-
-  -- LINK Block/16 B--
-  $80: detune fixed pitch/note ???
-
-
-(this one doesn't have to be fixed, push ahead/after last)
-**ECHO BUFFER Block:**
-  $a0: 16*WORD (pitch:12 + vol:4)
-
-
+nnnnn oct  = nnnnn: 0-23 TET, and oct: 0-7
 ```
 
+*Standard Octave Numbering*
 
+The numbering follows an ascending order, where each new octave begins on the note C.
 
-
-## Volume commands?
-
-While your 16-bit Delta Engine handles the "movement" of sound (crescendos, decays), you still need Discrete Dynamic Levels to set the base intensity for different sections of music or speech.
-
-## How many levels?
-
-Four levels is the absolute minimum, but 8 levels is the "sweet spot" for 8-bit systems.
-
-* Why 4 is tight: With only 4 levels, you only have Quiet, Medium, Loud, and Max. This makes it hard to distinguish between a "Lead" melody and "Background" accompaniment without one burying the other.
-* Why 8 is ideal: 8 levels (3 bits) map perfectly to standard musical terminology and provide enough "headroom" to balance a 3-channel mix (e.g., Lead at level 6, Bass at level 4, Arpeggio at level 3).
-
-## Recommended 8-Level "Dynamic" Budget
-Mapping your volume to these terms makes the VM intuitive for both musicians and "Language" designers:
-
-| Level [1, 2, 3] | Music Term | Use Case |
-|---|---|---|
-| 0 | Silence | Note-off / Mute |
-| 1 | pp (Pianissimo) | Very soft background "ghost" notes |
-| 2 | p (Piano) | Soft accompaniment / Whispering |
-| 3 | mp (Mezzo-piano) | Standard background filler |
-| 4 | mf (Mezzo-forte) | Standard conversational speech |
-| 5 | f (Forte) | Loud / Lead melody line |
-| 6 | ff (Fortissimo) | Very loud / Emphasized words |
-| 7 | fff (Sforzando) | Maximum "cranked" output / Percussion hits |
-
-## Speech vs. Music Needs:
-
-* Music: Needs these levels to create Sectional Contrast (e.g., a quiet Verse vs. a loud Chorus). Even with envelopes, a "Loud" envelope starting at base level 2 sounds completely different than a "Loud" envelope starting at base level 7.
-* Speech: Uses these levels for Emphasis. In natural speech, important words are slightly louder. Having 8 levels allows you to tag specific "Word Indices" in your Language 1 table with a dynamic level (e.g., Level 6 for "Stop!") while the rest of the sentence sits at Level 4.
-
-## The "6502 Hack" for Volume:
-
-Since the AY-3-8910 has 16 internal volume levels (0-15), you can easily map your 3-bit (0-7) VM levels to the AY hardware using a simple Shift or Lookup Table:
-
-* AY_VOL = VM_LEVEL << 1 (Simple, but 0 stays 0 and 7 becomes 14).
-* Recommended: Use a 8-byte LUT to map them logarithmically (e.g., 0, 2, 4, 7, 9, 11, 13, 15) to better match how human ears perceive loudness.
-
-[1] [https://www.sfu.ca](https://www.sfu.ca/sonic-studio-webdav/handbook/Dynamics.html#:~:text=Table_content:%20header:%20%7C%20pp%20%7C%20pianissimo%20%28very,pianissimo%20%28very%20soft%29:%20fortissimo%20%28very%20loud%29%20%7C)
-[2] [https://www.sfu.ca](https://www.sfu.ca/sonic-studio-webdav/handbook/Dynamics.html#:~:text=Table_content:%20header:%20%7C%20pp%20%7C%20pianissimo%20%28very,pianissimo%20%28very%20soft%29:%20fortissimo%20%28very%20loud%29%20%7C)
-[3] [https://www.masterclass.com](https://www.masterclass.com/articles/guide-to-dynamics-in-music#:~:text=How%20to%20Indicate%20Dynamics%20in%20Music%20Notation.,abbreviation%20of%20fortississimo%20meaning%20%22very%2C%20very%20loud%22)
+*Octave 0* (or lower): These are the lowest frequencies. Octave 0 is the lowest full register on a piano, sitting at the bottom edge of human hearing (around 16–20 Hz).
+*Octave 4*: This is the "middle" register. C4 is specifically defined as Middle C.
+*Octave 7 & 8*: These are the highest frequencies. On a standard 88-key piano, C8 is the highest
 
 
 
@@ -530,6 +373,163 @@ How are you planning to trigger the "2-tick cheat" for the deep rhythmic repeats
 
 
 
+
+## PARMETERS & EXTENDED commands
+
+These may overlap, as setting some parameters will *implicitly* enable features (by being non-0 values).
+
+Typically, if no logic/calculation is required at command parse-time, it's a parameter that's directly written as byte(s), otherwise it's an EXTENDED command.
+
+There are two groups of parameters:
+- zero page/internal run-time state data (why? lol, enable/disable?)
+- 1-4 channel data (and maybe stack?) - up to 32 bytes per cursor
+
+
+## PARAMETER commands
+
+Each channel `(A,B,C,N)` has a number of parameter in a block of size 32 bytes.
+
+
+```
+**Zero Page BLOCK/16 B**
+(offset)
+  $00: bitmap: ENVELOP: ABCNabcn (PTCHvolu) ???
+  $01: bitmap: EFFECTS: LinkEcho543210
+
+  -- A
+    (maybe just one with "min"? and keep counters in block)
+    $03: delay
+
+  -- B
+    ...
+  -- C
+    ...
+  -- N
+    ...
+
+**A Parameter Block/16 B:**
+  -- HEADER
+  $00: stuff todo (bitmask)/8-bit, 0=nothing to do (STOPped)
+    (these bits already coveredc in ZP: block?)
+    - bit 0: vol deltas
+    - bit 1: pitch deltas
+
+    - bit 2: 
+    - bit 3: 
+    - bit 4: 
+    - bit 5: 
+    - bit 6: (easy to test!)
+    - bit 7: (easy to test!)
+
+  $01: delay timer/8-bit
+  $02: speed (delay between ticks)
+  $03: last command (?)
+  $04:
+  $05: 
+  $06: 
+  $07: 
+  ...
+
+  -- VOLUME ENV DELTAS/4 B
+  $f8: speed
+  $f9: delta
+  $fa-fb: bitmap delta/16-bit
+
+  -- PITCH ENV DELTAS/4 B
+  $fc: speed
+  $fd: delta
+  $fe-ff: bitmap delta/16-bit
+
+
+**B Parameter Block/16 B**
+  $20: ...
+
+
+**C Parameter Block/16 B**
+  $40: ...
+
+
+**N Parameter Block/16 B:**
+  $60: ...
+
+
+**EFFECTS Block/16 B**
+  $80: ...
+
+  -- LINK Block/16 B--
+  $80: detune fixed pitch/note ???
+
+
+(this one doesn't have to be fixed, push ahead/after last)
+**ECHO BUFFER Block:**
+  $a0: 16*WORD (pitch:12 + vol:4)
+
+
+```
+
+
+
+
+## EXTENDED COMMANDS
+
+*TODO: just ideas*
+
+
+```
+11 111 100|CTRL|... = EXTENDED commands
+
+
+; maybe just dispatch of 4 bits and 4 bits inline data+BYTE?
+
+11 111 100|cmnd  data|...
+
+
+11 111 100|0000  0000|TICKS  = WAIT TICKS (0-255) absolute
+11 111 100|0000  ????        = WAIT 1-15 ticks absolute
+
+
+11 111 100|0001  0lng|PHON   = GOTO.lng PHONem (tail-call!)
+
+; these are "similar but on different channels"
+11 111 100|0001  1000|PHON   = A.SPAWN.CALL PHONem
+11 111 100|0001  1001|PHON   = B.SPAWN.CALL PHONem
+11 111 100|0001  1010|PHON   = C.SPAWN.CALL PHONem
+11 111 100|0001  1011|PHON   =(N.SPAWN.CALL PHONem (?))
+
+;; TOOD: glissando? 2 bits "speed"
+11 111 100|0001  1100        = ?
+11 111 100|0001  1101        = ?
+11 111 100|0001  1110        = ?
+11 111 100|0001  1111        = ?
+
+;; changing "interpreter" of stream
+
+11 111 100|0010  0lng|BYTE   = BEGIN lang (1-7) (stream==indices only!)
+11 111 100|0010  1000|BYTE   = ?
+11 111 100|0010  1001|BYTE   = delta-nibbles
+11 111 100|0010  1010|BYTE   = delta-nibbles (two tones?)
+
+
+11 111 100|0011  nnnn|....   = RANDOM.CALL? lang:rand(nnnn)
+
+11 111 100|0100  ....|ADDR   = $4c JMP addr (ret with RTS, A= ....)
+11 111 100|0101  4bt+|BYTE   = GOTO 4bt+|BYTE (offset lang)
+11 111 100|0110  cond|BYTE   = BRA relative using cond flags?
+11 111 100|0111  0???        = GATE 0-7
+11 111 100|0111  1???        = GLISSANDO ("speed")
+
+TODO: note-delta encoding?
+
+11 111 100|1........         = need 7 bit parameter?
+;; (could just use this for 127 ticks of wait?)
+;; (* 128 20) = 20ms -- 2.560s
+
+
+;; BUT then we don't have many command slots left over... lol
+```
+
+
+
 ## GLOBAL "Registers"
 
 http://www.deater.net/weave/vmwprod/pt3_player/README_pt3.txt
@@ -591,9 +591,10 @@ We have 5 groups of instructions that need to do internal individual dispatch on
 
 ## Commands  Details
 
-## WAIT
 
-Standard BPM=120
+## `11 000 vvv:` WAIT
+
+Standard `BPM=120`
 
 speech and "macro" blocks for music.
 
@@ -601,17 +602,18 @@ This setup gives you a high-resolution "low end" for speech and rhythmic "utilit
 
 "That is a very clever way to multiplex the 11000 and 11001 opcodes. You’ve created a "Gearbox" for timing:"
 
-## 1. The Wait Logic (11000)
+
+##  Wait Logic
 
 * 000 (STOP): This is your sync/yield point. Very useful for multi-threading or waiting for a sprite to hit a coordinate.
 * 001-111 (www):
 * Speech Mode: Fixed linear ticks ($iii \times 20\text{ms}$). This is perfect for dialogue where you want constant speed regardless of music.
-   * Music Mode: Power-of-two divisions (Binary fractions). This is the "Aha!" moment—by using LENGTH >> (ppp-1), you can change the tempo of the entire song just by updating one LENGTH register, and all notes will scale relatively ($1/2, 1/4, 1/8$, etc.).
+* Music Mode: Power-of-two divisions (Binary fractions). This is the "Aha!" moment—by using LENGTH >> (ppp-1), you can change the tempo of the entire song just by updating one LENGTH register, and all notes will scale relatively ($1/2, 1/4, 1/8$, etc.).
 
 
-## 2. The Value Logic (11001)
+## 11 000 vvv: LENGTH (value of note)
 
-* Sustain/Legato: Using $iii$ here as a bitmask or index for how long the envelope stays open is much better than a simple ON/OFF. It allows for "slurred" transitions between those 24 quarter-tones.
+* Sustain/Legato: Using $vvv$ here as a bitmask or index for how long the envelope stays open is much better than a simple ON/OFF. It allows for "slurred" transitions between those 24 quarter-tones.
 
 That makes perfect sense. You’ve designed a Modal Synth. The VM's behavior fundamentally changes based on the LENGTH (Envelope/Gate) register:
 
@@ -621,98 +623,163 @@ That makes perfect sense. You’ve designed a Modal Synth. The VM's behavior fun
 
 ## Why this is great for Legato:
 
-In Legato, you don't want the volume envelope to close between notes.
+In Legato, the volume envelope does not open/close between notes, they just change frequency.
 
-* Source: LENGTH0 C D E LENGTH2
+* Example: `L0 C D E L2`
 
 * Result: The VM updates pitch C, then immediately D, then E, all while the "gate" is open. Only when you switch back to LENGTH2 (or whatever your auto-mode is) does the VM start closing the gate after notes again.
 
 
 
+TODO: reconsider!
+(it's almost like upper part is linear wait, whereas the rest is note based)
 
 
-TODO: cleanup, one table for SPEECH and one for MUSIC mode
+|Value| Ticks| Duration| Musical | Use Case          | Speech Use Case |
+|---|---|---|---|---|---|
+|  0  |    - |    -    | STOP    | stop till started | wait/sync |
+|  1  |    1 |   20ms  |         ||syncopation|
+|  2  |    2 |   40ms  |         |                   | phonem transients|
+|  3  |    3 |   60ms  | 1/32th  |                   | plosives |
+|  4  |    4 |   80ms  |         |||
+|  5  |    5 |  100ms  |         |||
+|  6  |    6 |  120ms  | 1/16th  |||
+|  7  |    7 |  140ms  |         |||
+|  8  |    8 |  160ms  |         |||
+|  9  |    9 |  180ms  |         |||
+| 10  |   10 |  190ms  |         |||
+| 11  |   12 |  240ms  | 1/8th   |||
+| 12  |   25 |  500ms  | quarter |                   | Long wovels |
+| 13  |   50 |    1s   |  half   |                   | Sentence break |
+| 14  |  100 |    2s   |  whole  | Measure           | Full stop |
+| 15  |  200 |    4s   |  wait   | Ambient fade-out  | Scene change
 
-|Value| Ticks| Duration| Musical| Use Case| Speech Use Case |
-|  0  |    - |    -    |  STOP  | stop till started | wait/sync |
-|  1  |    1 |   20ms  |||syncopation|
-|  2  |    2 |   40ms  |||&poneme transients|
-|  3  |    3 |   60ms  |  1/32th ||&plosives|
-|  4  |    4 |   80ms  ||||
-|  5  |    5 |  100ms  ||||
-|  6  |    6 |  120ms  |  1/16th |||
-|  7  |    7 |  140ms  ||||
-|  8  |    8 |  160ms  ||||
-|  9  |    9 |  180ms  ||||
-| 10  |   10 |  190ms  ||||
-| 11  |   12 |  240ms  |  1/8th  |||
-| 12  |   25 |  500ms  | quarter |         | Long wovels |
-| 13  |   50 |    1s   |  half   |         | Sentence break |
-| 14  |  100 |    2s   |  whole  | Measure | Full stop |
-| 15  |  200 |    4s   |  wait   | Ambient fade-out | Scene change
+
+## Default Articulator
+
+The articulator controls how the notes are played, basically the volume enevelope. The default is a note of the default LENGTH played at a fixed VOLUmE. As part of this therer is some time at the end which is not active where the volume goes down. By default, it just turns off, unless special articulator effects are active.
 
 
-## Consider using LENGTH (NOTE LENGTH)/ GATE (FACTOR)
+## LENGTH
 
-In the world of synthesis and sequencing, Gate is the industry-standard term for the concept you are describing. [1, 2] 
-## How GATE is typically defined
+Defines the note's base length. In implementation.
 
-* Definition: A Gate signal is a binary "on/off" state that tells an articulator/envelope whether a key is currently "held".
-* Gate Time / Gate Length: This refers to the active portion of a note's duration—the time the sound is actually "on" before it begins its release.
-* Duty Cycle: In step-sequencing, this is often expressed as a percentage (e.g., 50% Gate means the note is "on" for half the step and "silent" for the rest). [1, 3, 4, 5, 6] 
+```
+11 011 vvv                       in 120 BPM
+============================================
+11 011 000 = SUSTAIN / MANUAL        - ticks (manual control)
+11 011 001 = 1/1  (Whole)   >> 0  (100 ticks)
+11 011 010 = 1/2  (Half)    >> 1  ( 50 ticks)
+11 011 011 = 1/4  (Quarter) >> 2  ( 25 ticks)
+11 011 100 = 1/8  (8th)     >> 3  ( 12 ticks)
+11 011 101 = 1/16 (16th)    >> 4  (  6 ticks)
+11 011 110 = 1/32 (32nd)    >> 5  (  3 ticks)
+11 011 111 = 1/64 (64th)    >> 6  (  1 ticks)
+```
 
-## Is "LENGTH" confusing for Note Length?
-Using LENGTH to represent the "Total Note Length" (the rhythmic grid position including the silence) is not inherently confusing, but it differs from standard terminology: [7] 
+(Note: These values are LATCHED. Changes apply only when a 
+       NEW note byte (ooo nnnnn) is triggered.
 
-* Standard term: Most systems call this Duration or Note Value (e.g., a "Quarter Note Value").
-* Your logic: Since your LENGTH sets the total ticks (the rhythmic "slot"), and your REST subtracts from that to create the gap, your system is technically a Gate Duration Controller. [8, 9, 10] 
 
-## Recommendation: Naming Improvements
-If you want your code to be more "musical" to an outside reader, consider these renames:
 
-| Your Current Term [11, 12, 13, 14, 15] | Industry Equivalent | Why? |
+## The "WAIT" vs "Relative REST" Synergy:
+
+* Relative GATE: Use this for Note Articulation (staccato, legato, etc.). It lives "inside" the note's time-slot.
+* WAIT Command: Use this for Structural Silence (the dash in music notation, or the pause between sentences). It lives "between" time-slots.
+
+
+TODO: consider wait:
+
+Since you have a 3-bit budget, you could use the 8 values (0–7) as:
+
+* 0-3: The LENGTH >> (n+1) relative shifts.
+* 4-7: Fixed Tick values (1, 2, 4, 8 ticks) for when you need absolute precision regardless of the BPM.
+
+(to get higher definition use combinations? 8+8+8+4+1 = 5 bytes, alt: have a 2 byte command with 5 bit ticks value, or 3 byte with 0-255 arg)
+
+
+
+## GATE duty cycle
+
+We use the GATE command to set a binary "on/off" time period as the simplest articulator/envelope. It tells us how long to "hold" the note, and implicitly defines the "space", the time where the note is released.
+
+Typically, GATE is defined using percentage of the current note played.
+
+
+AntVM is typiclly using 50Hz ticks, whereas standard tracker musical theory notes are often updated at 12 ticks per line. This effectively maps to classic musical notations:
+
+Each note has a time budget (e.g., 25 ticks for a quarter note), and your 0–7 index selects a percentage of that budget to keep the gate open.
+For a quarter note (25 ticks), here is exactly how your chosen factors (0.06 to 1.00) divide the time:
+
+| Index | Factor | "On" Duration | "Off" Rest | Resulting Sound |
+|---|---|---|---|---|
+| 0 | 1.00 | 25 ticks | 0 ticks | Sustain: Constant tone. |
+| 1 | 0.99 | 24 ticks | 1 tick | Legato: Tiny gap to retrigger envelopes. |
+| 2 | 0.88 | 22 ticks | 3 ticks | Tenuto: Full but distinct. |
+| 3 | 0.75 | 18 ticks | 7 ticks | Portato: Noticeable separation. |
+| 4 | 0.50 | 12 ticks | 13 ticks | Staccato: Half sound, half silence. |
+| 5 | 0.25 | 6 ticks | 19 ticks | Staccatissimo: Sharp, punchy pluck. |
+| 6 | 0.12 | 3 ticks | 22 ticks | Percussive: A short blip. |
+| 7 | 0.06 | 1 tick | 24 ticks | The "Tick": Absolute minimum pulse. |
+
+### Implementation via Bit Shifting
+
+We're Using bitwise shifts for these specific values as it's highly efficient way to calculate these durations live in a VM environment. You can approximate your multipliers using the following logic for a note of length $L$: [4] 
+
+| Index | Target Factor | Bitwise Approximation | Notes |
+|---|---|---|---|
+| 0 | 100% | $L$             | Sustain (until changed) |
+| 1 | 100% | $L - (L \gg 7)$ | Legato (can change pitch) |
+| 2 | 88% | $L - (L \gg 3)$  | $\sim 0.875$ (close to 0.88) |
+| 3 | 75% | $L - (L \gg 2)$  | Exact 0.75 |
+| 4 | 50% | $L \gg 1$        | Exact 0.50 |
+| 5 | 25% | $L \gg 2$        | Exact 0.25 |
+| 6 | 12% | $L \gg 3$        | Exact 0.125 |
+| 7 | 6% | $L \gg 4$         | Exact 0.0625, at least 1 tick==20ms |
+
+* Index 4 (0.50) is the literal definition of staccato, cutting the note in half.
+* Index 3 (0.75) and Index 2 (0.88) provide the "air" needed for melodic separation without the "hop" of a true staccato.
+* Index 5-7 move into the percussive/FX range (0.25, 0.12, 0.06), which is essential for capturing the sharp, clicky transients of the AY-3-8910. [1, 2, 3] 
+
+
+## Technical Alignment
+
+* The 1-Tick Limit: At 0.06, the quarter note hits 1.5 ticks (rounded to 1). This is perfect because it's the shortest possible sound the VM can produce at 50Hz, giving you that authentic "clicky" AY transient.
+* The 50% "Square" Feel: At Index 4 (12 ticks on, 13 ticks off), you get that perfectly balanced rhythmic bounce common in 8-bit basslines.
+
+This timing maps perfectly for a 50Hz VM as it aligns with standard tracker musical theory where notes are often updated at 12 ticks per line. This effectively maps to classic musical notations:
+
+
+## How many levels?
+
+Four levels is the absolute minimum, but 8 levels is the "sweet spot" for 8-bit systems.
+
+* Why 4 is tight: With only 4 levels, you only have Quiet, Medium, Loud, and Max. This makes it hard to distinguish between a "Lead" melody and "Background" accompaniment without one burying the other.
+* Why 8 is ideal: 8 levels (3 bits) map perfectly to standard musical terminology and provide enough "headroom" to balance a 3-channel mix (e.g., Lead at level 6, Bass at level 4, Arpeggio at level 3).
+
+## Recommended 8-Level "Dynamic" Budget
+Mapping your volume to these terms makes the VM intuitive for both musicians and "Language" designers:
+
+| Level [1, 2, 3] | Music Term | Use Case |
 |---|---|---|
-| LENGTH | DURATION or LENGTH | It defines the rhythmic space (e.g., 100 ticks for a whole note). |
-| REST | GATE or DUTY | It defines the "cut-off" point within that duration. |
-| TICKER | ARTICULATOR | As we discussed, this "runs" the program of the note. |
+| 0 | Silence | Note-off / Mute |
+| 1 | pp (Pianissimo) | Very soft background "ghost" notes |
+| 2 | p (Piano) | Soft accompaniment / Whispering |
+| 3 | mp (Mezzo-piano) | Standard background filler |
+| 4 | mf (Mezzo-forte) | Standard conversational speech |
+| 5 | f (Forte) | Loud / Lead melody line |
+| 6 | ff (Fortissimo) | Very loud / Emphasized words |
+| 7 | fff (Sforzando) | Maximum "cranked" output / Percussion hits |
 
-Why "Gate" is better than "Rest":
+## Speech vs. Music Needs:
 
-In your formula restTicks = valueTicks >> REST, the REST isn't a standalone pause; it's a coefficient of the note's activity. Calling it "Gate" or "Gate Factor" more accurately describes how it's shaping the active sound vs. the silence. [5, 10] 
-
-Since REST 0 results in no subtraction (a 100% full note), you could call this "Gate: Infinite/Sustain" and any value above that as a "Gate Reduction."
-
-[1] [https://learningmodular.com](https://learningmodular.com/glossary/gate/)
-[2] [https://www.craigstuntz.com](https://www.craigstuntz.com/posts/2023-02-23-building-a-synthesizer-glossary.html)
-[3] [https://forum.moogmusic.com](https://forum.moogmusic.com/t/length-of-midi-notes-is-longer-than-selected-by-gate-length/17473)
-[4] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/CV/gate)
-[5] [https://support.apple.com](https://support.apple.com/guide/logicpro-ipad/gate-time-lpip4439e422/ipados)
-[6] [https://shop.synthesizers.com](https://shop.synthesizers.com/blogs/learn/gates-and-triggers-explained)
-[7] [https://www.youtube.com](https://www.youtube.com/watch?v=7l9X-K1_pNs&t=1)
-[8] [https://musictheoryde-mystified.com](https://musictheoryde-mystified.com/5-note-values-part-1/)
-[9] [https://www.open.edu](https://www.open.edu/openlearn/history-the-arts/music/an-introduction-music-theory/content-section-3.1)
-[10] [https://music-prod.com](https://music-prod.com/tutorials/ableton-live/how-to-use-note-length-midi)
-[11] [https://majicdesigns.github.io](https://majicdesigns.github.io/MD_MIDIFile/page_timing.html)
-[12] [https://www.khanacademy.org](https://www.khanacademy.org/humanities/music/music-basics2/notes-rhythm/v/lesson-1-note-values-duration-and-time-signatures)
-[13] [https://www.reddit.com](https://www.reddit.com/r/modular/comments/q6vhi8/newbie_question_about_gates_and_sequencers/)
-[14] [https://www.reddit.com](https://www.reddit.com/r/modular/comments/13xjrhv/hardware_gate_sequencer/)
-[15] [https://www.facebook.com](https://www.facebook.com/groups/361165013897141/posts/1180924181921216/#:~:text=I%20want%20Reason%209%20to%20include%20some,wish%20list%20for%20Reason%209%20and%20beyond?)
+* Music: Needs these levels to create Sectional Contrast (e.g., a quiet Verse vs. a loud Chorus). Even with envelopes, a "Loud" envelope starting at base level 2 sounds completely different than a "Loud" envelope starting at base level 7.
+* Speech: Uses these levels for Emphasis. In natural speech, important words are slightly louder. Having 8 levels allows you to tag specific "Word Indices" in your Language 1 table with a dynamic level (e.g., Level 6 for "Stop!") while the rest of the sentence sits at Level 4.
 
 
-In the MIDI standard, "Value" is a universal term for any parameter's data (0–127), but your specific bit-pattern logic aligns beautifully with several "official" MIDI concepts. If you were to map your Articulator commands to standard MIDI [Control Change (CC)](https://studiocode.dev/resources/midi-cc/) or messages, it would look like this: [1] 
-## 1. LENGTH/Rhythmic Length → MIDI Ticks
-In MIDI files, the "length" of a note isn't a single command; it's the gap between a Note On and a Note Off event. [2] 
 
-* Your System: Your LENGTH sets a fixed number of ticks (e.g., 100 for a whole note).
-* MIDI equivalent: This is called Delta Ticks. Most modern sequencers use 480 or 960 [Pulses Per Quarter Note (PPQN)](https://en.wikipedia.org/wiki/MIDI_beat_clock). [2, 3] 
 
-## 2. REST/Gate → MIDI Gate Time
-What you call REST (the subtraction from your LENGTH) is almost universally called Gate Time or Gate Length in MIDI. [4, 5, 6] 
-
-* Gate 100%: Equivalent to your REST=0 (the note plays the full duration of the slot).
-* Gate 50%: Equivalent to a note that plays for half its value and "rests" for the other half. [7] 
-
-## 3. Articulation Mapping (The "Hammond" commands)
+## Example: Articulation Mapping - The "Hammond" commands
 
 MIDI has specific CC numbers for the types of "envelopes" you’re building into your Articulator: [8, 9, 10] 
 
@@ -724,280 +791,6 @@ MIDI has specific CC numbers for the types of "envelopes" you’re building into
 | LENGTH (Filter) | CC 74 | Standard for "Brightness" or Cutoff frequency. |
 | LENGTH (Attack) | CC 73 | Controls how fast the sound reaches max volume. |
 | LENGTH (Release) | CC 72 | Controls how long the sound fades out after the "Rest" starts. |
-
-## Is it confusing?
-It is not confusing to use LENGTH for rhythmic length within your own engine, but if you ever interface with other gear, remember:
-
-* MIDI "Value" usually means "How much?" (e.g., How loud? How bright?).
-* MIDI "Duration" usually means "How long?". [1, 15, 16, 17] 
-
-By treating REST as a function that modifies your rhythmic LENGTH, you have essentially built a [Step Sequencer with variable Gate Time](https://forums.steinberg.net/t/how-to-control-gate-time-of-repeating-evolving-note-sequences/825642). [4, 7] 
-Would you like to see how to implement a "Slur" or "Tie" logic using your REST=0/Sustain pattern?
-
-[1] [https://nickfever.com](https://nickfever.com/music/midi-cc-list)
-[2] [https://www.reddit.com](https://www.reddit.com/r/midi/comments/9655ua/is_there_any_way_to_determine_the_note_length/)
-[3] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/MIDI_beat_clock)
-[4] [https://forums.steinberg.net](https://forums.steinberg.net/t/how-to-control-gate-time-of-repeating-evolving-note-sequences/825642)
-[5] [https://music-prod.com](https://music-prod.com/tutorials/ableton-live/how-to-use-note-length-midi#:~:text=Set%20Gate%20and%20Variation%20The%20%27Gate%27%20knob,note%20lengths%20for%20humanized%20or%20evolving%20patterns.)
-[6] [https://myweb.liu.edu](https://myweb.liu.edu/jmeschi/f22/mus14a/notes/MIDI%20Vocabulary.pdf)
-[7] [https://www.reddit.com](https://www.reddit.com/r/synthesizers/comments/2kh4g4/step_sequencer_gate_time/)
-[8] [https://anotherproducer.com](https://anotherproducer.com/online-tools-for-musicians/midi-cc-list/)
-[9] [https://professionalcomposers.com](https://professionalcomposers.com/midi-cc-list/)
-[10] [https://help.ableton.com](https://help.ableton.com/hc/en-us/articles/360010389480-Using-MIDI-CC-in-Live)
-[11] [https://forum.loopypro.com](https://forum.loopypro.com/uploads/editor/bg/jz1e33hbq4du.pdf)
-[12] [https://es.scribd.com](https://es.scribd.com/document/457164994/MIDI-CC-list)
-[13] [https://www.reddit.com](https://www.reddit.com/r/Logic_Studio/comments/1dqsxsx/mapping_midi_cc_parameters_to_midi_controller/)
-[14] [https://www.scribd.com](https://www.scribd.com/document/676339955/MIDI-CC-Chart-the-Full-List)
-[15] [https://support.apple.com](https://support.apple.com/en-mn/guide/logicpro/lgcp2158ecea/10.7/mac/11.0)
-[16] [https://docs.oracle.com](https://docs.oracle.com/javase/tutorial/sound/MIDI-seq-intro.html)
-[17] [https://www.paulcecchettimusic.com](https://www.paulcecchettimusic.com/full-list-of-midi-cc-numbers/)
-
-In standard music theory, REST strictly implies an interval of silence. It is not just a "silent note," but a visual instruction to stop sounding the instrument for a specific duration that corresponds to a note value (e.g., a quarter rest lasts as long as a quarter note). [1, 2, 3] 
-## Key distinctions for your engine:
-
-* Rest vs. Pause: While often used interchangeably, a "Rest" typically has a fixed rhythmic length within the beat, whereas a "Pause" (like a [Fermata](https://en.wikipedia.org/wiki/Fermata)) usually stops the clock or stretches time at the performer's discretion.
-* Silence vs. Release: In synthesis, a "Rest" command usually triggers the Release phase of an envelope. This means the sound might not be instantly silent if there is a long release tail, but the instruction itself marks the moment the active playing stops.
-* Implementation: In step sequencers, a "Rest" is often just a disabled step. For your engine, using it as a "yield" or "sleep" instruction is a standard programming approach, but musically, it always represents the "off" part of the signal. [4, 5, 6, 7, 8] 
-
-## Summary Table
-
-| Term [1, 9, 10, 11] | Musical Meaning | Technical Meaning |
-|---|---|---|
-| Rest | Measured silence | Gate = 0 (Triggers Release) |
-| Pause | Temporary stop in time | Clock.stop() or yield |
-| Tacet | Long period of not playing | Channel.mute() |
-
-Using REST as your "yield" mechanism is logically sound, provided you distinguish between a rest that happens after a note (a gap) and a rest that is the entire duration (a silent slot). [5] 
-Would you like to refine how your LEGATO flag interacts with the REST logic to prevent the envelope from resetting during these "yield" periods?
-
-[1] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Rest_%28music%29)
-[2] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Rest_%28music%29)
-[3] [https://en.wikipedia.org](https://en.wikipedia.org/wiki/Rest_%28music%29)
-[4] [https://www.quora.com](https://www.quora.com/What-is-the-difference-between-a-rest-and-a-pause-in-music-notation-What-are-their-uses-and-examples)
-[5] [https://voxfulgentis.com](https://voxfulgentis.com/uncategorized/pause-and-rest/)
-[6] [https://www.classicalguitarcorner.com](https://www.classicalguitarcorner.com/rests-in-music/)
-[7] [https://www.youtube.com](https://www.youtube.com/watch?v=dmYFdgbT1WY&t=325)
-[8] [https://www.yourclassical.org](https://www.yourclassical.org/story/2014/10/10/class-notes-rests-sometimes-music-is-silence)
-[9] [https://www.hoffmanacademy.com](https://www.hoffmanacademy.com/blog/musical-rests)
-[10] [https://www.facebook.com](https://www.facebook.com/musicnotes/posts/hold-it-right-there-lets-explain-the-fermata-musictheory-notation-musicnotes/1205334378290813/)
-[11] [https://www.liveabout.com](https://www.liveabout.com/types-of-rests-2455911)
-
-
-
-
-
-## TODO: cleanup all!
-
-
-## The GRID ("AI discussion")
-
-**AntVM65 Rhythmic & Articulation Grid**
-
-The VM calculates timing using Bit-Shifts against a Whole Note (BPS) value (default: 200 ticks @ 50Hz). This ensures "Staccato" and "Gate" remain proportional to the note length.
-
-
-### LENGTH+REST: Articulation & Rhythm
-
-Defines the note's base length (Total_Ticks)
-
-```
-11 011 vvv                       in 60 BPM
-11 011 000 = SUSTAIN / MANUAL    ===========
-11 011 001 = 1/1 (Whole)   >> 0  (200 ticks)
-11 011 010 = 1/2 (Half)    >> 1  (100 ticks)
-11 011 011 = 1/4 (Quarter) >> 2  ( 50 ticks)
-11 011 100 = 1/8 (8th)     >> 3  ( 25 ticks)
-11 011 101 = 1/16 (16th)   >> 4  ( 12 ticks)
-11 011 110 = 1/32 (32nd)   >> 5  (  6 ticks)
-11 011 111 = LEGATO (one-shot: just update freq/not env)
-
-*... TODO:* REST, how to set it?
-
-   vvv is just number of shifts (TPS>> vvv)
-
-*(automatic using global rule?)
-
- r (Gate Shift): Defines the "Duty Cycle" (Gate_Ticks).
-
-     Gate_Ticks = Whole_Note >> (vvv_shift + r)
-    
-     r = 0: 100% Gate (Tenuto/Full)
-     r = 1:  50% Gate (Standard)
-     r = 2:  25% Gate (Staccato)
-     r = 3:  12% Gate (Sharp Staccato / "Blip")
-
- Note: These values are LATCHED. Changes apply only when a 
-       NEW note byte (ooo nnnnn) is triggered.
-
-       Use code with caution. LOL
-```
-
-That is a mathematically elegant way to handle swing and articulation without needing more bits. By using a Bit-Shift Relative Rest, you turn your REST parameter into a "Gate" or "Staccato" control.
-## How the "Shift-Rest" Logic Works:
-If your current LENGTH (sustain) is, say, 24 ticks (a Quarter Note):
-
-| Parameter | Logic (LENGTH >> n) | Rest Duration | Note Duration (Active) | Musical Effect |
-|---|---|---|---|---|
-| 0 | 24 >> 1 (50%) | 12 ticks | 12 ticks | Standard Portato |
-| 1 | 24 >> 2 (25%) | 6 ticks | 18 ticks | Standard Detached |
-| 2 | 24 >> 3 (12%) | 3 ticks | 21 ticks | Normal Articulation |
-| 3 | 24 >> 4 (6%) | 1-2 ticks | 22 ticks | Legato (Tiny gap) |
-
-## Why this is a "6502 Power Move":
-
-   1. Zero Overhead: A LSR (Logical Shift Right) is only 2 cycles. Calculating a relative rest on the fly is faster than fetching a second byte from memory.
-   2. Automatic Scaling: If you change the BPM (Master Tempo), all your rests scale perfectly. You don't have to re-calculate every "dash" in the song.
-   3. Speech Synthesis: This is perfect for Consonants. You can set a long LENGTH for a vowel but use a Shift-Rest to create a tiny "stop" (silence) before the next phoneme, making the speech much clearer.
-
-## The "WAIT" vs "Relative REST" Synergy:
-
-* Relative REST: Use this for Note Articulation (staccato, legato, etc.). It lives "inside" the note's time-slot.
-* WAIT Command: Use this for Structural Silence (the dash in music notation, or the pause between sentences). It lives "between" time-slots.
-
-## One Implementation Detail:
-Since you have a 3-bit budget, you could use the 8 values (0–7) as:
-
-* 0-3: The LENGTH >> (n+1) relative shifts.
-* 4-7: Fixed Tick values (1, 2, 4, 8 ticks) for when you need absolute precision regardless of the BPM.
-
-This "Hybrid Rest" gives you the musicality of a tracker and the precision of a speech synth in a single byte.
-Does your Ticker currently have the "Elapsed" vs "Target" registers ready to handle this dynamic split between Note and Rest?
-Next Step: Define the Bit-Pattern for this Hybrid Rest?
-
-
-
-## LENGTH/REST: Articulation Presets (note+rest lengths)
-*realtive* idea
-
-```
-Value: duration length in "ticks"
-Gate:  % time the sound is on (Duty Cycle)
-Rest period: is the silence within that value.
-```
-Legato: FIX, is when just the tone is changed but not trigger new envelopes to restart...
-
-You wrote (and I take it for begin more like % than actual absolute ticks?):
-
-
-
-
-## The GRID ("AI discussion")
-
-The "Rhythmic Logic" Integration
-
-(TODO: review)
-Echo Sync: The Echo_Delay now automatically snaps to the "Silence Gap": Total_Ticks - Gate_Ticks. This places the echo perfectly in the rhythmic pocket created by the staccato.
-
-(TODO: review)
-
-The "Zero" Safety: If (vvv + r) results in 0 ticks, the VM defaults to a 1-tick pulse to ensure the AY chip always fires a transient (essential for percussion).
-
-Sticky State: Once 11 011 vvv is set, every subsequent note on that channel follows that rhythmic "Grid" until changed.
-
-The Updated Note Trigger Flow
-
-When ooo nnnnn (Note) is received:
-
-Pitch: Pull 12-bit AY value from 24-TET LUT.
-
-Timing: Load Live_Counter with BPS >> vvv.
-
-Gate: Load Gate_Counter with BPS >> (vvv + r).
-
-Envelopes: If LEGATO is OFF, reset Delta Accumulators to bit 0 of the 32-bit pattern.
-
-Does this Rhythmic Grid feel tight enough for your "Speech" phonemes, or do you need a "Manual Tick" override for non-musical timing?
-
-(TODO: review)
-
-Next Step: Define the Wait for Event (Yield) command—how does it interact with this new rhythmic grid?
-
-in AntVM65, by using shifts, you are creating a pre-defined framework:
-
-### It’s a "Musical Ruler"
-
-By choosing vvv, you aren't just picking a number; you are picking a grid size.
-If vvv = 2, your ruler is marked in Quarter Notes.
-If vvv = 4, your ruler is marked in 16th Notes.
-
-Every note you trigger afterward "snaps" to that specific measurement until you change the ruler.
-
-
-### The "Sync" Factor
-
-Because the Gate (r) and Echo Delay are also calculated from this same shift-base, the entire sound engine is "locked" into the same grid.
-
-The Snapping: Your volume decays, your echo repeats, and your note lengths are all multiples or fractions of each other.
-
-The Result: Even if you change the BPS (Whole Note) value to speed up the song, the "Grid" stays proportionally the same. The song stays perfectly in sync with itself.
- 3. Efficiency via Constraints
-
-A "Grid" is efficient because it limits the choices. Instead of needing 8 bits to define "how many ticks," you only need 3 bits to say "which part of the grid." This is why your bytecode is so small—you’re telling the VM "Use the 8th-note slot" rather than "Wait 25 ticks."
-
-The Verdict: It’s "Rhythmic" because it’s based on musical divisions (1/2, 1/4, 1/8), and it’s a "Grid" because it provides a rigid structure that all channels (A, B, C) and effects (Echo/Link) align to automatically.
-
-(TODO: review)
-Does your Yield/Wait for Event command (11 111 000 + 00) also snap to this Grid, or can it break the "musical" timing for special FX?
-
-The "AntVM" Final Spec Logic:
-
-A, B, C, N: All share the BPS >> vvv logic.
-
-Deltas: Step forward on every Grid Tick.
-
-Echo: Delays by Rest (which is a fraction of the Grid Slot).
-
-The Verdict: By embracing The Grid, you've built a "Symphonic Machine." It’s a closed system where every bit of data knows exactly when it belongs.
-
-Should the Yield command have an optional "Skip X Grid Slots" parameter to allow for multi-bar rests?
-
-That is the correct way to handle it—"Latched" Triggering. In a tracker VM, you never want to change the length of a note that is already playing (which would cause "rhythmic jitter"). Instead, the 011 command and the r-parameter update a shadow register. The next time a Note Byte (ooo nnnnn) is processed, it "snapshots" those values to set the counter.
-
-```
-Total_Ticks = Whole_Note >> Next_Value_Shift
- Gate_Ticks = Whole_Note >> (Next_Value_Shift + Next_Gate_Shift)
-
-Trigger Note:
-  Set Live_Counter = Total_Ticks and Gate_Counter = Gate_Ticks.
-```
-   
-Why this is "Pro" for the AY Chip:
-
-- The "Double Trigger" Trick: This allows the user to send a command during a long note to change the "feel" of the next note without cutting off the current one.
-- Glitch-Free Tempo: If the user changes the "Whole Note" value (BPM) while a note is ringing, the current note finishes its original duration, but the next note perfectly adopts the new tempo.
-
-The "Zero-Tick" Safety
-
-Since you are using bit-shifts (>>), you will eventually hit 0 on very fast notes.
-
-- The Recommendation: In your trigger logic, use a MAX(1, Gate_Ticks).
-- Why? An AY-3-8910 note that lasts 0 ticks is silent. A note that lasts 1 tick is a "Click/Blip." In 8-bit music, those 1-tick "blips" are essential for high-speed arpeggios and percussion.
-
-(TODO: resolve)
-
-**The "Rest" (r) Conflict**
-
-If r is used as a Gate Shift, what happens to the Echo Delay?
-
-- Earlier we said Echo_Delay == Rest.
-- In this new logic, your "Rest" is Total_Ticks - Gate_Ticks.
-- The Result: Your Echo Delay will automatically be a "fractional" delay. If you play a 50% staccato note, the echo hits exactly in the "silence" created by the gate. This is incredibly musical.
-
-The Verdict: Latched triggering is the way to go. It keeps the "Pulse" of the VM rock-solid while allowing for complex, pre-calculated changes in articulation.
- Does the Link (C) channel share this Gate Timer, or can C have its own independent "Staccato" setting from A?
-
-
-**TODO: this is not good**
-
-Proposed 011 Mapping:
-
-```
-11 011 000 | SHIFT = QUICK LINK
-11 011 001 | DELAY = QUICK ECHO
-11 011 010         = TOGGLE NOISE (1 byte)
-11 011 100         = STOP ALL (1 byte). PANIC SILENCE
-11 011 101 - 111   = RESERVED deltas controls
-```
 
 
 
@@ -2055,4 +1848,144 @@ Why it works for your GitHub Repository:
 Branding: You can use the imagery of an anthem—something uplifting, loud, and vocal—to describe the capabilities of your sound engine.
 - Local Context: In Thailand, where you are now, the "Ant" (มด - Mot) double-meaning for "complete/everything" still holds, giving you a name that is an English musical term on the surface but a "secret" Thai pun underneath. 
 - Existing Software Note: There is a modern cross-platform DAW called Anthem, but since yours is specifically for the Oric/6502, "Oric-AntVM" or "AntVM" is distinct and safe for a repo name. 
+
+
+
+
+
+
+
+
+
+
+## TODO: cleanup all!
+
+
+## The GRID ("AI discussion")
+
+**AntVM65 Rhythmic & Articulation Grid**
+
+The VM calculates timing using Bit-Shifts against a Whole Note (BPS) value (default: 200 ticks @ 50Hz). This ensures "Staccato" and "Gate" remain proportional to the note length.
+
+
+
+## The GRID ("AI discussion")
+
+The "Rhythmic Logic" Integration
+
+(TODO: review)
+Echo Sync: The Echo_Delay now automatically snaps to the "Silence Gap": Total_Ticks - Gate_Ticks. This places the echo perfectly in the rhythmic pocket created by the staccato.
+
+(TODO: review)
+
+The "Zero" Safety: If (vvv + r) results in 0 ticks, the VM defaults to a 1-tick pulse to ensure the AY chip always fires a transient (essential for percussion).
+
+Sticky State: Once 11 011 vvv is set, every subsequent note on that channel follows that rhythmic "Grid" until changed.
+
+The Updated Note Trigger Flow
+
+When ooo nnnnn (Note) is received:
+
+Pitch: Pull 12-bit AY value from 24-TET LUT.
+
+Timing: Load Live_Counter with BPS >> vvv.
+
+Gate: Load Gate_Counter with BPS >> (vvv + r).
+
+Envelopes: If LEGATO is OFF, reset Delta Accumulators to bit 0 of the 32-bit pattern.
+
+Does this Rhythmic Grid feel tight enough for your "Speech" phonemes, or do you need a "Manual Tick" override for non-musical timing?
+
+(TODO: review)
+
+Next Step: Define the Wait for Event (Yield) command—how does it interact with this new rhythmic grid?
+
+in AntVM65, by using shifts, you are creating a pre-defined framework:
+
+### It’s a "Musical Ruler"
+
+By choosing vvv, you aren't just picking a number; you are picking a grid size.
+If vvv = 2, your ruler is marked in Quarter Notes.
+If vvv = 4, your ruler is marked in 16th Notes.
+
+Every note you trigger afterward "snaps" to that specific measurement until you change the ruler.
+
+
+### The "Sync" Factor
+
+Because the Gate (r) and Echo Delay are also calculated from this same shift-base, the entire sound engine is "locked" into the same grid.
+
+The Snapping: Your volume decays, your echo repeats, and your note lengths are all multiples or fractions of each other.
+
+The Result: Even if you change the BPS (Whole Note) value to speed up the song, the "Grid" stays proportionally the same. The song stays perfectly in sync with itself.
+ 3. Efficiency via Constraints
+
+A "Grid" is efficient because it limits the choices. Instead of needing 8 bits to define "how many ticks," you only need 3 bits to say "which part of the grid." This is why your bytecode is so small—you’re telling the VM "Use the 8th-note slot" rather than "Wait 25 ticks."
+
+The Verdict: It’s "Rhythmic" because it’s based on musical divisions (1/2, 1/4, 1/8), and it’s a "Grid" because it provides a rigid structure that all channels (A, B, C) and effects (Echo/Link) align to automatically.
+
+(TODO: review)
+Does your Yield/Wait for Event command (11 111 000 + 00) also snap to this Grid, or can it break the "musical" timing for special FX?
+
+The "AntVM" Final Spec Logic:
+
+A, B, C, N: All share the BPS >> vvv logic.
+
+Deltas: Step forward on every Grid Tick.
+
+Echo: Delays by Rest (which is a fraction of the Grid Slot).
+
+The Verdict: By embracing The Grid, you've built a "Symphonic Machine." It’s a closed system where every bit of data knows exactly when it belongs.
+
+Should the Yield command have an optional "Skip X Grid Slots" parameter to allow for multi-bar rests?
+
+That is the correct way to handle it—"Latched" Triggering. In a tracker VM, you never want to change the length of a note that is already playing (which would cause "rhythmic jitter"). Instead, the 011 command and the r-parameter update a shadow register. The next time a Note Byte (ooo nnnnn) is processed, it "snapshots" those values to set the counter.
+
+```
+Total_Ticks = Whole_Note >> Next_Value_Shift
+ Gate_Ticks = Whole_Note >> (Next_Value_Shift + Next_Gate_Shift)
+
+Trigger Note:
+  Set Live_Counter = Total_Ticks and Gate_Counter = Gate_Ticks.
+```
+   
+Why this is "Pro" for the AY Chip:
+
+- The "Double Trigger" Trick: This allows the user to send a command during a long note to change the "feel" of the next note without cutting off the current one.
+- Glitch-Free Tempo: If the user changes the "Whole Note" value (BPM) while a note is ringing, the current note finishes its original duration, but the next note perfectly adopts the new tempo.
+
+The "Zero-Tick" Safety
+
+Since you are using bit-shifts (>>), you will eventually hit 0 on very fast notes.
+
+- The Recommendation: In your trigger logic, use a MAX(1, Gate_Ticks).
+- Why? An AY-3-8910 note that lasts 0 ticks is silent. A note that lasts 1 tick is a "Click/Blip." In 8-bit music, those 1-tick "blips" are essential for high-speed arpeggios and percussion.
+
+(TODO: resolve)
+
+**The "Rest" (r) Conflict**
+
+If r is used as a Gate Shift, what happens to the Echo Delay?
+
+- Earlier we said Echo_Delay == Rest.
+- In this new logic, your "Rest" is Total_Ticks - Gate_Ticks.
+- The Result: Your Echo Delay will automatically be a "fractional" delay. If you play a 50% staccato note, the echo hits exactly in the "silence" created by the gate. This is incredibly musical.
+
+The Verdict: Latched triggering is the way to go. It keeps the "Pulse" of the VM rock-solid while allowing for complex, pre-calculated changes in articulation.
+ Does the Link (C) channel share this Gate Timer, or can C have its own independent "Staccato" setting from A?
+
+
+**TODO: this is not good**
+
+Proposed 011 Mapping:
+
+```
+11 011 000 | SHIFT = QUICK LINK
+11 011 001 | DELAY = QUICK ECHO
+11 011 010         = TOGGLE NOISE (1 byte)
+11 011 100         = STOP ALL (1 byte). PANIC SILENCE
+11 011 101 - 111   = RESERVED deltas controls
+```
+
+
 

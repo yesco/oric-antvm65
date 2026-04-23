@@ -852,9 +852,10 @@ NOTESTART:
 
 
 ;;; Playing a NOTE command
-;;;   A=comamnd Y=octave(0-7) (from dispatch)
+;;;   A=command
+;;;   Y=octave(0-7 low-high freq)
 ;;; 
-;;; TODO: X= channel 0-2 (ABC)
+;;; TODO: X= channel 0-2 (ABCD/N)
 ;;; 
 ;;; Cycle Counts (Absolute addressing, no page crossing, includes RTS):
 ;;; Oct 0: 42c | Oct 1: 54c | Oct 2: 66c | Oct 3: 78c

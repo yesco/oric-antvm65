@@ -177,6 +177,26 @@ oct5= 5
 oct6= 6
 oct7= 7
 
+;;; Functional command macros
+
+.macro ANT_KILL
+	.byte PARAMBYTE, 0, 0
+.endmacro
+
+.macro ANT_QUIET
+	.byte MIXER, %111111
+.endmacro
+
+.macro ANT_YIELD
+	.byte WAIT0
+.endmacro
+	
+
+
+
+;;; Macro for music string:
+;;; 
+
 
 ;;; 12-TET Notes by "name" (common-notation)
 
@@ -273,9 +293,6 @@ _Bm = 8* 21  ; B-minus (1/4 flat)
 _Cm = 8* 23  ; C-minus (1/4 flat) OR B-plus
 
 
-;;; Macro for music string:
-;;; 
-
 ;;; We try recognize a combiation of
 ;;; - ABC-notation
 ;;; - SPN: Scientific Pitch Notation
@@ -335,3 +352,4 @@ _Cm = 8* 23  ; C-minus (1/4 flat) OR B-plus
 
 
 ;;; TODO: ABC macro in abc.asm almost working....!
+

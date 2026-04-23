@@ -31,13 +31,52 @@ if ($opts{r}) {
     }
 } else {
     # TEXT MODE: Parse AY: hex lines
+    # TEXT MODE: Parse sox synth lines
     while (<$in_fh>) {
         if (/AY:\s*([0-9a-fA-F\s]+)/) {
             my @bytes = ($1 =~ /([0-9a-fA-F]{2})/g);
             if (@bytes >= 14) {
                 push @frames, [ map { hex($_) } @bytes[0..13] ];
             }
+
+	    next;
         }
+
+	print ">$_";
+	my $s= $_;
+	my $n= 3;
+	my @bytes= (0) x 14;
+	my $mixer= 0b111111;
+	while(/(\d+)v.*?(\d+)hz/ig) {
+	    my ($v,$f) = ($1,$2);
+	    my $p= int(1000000/16/$f + 0.5);
+
+	    my $hi= int($p/256);
+	    my $lo= $p % 256;
+
+	    # volume 1v-150v (?) what meaning, is linear?
+	    # ay volume is log
+	    my $yv= int(log($v)/log(50)*15 + 0.5);
+	    $yv= 15 if $yv>15;
+	    $yv= 0 if $yv<0;
+
+	    #$yv= 15;
+	    
+	    print "  $v\t${v}v\t$yv\t${f}hz\t$p\t$hi\t$lo\n";
+
+	    $bytes[$n*2 + 0]= $lo;
+	    $bytes[$n*2 + 1]= $hi;
+	    $bytes[8 + $n]  = $yv;
+	    # mixer set bit 0
+	    $mixer ^= (1<<3-$n);
+	    
+	    # only have 3 osc
+	    last if !--$n;
+	}
+
+#	$bytes[7]= $mixer;
+
+	push @frames, [ @bytes ];
     }
 }
 close($in_fh) unless $input_path eq '-';
