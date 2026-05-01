@@ -49,12 +49,23 @@ if ($opts{r}) {
 	my $n= 3;
 	my @bytes= (0) x 14;
 	my $mixer= 0b111111;
-	while(/(\d+)v.*?(\d+)hz/ig) {
-	    my ($v,$f) = ($1,$2);
-	    my $p= int(1000000/16/$f + 0.5);
+	#	while(/(\d+)v\s+([\.0-9]+)hz/ig) {
+	while(/v(\d+)N?(\d*)\s+([.0-9]+)hz/ig) {
+	    my ($v,$noise,$f) = ($1,$2,$3);
+	    #print "---- >$v< >$noise< >$f<\n";
+    	    my $p= int(1000000/16/+$f + 0.5);
 
 	    my $hi= int($p/256);
 	    my $lo= $p % 256;
+
+	    $bytes[11]= 0+($noise || 0);
+	    if ($noise) {
+		#print "$v\t$noise\t$f\n";
+		#		$mixer &= 0b000111;
+		$mixer &= 0b011111;
+		# on all but sounds random
+		#		$mixer &= 0b000111;
+	    }
 
 	    # volume 1v-150v (?) what meaning, is linear?
 	    # ay volume is log
@@ -68,7 +79,7 @@ if ($opts{r}) {
 	    $yv= 15 if $yv>15;
 	    #	    $yv= 0 if $yv<0;
 	    #	    $yv= 6 if $yv<0;
-	    $yv= 8 if $yv<8;
+	    $yv= 6 if $yv<6;
 
 #	    $yv= 15;
 	    
