@@ -33,6 +33,7 @@ if ($opts{r}) {
     # TEXT MODE: Parse AY: hex lines
     # TEXT MODE: Parse sox synth lines
     while (<$in_fh>) {
+	# AntVM AY: ex hexhex hex aoutput
         if (/AY:\s*([0-9a-fA-F\s]+)/) {
             my @bytes = ($1 =~ /([0-9a-fA-F]{2})/g);
             if (@bytes >= 14) {
@@ -42,6 +43,7 @@ if ($opts{r}) {
 	    next;
         }
 
+	# war.f output - play 3 dom freq
 	print ">$_";
 	my $s= $_;
 	my $n= 3;
@@ -56,11 +58,13 @@ if ($opts{r}) {
 
 	    # volume 1v-150v (?) what meaning, is linear?
 	    # ay volume is log
-	    my $yv= int(log($v)/log(50)*15 + 0.5);
+	    my $yv= int(log($v)/log(10)*30 + 0.5);
 	    $yv= 15 if $yv>15;
-	    $yv= 0 if $yv<0;
+	    #	    $yv= 0 if $yv<0;
+	    #	    $yv= 6 if $yv<0;
+	    $yv= 6 if $yv<6;
 
-	    #$yv= 15;
+#	    $yv= 15;
 	    
 	    print "  $v\t${v}v\t$yv\t${f}hz\t$p\t$hi\t$lo\n";
 
@@ -74,9 +78,19 @@ if ($opts{r}) {
 	    last if !--$n;
 	}
 
-#	$bytes[7]= $mixer;
+	$bytes[7]= $mixer;
 
 	push @frames, [ @bytes ];
+
+
+
+# TODO: currently the .f samples are too sparse - 4x slower!
+	push @frames, [ @bytes ];
+	push @frames, [ @bytes ];
+	push @frames, [ @bytes ];
+
+
+
     }
 }
 close($in_fh) unless $input_path eq '-';

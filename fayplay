@@ -1,0 +1,1 @@
+perl ymdump2ym3.pl ../badgerbadger/war.f fil.ym3 ; ./ym2wav fil.ym3 fil.wav ; time play fil.wav
