@@ -58,11 +58,17 @@ if ($opts{r}) {
 
 	    # volume 1v-150v (?) what meaning, is linear?
 	    # ay volume is log
-	    my $yv= int(log($v)/log(10)*30 + 0.5);
+	    my $yv;
+	    if ($v < 1000) {
+		$yv= int(log($v)/log(10)*30 + 0.5);
+	    } else {
+		$yv= int($v*15/5000 + 0.5);
+	    }
+
 	    $yv= 15 if $yv>15;
 	    #	    $yv= 0 if $yv<0;
 	    #	    $yv= 6 if $yv<0;
-	    $yv= 6 if $yv<6;
+	    $yv= 8 if $yv<8;
 
 #	    $yv= 15;
 	    
@@ -85,9 +91,9 @@ if ($opts{r}) {
 
 
 # TODO: currently the .f samples are too sparse - 4x slower!
-	push @frames, [ @bytes ];
-	push @frames, [ @bytes ];
-	push @frames, [ @bytes ];
+#	push @frames, [ @bytes ];
+#	push @frames, [ @bytes ];
+#	push @frames, [ @bytes ];
 
 
 
