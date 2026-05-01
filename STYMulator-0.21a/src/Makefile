@@ -9,7 +9,8 @@ INCLUDE = -L$(LZH) -L$(STLIB)
 
 INSTALL = /usr/bin/install -c
 
-all: libs ymplayer ym2wav
+#all: libs ymplayer ym2wav
+all: libs ym2wav
 
 libs:
 	@for subdir in $(STLIB) $(LZH); do \
@@ -45,4 +46,3 @@ clean:
 	done
 
 	$(RM)  *.o ymplayer ym2wav *~
-	
