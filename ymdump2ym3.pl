@@ -58,6 +58,8 @@ if ($opts{r}) {
 	    my $hi= int($p/256);
 	    my $lo= $p % 256;
 
+$noise= undef;
+	    
 	    $bytes[11]= 0+($noise || 0);
 	    if ($noise) {
 		#print "$v\t$noise\t$f\n";
@@ -65,16 +67,21 @@ if ($opts{r}) {
 		$mixer &= 0b011111;
 		# on all but sounds random
 		#		$mixer &= 0b000111;
+
+		# force volume
+		$v=15;
 	    }
 
 	    # volume 1v-150v (?) what meaning, is linear?
 	    # ay volume is log
-	    my $yv;
-	    if ($v < 1000) {
-		$yv= int(log($v)/log(10)*30 + 0.5);
-	    } else {
-		$yv= int($v*15/5000 + 0.5);
-	    }
+	    my $yv = $v;
+#	    if (1) {
+#	    } elsif ($v < 1000) {
+#		$yv= int(log($v)/log(10)*30 + 0.5);
+#	    } else {
+#		$yv= int($v*15/5000 + 0.5);
+#	    }
+	    
 
 	    $yv= 15 if $yv>15;
 	    #	    $yv= 0 if $yv<0;
@@ -88,8 +95,11 @@ if ($opts{r}) {
 	    $bytes[$n*2 + 0]= $lo;
 	    $bytes[$n*2 + 1]= $hi;
 	    $bytes[8 + $n]  = $yv;
+
 	    # mixer set bit 0
-	    $mixer ^= (1<<3-$n);
+	    if (!$noise) {
+		$mixer ^= (1<<(3-$n));
+	    }
 	    
 	    # only have 3 osc
 	    last if !--$n;
