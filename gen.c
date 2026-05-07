@@ -71,12 +71,12 @@ int main() {
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0, style = 0, durA = 0, durB = 0;
-    int octShiftA = 0, octShiftB = 0;
-    int transition_type = 0; // 0=None, 1=Roll, 2=DubOut, 3=Solo, 4=Wash
+    int octShiftA = 0, octShiftB = 0, transition_type = 0;
     uint16_t pA_base = 0;
 
-    uint16_t scale_high[] = {239, 213, 190, 159, 142}; 
-    uint16_t scale_mid[]  = {478, 426, 379, 319, 284}; 
+    // Expanded scale (Fuller melody)
+    uint16_t scale_high[] = {239, 213, 190, 159, 142, 119}; 
+    uint16_t scale_mid[]  = {478, 426, 379, 358, 319, 284, 253}; 
 
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
@@ -85,11 +85,10 @@ int main() {
         int bar = (frame / 64) % 4;
         
         if (frame % 256 == 0) {
-            prog = rand() % 5;
-            style = rand() % 3;
-            // 25% chance of a transition on the next phrase's end
+            prog = rand() % 6;
+            style = rand() % 4;
             transition_type = (rand() % 4 == 0) ? (rand() % 4 + 1) : 0;
-            printf("Phrase Start: prog=%d style=%d transition_next=%d\n", prog, style, transition_type);
+            printf("Phrase: prog=%d style=%d trans=%d\n", prog, style, transition_type);
         }
 
         if (frame % 512 == 0) {
@@ -100,13 +99,13 @@ int main() {
             }
         }
 
-        // --- Logic Switches based on Transition ---
-        int mute_melody = (bar == 3 && transition_type == 2);
-        int mute_drums = (bar == 3 && transition_type == 3);
-        int wash_out = (bar == 3 && transition_type == 4);
+        // --- Transition Mutes ---
+        int is_dark_break = (bar == 3 && transition_type == 2);
+        int is_wash = (bar == 3 && transition_type == 4);
+        int mute_melody = is_dark_break || is_wash;
 
         // --- B Rhythm ---
-        if (!mute_melody && !wash_out) {
+        if (!mute_melody) {
             if (step == 0 || step == 32) durB = 16; 
             if (durB > 0) {
                 uint16_t pB = scale_high[prog];
@@ -118,40 +117,52 @@ int main() {
             }
         }
 
-        // --- A Lead ---
-        if (!mute_melody && !wash_out) {
+        // --- A Lead (More Variations) ---
+        if (!mute_melody) {
             int trigger = 0, offset = 0;
-            if (style == 0 && (step == 8 || step == 24 || step == 48)) { trigger = 1; durA = 8; }
-            else if (style == 1 && (step == 4 || step == 12 || step == 20)) { trigger = 1; durA = 4; offset = step/8; }
-            else if (style == 2 && (step == 10 || step == 26)) { trigger = 1; durA = 12; offset = 1; }
-            
-            if (trigger) pA_base = scale_mid[(prog + offset) % 5];
+            if (style == 0 && (step % 16 == 8)) { trigger = 1; durA = 6; offset = (step/16); }
+            else if (style == 1 && (step % 8 == 4)) { trigger = 1; durA = 3; offset = (step/8); }
+            else if (style == 2 && (step == 10 || step == 26 || step == 42)) { trigger = 1; durA = 10; offset = 2; }
+            else if (style == 3 && (step < 32 && step % 4 == 0)) { trigger = 1; durA = 2; offset = (step/4)%6; }
+
+            if (trigger) pA_base = scale_mid[(prog + offset) % 7];
             if (durA > 0) {
                 uint16_t pA = pA_base;
                 if (octShiftA > 0) pA <<= octShiftA; else if (octShiftA < 0) pA >>= (-octShiftA);
-                if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6));
+                if (durA > 4) pA += (int)(6.0 * sin(frame * 0.7));
                 r[0] = pA & 0xFF; r[1] = (pA >> 8) & 0x0F;
-                r[8] = 13; r[7] &= ~(1 << 0);
+                r[8] = 12; r[7] &= ~(1 << 0);
                 durA--;
             }
         }
 
-        // --- C Drums & Special Transitions ---
-        if (bar == 3 && transition_type == 1 && step > 32) { // Roll
+        // --- C Drums & Dark Break ---
+        if (is_dark_break) {
+            // "Dark Big Drums": Low noise thumps and random rapid triggers
+            if (step % 4 == 0) {
+                r[6] = 20 + (rand() % 10); // Low-mid noise
+                r[10] = 13 + (rand() % 3);
+                r[7] &= ~(1 << 5);
+            }
+            if (step % 12 == 0) { // Deep Tone Kick
+                r[4] = 0x00; r[5] = 0x0F; r[10] = 0x10;
+                r[11] = 0; r[12] = 0x04; r[7] &= ~(1 << 2);
+                env_level = 31; env_holding = 0;
+            }
+        } else if (bar == 3 && transition_type == 1 && step > 32) { // Roll
             r[6] = 20 - (step - 32) / 2; r[10] = 8 + (step - 32) / 4;
             if (step % 4 == 0) r[7] &= ~(1 << 5);
-        } else if (!mute_drums && !wash_out) { // Normal Drums
-            if (step % 16 == 0) { r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); } 
+        } else if (!is_wash) { // Normal Drums
+            if (step % 16 == 0) { r[6] = 2; r[10] = 11; r[7] &= ~(1 << 5); } 
             if (step == 32) {
-                r[4] = 0; r[5] = 0x08; r[6] = 12; r[11] = 0; r[12] = 0x08; r[13] = 0;
+                r[4] = 0; r[5] = 0x08; r[6] = 12; r[11] = 0; r[12] = 0x08;
                 r[10] = 0x10; r[7] &= ~0x24; env_level = 31; env_holding = 0;
             }
         }
         
-        // Wash Out (Variant 4): Just one big high chord that fades
-        if (wash_out && step == 0) {
+        if (is_wash && step == 0) {
             r[2] = scale_high[prog] & 0xFF; r[3] = scale_high[prog] >> 8;
-            r[11] = 0; r[12] = 0x10; r[13] = 0; r[9] = 0x10; r[7] &= ~(1 << 1);
+            r[11] = 0; r[12] = 0x20; r[10] = 0x10; r[7] &= ~(1 << 1);
             env_level = 31; env_holding = 0;
         }
 
