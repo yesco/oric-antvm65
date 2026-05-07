@@ -7,7 +7,7 @@
 #define SAMPLE_RATE 44100
 #define SAMPLES_PER_FRAME 882
 #define YM_CLOCK 1000000.0
-#define DELAY_FRAMES 6 // Adjust this for longer/shorter echo
+#define DELAY_FRAMES 12 // Slightly longer echo for better dub feel
 
 static const int16_t YM_VOL_TABLE[] = {
     0, 175, 250, 360, 520, 750, 1080, 1550, 2250, 3250, 4700, 6800, 9800, 14200, 20500, 29000
@@ -68,12 +68,14 @@ void fill_buffer_with_ym(unsigned char *regs, int16_t *buffer) {
 }
 
 int main() {
-    FILE *audio_pipe = popen("pacat --raw --format=s16le --rate=44100 --channels=1 --latency-msec=20", "w");
+    // Open the pipe with a small latency to let PulseAudio handle the timing
+    FILE *audio_pipe = popen("pacat --raw --format=s16le --rate=44100 --channels=1 --latency-msec=40", "w");
+    if (!audio_pipe) return 1;
+
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0, durA = 0, durB = 0;
     
-    // Circular buffer for Channel B Echo
     uint16_t echo_pitch[DELAY_FRAMES] = {0};
     uint8_t  echo_vol[DELAY_FRAMES]   = {0};
     int echo_ptr = 0;
@@ -99,19 +101,15 @@ int main() {
             durB--;
         }
 
-        // Apply Delay Logic for Channel B
-        // We play the echo pitch if there's no active note, or mix it? 
-        // For simplicity: If no current note, play the echo.
+        // Echo Logic
         uint16_t out_pB = current_pB;
         uint8_t  out_vB = current_vB;
 
         if (out_vB == 0 && echo_vol[echo_ptr] > 0) {
             out_pB = echo_pitch[echo_ptr];
-            out_vB = echo_vol[echo_ptr] - 4; // Fade out the echo
-            if (out_vB > 15) out_vB = 0; // Catch unsigned wrap
+            out_vB = echo_vol[echo_ptr] > 4 ? echo_vol[echo_ptr] - 4 : 0;
         }
 
-        // Update delay buffer
         echo_pitch[echo_ptr] = current_pB;
         echo_vol[echo_ptr] = current_vB;
         echo_ptr = (echo_ptr + 1) % DELAY_FRAMES;
@@ -142,10 +140,14 @@ int main() {
         }
 
         fill_buffer_with_ym(r, buf);
-        fwrite(buf, 2, SAMPLES_PER_FRAME, audio_pipe);
+        
+        // fwrite is a blocking call when the pipe buffer is full.
+        // This ensures the code only runs exactly as fast as the sound card plays.
+        if (fwrite(buf, sizeof(int16_t), SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) break;
         fflush(audio_pipe);
+        
         frame++;
-        usleep(20000);
+        // No usleep() here! Timing is now hardware-driven.
     }
     pclose(audio_pipe);
     return 0;
