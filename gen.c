@@ -80,25 +80,25 @@ int main() {
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
         r[7] = 0x3F;
-        int step = frame % 64;
+        int step = frame % 64; // One bar
+        int bar = (frame / 64) % 4; // Which bar of the 4-bar phrase
         
         if (frame % 256 == 0) {
             prog = rand() % 5;
             style = rand() % 3;
-	    printf("prog=%d style=%d..\n", prog, style);
+            printf("--- New Phrase: prog=%d style=%d ---\n", prog, style);
         }
 
-        // Every 512 frames: Randomized Octave Shift for A OR B
         if (frame % 512 == 0) {
             octShiftA = 0; octShiftB = 0;
-            if (rand() % 3 < 2) { // 673% chance to shift
+            if (rand() % 3 < 2) {
                 if (rand() % 2 == 0) octShiftA = (rand() % 5) - 2;
                 else octShiftB = (rand() % 5) - 2;
-		printf("shiftA=%d, hisftB=%d...\n", octShiftA, octShiftB);
+                printf("  Octave Shift: A=%d, B=%d\n", octShiftA, octShiftB);
             }
         }
 
-        // --- B ---
+        // --- B Chord ---
         if (step == 0 || step == 32) durB = 16; 
         if (durB > 0) {
             uint16_t pB = scale_high[prog];
@@ -110,7 +110,7 @@ int main() {
             durB--;
         }
 
-        // --- A ---
+        // --- A Lead ---
         int trigger = 0, offset = 0;
         if (style == 0) {
             if (step == 8 || step == 24 || step == 48) { trigger = 1; durA = 8; offset = 0; }
@@ -119,9 +119,7 @@ int main() {
         } else {
             if (step == 10 || step == 26) { trigger = 1; durA = 12; offset = 1; }
         }
-
         if (trigger) pA_base = scale_mid[(prog + offset) % 5];
-
         if (durA > 0) {
             uint16_t pA = pA_base;
             if (octShiftA > 0) pA <<= octShiftA; else if (octShiftA < 0) pA >>= (-octShiftA);
@@ -132,13 +130,27 @@ int main() {
             durA--;
         }
 
-        // --- C ---
-        if (step % 16 == 0) { r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); } 
-        if (step == 32) {
-            r[4] = 0; r[5] = 0x08; r[6] = 12;
-            r[11] = 0; r[12] = 0x08; r[13] = 0;
-            r[10] = 0x10; r[7] &= ~0x24; 
-            env_level = 31; env_holding = 0;
+        // --- C DRUMS & 4TH BAR CRESCENDO ---
+        if (bar == 3 && step > 32) {
+            // Crescendo Roll: noise speed increases and volume ramps up
+            r[6] = 20 - (step - 32) / 2; // Noise gets "sharper"
+            r[10] = 8 + (step - 32) / 4; // Volume gets "louder"
+            if (step % 4 == 0) r[7] &= ~(1 << 5); // Rapid snare triggers
+        } else {
+            // Standard Percussion
+            if (step % 16 == 0) { // Hi-hat
+                r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); 
+            } 
+            if (step == 32) { // The Kick/Snare One-Drop
+                r[4] = 0; r[5] = 0x08; r[6] = 12;
+                r[11] = 0; r[12] = 0x08; r[13] = 0;
+                r[10] = 0x10; r[7] &= ~0x24; 
+                env_level = 31; env_holding = 0;
+            }
+            // Random "Clap" variation on Bar 1 or 2
+            if (bar < 3 && step == 48 && rand() % 2 == 0) {
+                r[6] = 10; r[10] = 13; r[7] &= ~(1 << 5);
+            }
         }
 
         fill_buffer_with_ym(r, buf);
