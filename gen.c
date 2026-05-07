@@ -1,75 +1,79 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <unistd.h>
 
 /* Oric Atmos Specs */
 #define SAMPLE_RATE 44100
 #define SAMPLES_PER_FRAME 882   /* 44100Hz / 50Hz */
 #define YM_CLOCK 1000000.0      /* 1 MHz */
 
-/* Audio State */
-static double countdown_a = 0;
-static int16_t output_state_a = 1;
+/* Oscillator States for 3 Channels */
+static double countdown[3] = {0, 0, 0};
+static int16_t out_state[3] = {1, 1, 1};
 
 /**
- * Synthesizes 1/50s of audio for Channel A.
- * Mimics YM2149 latching: the period is reloaded only when the counter expires.
+ * Synthesizes 1/50s of audio for 3 channels and mixes them.
  */
-void fill_buffer_from_ym(unsigned char *regs, int16_t *buffer) {
-    /* Extract 12-bit period: Reg 0 (fine) + Reg 1 (coarse, 4 bits) */
-    uint16_t period = regs[0] | ((regs[1] & 0x0F) << 8);
+void fill_buffer_with_chord(unsigned char *regs, int16_t *buffer) {
+    /* 1. Extract 12-bit periods for A, B, and C */
+    uint16_t periods[3];
+    periods[0] = regs[0] | ((regs[1] & 0x0F) << 8); // Ch A
+    periods[1] = regs[2] | ((regs[3] & 0x0F) << 8); // Ch B
+    periods[2] = regs[4] | ((regs[5] & 0x0F) << 8); // Ch C
     
-    /* Extract Volume: Reg 8 (4 bits) */
-    int16_t amplitude = (regs[8] & 0x0F) * 1500; 
+    /* 2. Extract Volumes (Regs 8, 9, 10) */
+    int16_t volumes[3];
+    volumes[0] = (regs[8] & 0x0F) * 1000;
+    volumes[1] = (regs[9] & 0x0F) * 1000;
+    volumes[2] = (regs[10] & 0x0F) * 1000;
 
-    /* Internal YM divider: Tone freq = Clock / (16 * Period) */
     double ticks_per_sample = YM_CLOCK / SAMPLE_RATE;
-    double effective_period = (period < 1) ? 1 : (double)period * 16.0;
 
     for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
-        if (amplitude == 0) {
-            buffer[i] = 0;
-            continue;
+        int32_t mixed_sample = 0;
+
+        for (int ch = 0; ch < 3; ch++) {
+            if (volumes[ch] == 0 || periods[ch] < 1) continue;
+
+            double effective_period = (double)periods[ch] * 16.0;
+            countdown[ch] -= ticks_per_sample;
+            
+            while (countdown[ch] <= 0) {
+                countdown[ch] += effective_period;
+                out_state[ch] = -out_state[ch];
+            }
+            
+            // Add channel output to the mix
+            mixed_sample += (out_state[ch] > 0) ? volumes[ch] : -volumes[ch];
         }
 
-        countdown_a -= ticks_per_sample;
-        
-        while (countdown_a <= 0) {
-            /* Latch the period and flip the state */
-            countdown_a += effective_period;
-            output_state_a = -output_state_a;
-        }
+        /* 3. Simple Clipping/Clamping to prevent 16-bit overflow */
+        if (mixed_sample > 32767) mixed_sample = 32767;
+        if (mixed_sample < -32768) mixed_sample = -32768;
 
-        buffer[i] = (output_state_a > 0) ? amplitude : -amplitude;
+        buffer[i] = (int16_t)mixed_sample;
     }
 }
 
 int main() {
-    /* Open pipe to PulseAudio (standard in Termux) */
-    /* --latency-msec=20 ensures we stay close to the 50Hz frame rate */
     FILE *audio_pipe = popen("pacat --raw --format=s16le --rate=44100 --channels=1 --latency-msec=20", "w");
-    
-    if (!audio_pipe) {
-        fprintf(stderr, "Error: Could not open audio pipe. Is pulseaudio running?\n");
-        return 1;
-    }
+    if (!audio_pipe) return 1;
 
-    unsigned char ym_regs[14];
+    unsigned char ym_regs[14] = {0};
     int16_t audio_buffer[SAMPLES_PER_FRAME];
 
-    /* 
-       Reads 14 bytes at a time from stdin. 
-       This assumes your 'autoframe' filter is outputting raw binary bytes.
-    */
-    while (fread(ym_regs, 1, 14, stdin) == 14) {
-        
-        fill_buffer_from_ym(ym_regs, audio_buffer);
+    /* Setup a Test Chord (C Major-ish) */
+    // Channel A: Period 478 (~130Hz) Vol 8
+    ym_regs[0] = 478 & 0xFF; ym_regs[1] = (478 >> 8); ym_regs[8] = 8;
+    // Channel B: Period 379 (~165Hz) Vol 8
+    ym_regs[2] = 379 & 0xFF; ym_regs[3] = (379 >> 8); ym_regs[9] = 8;
+    // Channel C: Period 319 (~196Hz) Vol 8
+    ym_regs[4] = 319 & 0xFF; ym_regs[5] = (319 >> 8); ym_regs[10] = 8;
 
-        if (fwrite(audio_buffer, sizeof(int16_t), SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) {
-            break; 
-        }
-        
-        /* Push the frame to the sound server immediately */
+    printf("Playing mixed A+B+C chord. Ctrl+C to stop.\n");
+
+    while (1) {
+        fill_buffer_with_chord(ym_regs, audio_buffer);
+        if (fwrite(audio_buffer, sizeof(int16_t), SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) break;
         fflush(audio_pipe);
     }
 
