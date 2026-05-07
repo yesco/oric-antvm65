@@ -6,6 +6,7 @@ use Getopt::Std;
 # Setup options: -r for raw binary mode
 my %opts;
 getopts('r', \%opts);
+getopts('f', \%opts);
 
 usage() unless @ARGV == 2;
 
@@ -110,13 +111,12 @@ $noise= undef;
 	push @frames, [ @bytes ];
 
 
-
-# TODO: currently the .f samples are too sparse - 4x slower!
-#	push @frames, [ @bytes ];
-#	push @frames, [ @bytes ];
-#	push @frames, [ @bytes ];
-
-
+	if ($opts{'f'}) {
+	    # TODO: currently the .f samples are too sparse - 4x slower!
+	    push @frames, [ @bytes ];
+	    push @frames, [ @bytes ];
+	    push @frames, [ @bytes ];
+	}
 
     }
 }

@@ -1,2 +1,5 @@
 #perl ymdump2ym3.pl ../badgerbadger/war.f fil.ym3 ; ./ym2wav fil.ym3 fil.wav ; time play fil.wav
-perl ymdump2ym3.pl $1 fil.ym3 ; ./ym2wav fil.ym3 fil.wav ; time play fil.wav
+
+rm fil.ym3 fil.wav
+
+perl ymdump2ym3.pl $* fil.ym3 ; ./ym2wav fil.ym3 fil.wav ; time play fil.wav
