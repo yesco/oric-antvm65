@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define SAMPLE_RATE 44100
 #define SAMPLES_PER_FRAME 882
@@ -29,7 +30,6 @@ void fill_buffer_with_ym(unsigned char *regs, int16_t *buffer) {
     double ticks_per_sample = YM_CLOCK / SAMPLE_RATE;
 
     for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
-        // 1. Envelope Decay
         if (!env_holding) {
             double env_step_ticks = (env_period < 1) ? 256.0 : (double)env_period * 256.0;
             static double env_sub = 0;
@@ -39,14 +39,12 @@ void fill_buffer_with_ym(unsigned char *regs, int16_t *buffer) {
                 if (--env_level < 0) { env_level = 0; env_holding = 1; }
             }
         }
-        // 2. Noise Engine
         noise_countdown -= ticks_per_sample;
         while (noise_countdown <= 0) {
             noise_countdown += (regs[6] < 1 ? 16.0 : (double)regs[6] * 16.0);
             noise_rng = (noise_rng >> 1) | (((noise_rng ^ (noise_rng >> 3)) & 1) << 16);
             noise_state = (noise_rng & 1) ? 1 : -1;
         }
-        // 3. Mixing
         int32_t mixed = 0;
         for (int ch = 0; ch < 3; ch++) {
             if (periods[ch] > 0) {
@@ -77,12 +75,12 @@ int main() {
 
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
-        r[7] = 0x3F; // Mixer Off
+        r[7] = 0x3F;
         
         int step = frame % 64;
         if (frame % 256 == 0) prog = rand() % 5;
 
-        // BASS (B) Sustain
+        // --- BASS (B) ---
         if (step == 16 || step == 32 || step == 56) durB = 8;
         if (durB > 0) {
             uint16_t pB = mel[prog] * 2;
@@ -90,20 +88,33 @@ int main() {
             durB--;
         }
 
-        // LEAD SKANK (A) Sustain
-        if (step == 8 || step == 24 || step == 40) durA = 6;
+        // --- LEAD "DUT-AP-DUT-DUUU" Phrasing (A) ---
+        // Phrase: step 8 (dut), 12 (ap), 24 (dut), 40 (duuuu)
+        uint16_t pA = mel[prog];
+        if (step == 8 || step == 12 || step == 24) durA = 3; 
+        if (step == 40) durA = 16; // The long "duuuu"
+
         if (durA > 0) {
-            uint16_t pA = mel[prog];
+            // Add Vibrato to the long note (step 40+)
+            if (durA > 4) {
+                pA += (int)(6.0 * sin(frame * 0.5)); 
+            }
             r[0] = pA & 0xFF; r[1] = pA >> 8; r[8] = 12; r[7] &= ~(1 << 0);
             durA--;
         }
 
-        // CHUGGA-CHICK (C)
-        if (step % 8 == 0) { r[6] = 28; r[10] = 7; r[7] &= ~(1 << 5); }
-        if (step == 32) {
+        // --- UNEVEN DRUMS (C) ---
+        // Uneven "Chug": 0, 9, 16, 25... instead of 0, 8, 16, 24
+        int chug_step = step % 16;
+        if (chug_step == 0 || chug_step == 9) { 
+            r[6] = 28; r[10] = 7; r[7] &= ~(1 << 5); 
+        }
+        
+        // The "Chick" (One Drop) with slight "drag"
+        if (step == 33) { // 33 instead of 32 for uneven "swing"
             r[4] = 0x00; r[5] = 0x08; // Kick
-            r[6] = 12; r[11] = 0x00; r[12] = 0x08; // Snare/Env
-            r[10] = 0x10; r[7] &= ~0x24; // Env + Tone + Noise
+            r[6] = 10; r[11] = 0x00; r[12] = 0x06; // Snare/Env
+            r[10] = 0x10; r[7] &= ~0x24; 
             env_level = 31; env_holding = 0;
         }
 
@@ -113,5 +124,6 @@ int main() {
         frame++;
         usleep(20000);
     }
+    pclose(audio_pipe);
     return 0;
 }
