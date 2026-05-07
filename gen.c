@@ -98,14 +98,18 @@ int main() {
         if (step == 8 || step == 12 || step == 24 || step == 48) durA = 6;
         if (durA > 0) {
             uint16_t pA = scale_mid[prog]; // Mid range
-            if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6)); // Vibrato
+	    if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6)); // Vibrato
             r[0] = pA & 0xFF; r[1] = pA >> 8;
-            r[8] = 11; r[7] &= ~(1 << 0);
+            r[8] = 13; r[7] &= ~(1 << 0);
             durA--;
         }
 
         // --- DRUMS C ---
-        if (step % 16 == 0) { r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); } 
+        if (step % 16 == 0) {
+	  r[6] = 2;
+	  r[10] = 12;
+	  r[7] &= ~(1 << 5);
+	} 
         if (step == 32) {
             r[4] = 0x00; r[5] = 0x08; r[6] = 12;
             r[11] = 0x00; r[12] = 0x08; r[13] = 0x00;
