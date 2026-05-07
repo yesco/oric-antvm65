@@ -8,7 +8,7 @@
 #define SAMPLES_PER_FRAME 882
 #define YM_CLOCK 1000000.0
 
-static const int16_t YM_VOL_TABLE[16] = {
+static const int16_t YM_VOL_TABLE[] = {
     0, 175, 250, 360, 520, 750, 1080, 1550, 2250, 3250, 4700, 6800, 9800, 14200, 20500, 29000
 };
 
@@ -71,49 +71,44 @@ int main() {
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0, durA = 0, durB = 0;
-    uint16_t mel[] = {478, 426, 379, 319, 284};
+    
+    // High Octave Periods (Higher pitch than before)
+    uint16_t scale_high[] = {239, 213, 190, 159, 142}; // C6 range
+    uint16_t scale_mid[]  = {478, 426, 379, 319, 284}; // C5 range (Lead)
 
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
         r[7] = 0x3F;
-        
         int step = frame % 64;
         if (frame % 256 == 0) prog = rand() % 5;
 
-        // --- BASS (B) ---
-        if (step == 16 || step == 32 || step == 56) durB = 8;
+        // --- RHYTHM CHORD B (High Pitch, 3-tier Volume) ---
+        // Hits every half-note (32 frames)
+        if (step == 0 || step == 32) durB = 16; 
         if (durB > 0) {
-            uint16_t pB = mel[prog] * 2;
-            r[2] = pB & 0xFF; r[3] = pB >> 8; r[9] = 11; r[7] &= ~(1 << 1);
+            uint16_t pB = scale_high[prog];
+            r[2] = pB & 0xFF; r[3] = pB >> 8;
+            // Alternating Volume: Loud (15), Medium (11), Loud (15)...
+            r[9] = (step < 32) ? 14 : 10; 
+            r[7] &= ~(1 << 1);
             durB--;
         }
 
-        // --- LEAD "DUT-AP-DUT-DUUU" Phrasing (A) ---
-        // Phrase: step 8 (dut), 12 (ap), 24 (dut), 40 (duuuu)
-        uint16_t pA = mel[prog];
-        if (step == 8 || step == 12 || step == 24) durA = 3; 
-        if (step == 40) durA = 16; // The long "duuuu"
-
+        // --- LEAD A (Slightly Lower than B) ---
+        if (step == 8 || step == 12 || step == 24 || step == 48) durA = 6;
         if (durA > 0) {
-            // Add Vibrato to the long note (step 40+)
-            if (durA > 4) {
-                pA += (int)(6.0 * sin(frame * 0.5)); 
-            }
-            r[0] = pA & 0xFF; r[1] = pA >> 8; r[8] = 12; r[7] &= ~(1 << 0);
+            uint16_t pA = scale_mid[prog]; // Mid range
+            if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6)); // Vibrato
+            r[0] = pA & 0xFF; r[1] = pA >> 8;
+            r[8] = 11; r[7] &= ~(1 << 0);
             durA--;
         }
 
-        // --- UNEVEN DRUMS (C) ---
-        // Uneven "Chug": 0, 9, 16, 25... instead of 0, 8, 16, 24
-        int chug_step = step % 16;
-        if (chug_step == 0 || chug_step == 9) { 
-            r[6] = 28; r[10] = 7; r[7] &= ~(1 << 5); 
-        }
-        
-        // The "Chick" (One Drop) with slight "drag"
-        if (step == 33) { // 33 instead of 32 for uneven "swing"
-            r[4] = 0x00; r[5] = 0x08; // Kick
-            r[6] = 10; r[11] = 0x00; r[12] = 0x06; // Snare/Env
+        // --- DRUMS C ---
+        if (step % 16 == 0) { r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); } 
+        if (step == 32) {
+            r[4] = 0x00; r[5] = 0x08; r[6] = 12;
+            r[11] = 0x00; r[12] = 0x08; r[13] = 0x00;
             r[10] = 0x10; r[7] &= ~0x24; 
             env_level = 31; env_holding = 0;
         }
