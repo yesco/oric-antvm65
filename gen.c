@@ -11,7 +11,7 @@ static const int16_t YM_VOL_TABLE[16] = {
     0, 175, 250, 360, 520, 750, 1080, 1550, 2250, 3250, 4700, 6800, 9800, 14200, 20500, 29000
 };
 
-static double countdown[3] = {0};
+static double countdown[3] = {0,0,0};
 static int16_t out_state[3] = {1, 1, 1};
 static uint32_t noise_rng = 1; 
 static double noise_countdown = 0;
@@ -63,37 +63,40 @@ int main() {
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0;
 
-    // Reggae Chord Progressions (A and B are base periods)
-    uint16_t chords[3][2] = {{478, 638}, {538, 716}, {426, 568}}; 
+    // Periods: C=478, G=319, F=358, Am=426
+    uint16_t chords[4] = {478, 319, 358, 426};
 
     while (1) {
-        r[7] = 0x3F; // All Off
+        for(int i=0; i<14; i++) r[i] = 0;
+        r[7] = 0x3F; // Mixer: All bits 1 (OFF)
+        
         int step = frame % 32; 
-        if (frame % 128 == 0) prog = rand() % 3; // Variation every 4 bars
+        if (frame % 128 == 0) prog = rand() % 4;
 
-        // --- THE BASS (Channel B) ---
-        // Plays a heavy 1-2-3-4 pattern, octave lower
-        uint16_t pB = chords[prog][(step/16)%2] * 2;
+        // --- BASS (Channel B) ---
+        // Steady walking bass on every "down" beat
+        uint16_t pB = chords[prog] * 2; // Octave down
         r[2] = pB & 0xFF; r[3] = pB >> 8;
-        r[9] = 11; r[7] &= ~(1 << 1);
+        r[9] = 11; 
+        r[7] &= ~(1 << 1); // Enable Tone B
 
-        // --- THE LEAD / SKANK (Channel A) ---
-        // Hits on the "OFF" beats (8-12 and 24-28)
-        if ((step >= 8 && step <= 11) || (step >= 24 && step <= 27)) {
-            uint16_t pA = chords[prog][(step/16)%2];
+        // --- LEAD SKANK (Channel A) ---
+        // Only hits on the "OFF" beats (8-12 and 24-28)
+        if ((step >= 8 && step <= 12) || (step >= 24 && step <= 28)) {
+            uint16_t pA = chords[prog];
             r[0] = pA & 0xFF; r[1] = pA >> 8;
-            r[8] = 13; r[7] &= ~(1 << 0);
-        } else {
-            r[8] = 0;
+            r[8] = 13;
+            r[7] &= ~(1 << 0); // Enable Tone A
         }
 
-        // --- THE ONE DROP (Channel C) ---
-        if (step == 16 || step == 17) { // Kick + Snare on 3rd beat
-            uint16_t kick = 800 + (step-16)*200;
+        // --- ONE DROP (Channel C) ---
+        // Kick + Snare on the middle of the phrase
+        if (step >= 16 && step <= 18) {
+            uint16_t kick = 600 + (step-16)*30;
             r[4] = kick & 0xFF; r[5] = kick >> 8;
-            r[6] = 20; r[10] = 15; r[7] &= ~0x24; // Tone + Noise
-        } else {
-            r[10] = 0;
+            r[6] = 10; // Noise pitch
+            r[10] = 13; // Volume
+            r[7] &= ~0x24; // Enable Tone C + Noise C
         }
 
         fill_buffer_with_ym(r, buf);
