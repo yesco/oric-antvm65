@@ -56,10 +56,8 @@ void fill_buffer_with_ym(unsigned char *regs, int16_t *buffer) {
             }
             int32_t vol = (regs[8+ch] & 0x10) ? (env_level * 900) : YM_VOL_TABLE[regs[8+ch] & 0x0F];
             int t_on = !(mixer & (1 << ch)), n_on = !(mixer & (1 << (ch + 3)));
-            int16_t sig = 0;
-            if (t_on && n_on) sig = (out_state[ch] > 0 && noise_state > 0) ? 1 : -1;
-            else if (t_on)    sig = (out_state[ch] > 0) ? 1 : -1;
-            else if (n_on)    sig = (noise_state > 0) ? 1 : -1;
+            int16_t sig = (t_on && n_on) ? (out_state[ch] > 0 && noise_state > 0 ? 1 : -1) :
+                          (t_on ? (out_state[ch] > 0 ? 1 : -1) : (n_on ? (noise_state > 0 ? 1 : -1) : 0));
             mixed += (sig * vol);
         }
         buffer[i] = (int16_t)(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
@@ -70,13 +68,12 @@ int main() {
     FILE *audio_pipe = popen("pacat --raw --format=s16le --rate=44100 --channels=1 --latency-msec=20", "w");
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
-    int frame = 0, prog = 0, style = 0, durA = 0, durB = 0;
-    int octShiftA = 0, octShiftB = 0, transition_type = 0;
+    int frame = 0, prog = 0, leadStyle = 0, rhythmStyle = 0, durA = 0, durB = 0;
+    int octShiftA = 0, octShiftB = 0, trans = 0;
     uint16_t pA_base = 0;
 
-    // Expanded scale (Fuller melody)
-    uint16_t scale_high[] = {239, 213, 190, 159, 142, 119}; 
-    uint16_t scale_mid[]  = {478, 426, 379, 358, 319, 284, 253}; 
+    uint16_t scale_high[] = {239, 213, 190, 159, 142}; 
+    uint16_t scale_mid[]  = {478, 426, 379, 319, 284}; 
 
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
@@ -84,90 +81,73 @@ int main() {
         int step = frame % 64;
         int bar = (frame / 64) % 4;
         
-        if (frame % 256 == 0) {
-            prog = rand() % 6;
-            style = rand() % 4;
-            transition_type = (rand() % 4 == 0) ? (rand() % 4 + 1) : 0;
-            printf("Phrase: prog=%d style=%d trans=%d\n", prog, style, transition_type);
-        }
-
         if (frame % 512 == 0) {
-            octShiftA = 0; octShiftB = 0;
-            if (rand() % 3 < 2) {
-                if (rand() % 2 == 0) octShiftA = (rand() % 5) - 2;
-                else octShiftB = (rand() % 5) - 2;
-            }
+            prog = rand() % 5;
+            // Lead Style: 80% chance of Original (0), 20% others
+            leadStyle = (rand() % 10 < 8) ? 0 : (rand() % 3 + 1);
+            // Rhythm Style: More varied
+            rhythmStyle = rand() % 3;
+            printf("--- New Movement: Lead=%d Rhythm=%d prog=%d ---\n", leadStyle, rhythmStyle, prog);
         }
 
-        // --- Transition Mutes ---
-        int is_dark_break = (bar == 3 && transition_type == 2);
-        int is_wash = (bar == 3 && transition_type == 4);
-        int mute_melody = is_dark_break || is_wash;
+        if (frame % 256 == 0) {
+            trans = (rand() % 4 == 0) ? (rand() % 5 + 1) : 0;
+        }
 
-        // --- B Rhythm ---
+        int mute_melody = (bar == 3 && (trans == 2 || trans == 4 || trans == 5));
+
+        // --- Channel B Rhythm (Variants) ---
         if (!mute_melody) {
-            if (step == 0 || step == 32) durB = 16; 
-            if (durB > 0) {
+            int trigB = 0;
+            if (rhythmStyle == 0) { // Classic Off-beat
+                if (step == 0 || step == 32) { trigB = 1; durB = 12; }
+            } else if (rhythmStyle == 1) { // Double Bubble
+                if (step == 0 || step == 4 || step == 32 || step == 36) { trigB = 1; durB = 4; }
+            } else { // Lazy Swing
+                if (step == 0 || step == 32 || step == 48) { trigB = 1; durB = 10; }
+            }
+
+            if (trigB || durB > 0) {
                 uint16_t pB = scale_high[prog];
                 if (octShiftB > 0) pB <<= octShiftB; else if (octShiftB < 0) pB >>= (-octShiftB);
                 r[2] = pB & 0xFF; r[3] = (pB >> 8) & 0x0F;
-                r[9] = (step < 32) ? 14 : 10; 
-                r[7] &= ~(1 << 1);
-                durB--;
+                r[9] = (step < 32) ? 14 : 10; r[7] &= ~(1 << 1);
+                if (trigB) durB--;
+                else durB--;
             }
         }
 
-        // --- A Lead (More Variations) ---
+        // --- Channel A Lead (Mostly Original Style 0) ---
         if (!mute_melody) {
             int trigger = 0, offset = 0;
-            if (style == 0 && (step % 16 == 8)) { trigger = 1; durA = 6; offset = (step/16); }
-            else if (style == 1 && (step % 8 == 4)) { trigger = 1; durA = 3; offset = (step/8); }
-            else if (style == 2 && (step == 10 || step == 26 || step == 42)) { trigger = 1; durA = 10; offset = 2; }
-            else if (style == 3 && (step < 32 && step % 4 == 0)) { trigger = 1; durA = 2; offset = (step/4)%6; }
+            if (leadStyle == 0 && (step == 8 || step == 12 || step == 24 || step == 48)) { trigger = 1; durA = 6; }
+            else if (leadStyle == 1 && (step % 12 == 4)) { trigger = 1; durA = 4; offset = (step/12); }
+            else if (leadStyle == 2 && (step == 10 || step == 26)) { trigger = 1; durA = 12; offset = 1; }
 
-            if (trigger) pA_base = scale_mid[(prog + offset) % 7];
+            if (trigger) pA_base = scale_mid[(prog + offset) % 5];
             if (durA > 0) {
                 uint16_t pA = pA_base;
                 if (octShiftA > 0) pA <<= octShiftA; else if (octShiftA < 0) pA >>= (-octShiftA);
-                if (durA > 4) pA += (int)(6.0 * sin(frame * 0.7));
+                pA += (int)(6.0 * sin(frame * 0.55));
                 r[0] = pA & 0xFF; r[1] = (pA >> 8) & 0x0F;
                 r[8] = 12; r[7] &= ~(1 << 0);
                 durA--;
             }
         }
 
-        // --- C Drums & Dark Break ---
-        if (is_dark_break) {
-            // "Dark Big Drums": Low noise thumps and random rapid triggers
-            if (step % 4 == 0) {
-                r[6] = 20 + (rand() % 10); // Low-mid noise
-                r[10] = 13 + (rand() % 3);
-                r[7] &= ~(1 << 5);
-            }
-            if (step % 12 == 0) { // Deep Tone Kick
-                r[4] = 0x00; r[5] = 0x0F; r[10] = 0x10;
-                r[11] = 0; r[12] = 0x04; r[7] &= ~(1 << 2);
-                env_level = 31; env_holding = 0;
-            }
-        } else if (bar == 3 && transition_type == 1 && step > 32) { // Roll
-            r[6] = 20 - (step - 32) / 2; r[10] = 8 + (step - 32) / 4;
-            if (step % 4 == 0) r[7] &= ~(1 << 5);
-        } else if (!is_wash) { // Normal Drums
-            if (step % 16 == 0) { r[6] = 2; r[10] = 11; r[7] &= ~(1 << 5); } 
-            if (step == 32) {
-                r[4] = 0; r[5] = 0x08; r[6] = 12; r[11] = 0; r[12] = 0x08;
-                r[10] = 0x10; r[7] &= ~0x24; env_level = 31; env_holding = 0;
-            }
-        }
-        
-        if (is_wash && step == 0) {
-            r[2] = scale_high[prog] & 0xFF; r[3] = scale_high[prog] >> 8;
-            r[11] = 0; r[12] = 0x20; r[10] = 0x10; r[7] &= ~(1 << 1);
-            env_level = 31; env_holding = 0;
+        // --- Channel C Drums & Dub Siren ---
+        if (bar == 3 && trans == 5) { // DUB SIREN
+            uint16_t s_pitch = 400 - (step * 5); 
+            s_pitch += (int)(20.0 * sin(frame * 1.2)); 
+            r[4] = s_pitch & 0xFF; r[5] = (s_pitch >> 8) & 0x0F;
+            r[10] = 13; r[7] &= ~(1 << 2);
+        } else if (!mute_melody) {
+             if (step % 16 == 0) { r[6] = 2; r[10] = 11; r[7] &= ~(1 << 5); } 
+             if (step == 32) { r[4] = 0; r[5] = 0x08; r[6] = 12; r[11] = 0; r[12] = 0x08; r[10] = 0x10; r[7] &= ~0x24; env_level = 31; env_holding = 0; }
         }
 
         fill_buffer_with_ym(r, buf);
-        fwrite(buf, 2, SAMPLES_PER_FRAME, audio_pipe);
+        if (fwrite(buf, 2, SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) break;
         fflush(audio_pipe);
         frame++;
     }
