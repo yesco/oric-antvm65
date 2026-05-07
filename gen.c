@@ -7,6 +7,7 @@
 #define SAMPLE_RATE 44100
 #define SAMPLES_PER_FRAME 882
 #define YM_CLOCK 1000000.0
+#define DELAY_FRAMES 6 // Adjust this for longer/shorter echo
 
 static const int16_t YM_VOL_TABLE[] = {
     0, 175, 250, 360, 520, 750, 1080, 1550, 2250, 3250, 4700, 6800, 9800, 14200, 20500, 29000
@@ -72,9 +73,13 @@ int main() {
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0, durA = 0, durB = 0;
     
-    // High Octave Periods (Higher pitch than before)
-    uint16_t scale_high[] = {239, 213, 190, 159, 142}; // C6 range
-    uint16_t scale_mid[]  = {478, 426, 379, 319, 284}; // C5 range (Lead)
+    // Circular buffer for Channel B Echo
+    uint16_t echo_pitch[DELAY_FRAMES] = {0};
+    uint8_t  echo_vol[DELAY_FRAMES]   = {0};
+    int echo_ptr = 0;
+
+    uint16_t scale_high[] = {239, 213, 190, 159, 142}; 
+    uint16_t scale_mid[]  = {478, 426, 379, 319, 284}; 
 
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
@@ -82,34 +87,53 @@ int main() {
         int step = frame % 64;
         if (frame % 256 == 0) prog = rand() % 5;
 
-        // --- RHYTHM CHORD B (High Pitch, 3-tier Volume) ---
-        // Hits every half-note (32 frames)
+        // --- RHYTHM CHORD B ---
         if (step == 0 || step == 32) durB = 16; 
+        
+        uint16_t current_pB = 0;
+        uint8_t current_vB = 0;
+
         if (durB > 0) {
-            uint16_t pB = scale_high[prog];
-            r[2] = pB & 0xFF; r[3] = pB >> 8;
-            // Alternating Volume: Loud (15), Medium (11), Loud (15)...
-            r[9] = (step < 32) ? 14 : 10; 
-            r[7] &= ~(1 << 1);
+            current_pB = scale_high[prog];
+            current_vB = (step < 32) ? 14 : 10;
             durB--;
         }
 
-        // --- LEAD A (Slightly Lower than B) ---
+        // Apply Delay Logic for Channel B
+        // We play the echo pitch if there's no active note, or mix it? 
+        // For simplicity: If no current note, play the echo.
+        uint16_t out_pB = current_pB;
+        uint8_t  out_vB = current_vB;
+
+        if (out_vB == 0 && echo_vol[echo_ptr] > 0) {
+            out_pB = echo_pitch[echo_ptr];
+            out_vB = echo_vol[echo_ptr] - 4; // Fade out the echo
+            if (out_vB > 15) out_vB = 0; // Catch unsigned wrap
+        }
+
+        // Update delay buffer
+        echo_pitch[echo_ptr] = current_pB;
+        echo_vol[echo_ptr] = current_vB;
+        echo_ptr = (echo_ptr + 1) % DELAY_FRAMES;
+
+        if (out_vB > 0) {
+            r[2] = out_pB & 0xFF; r[3] = out_pB >> 8;
+            r[9] = out_vB;
+            r[7] &= ~(1 << 1);
+        }
+
+        // --- LEAD A ---
         if (step == 8 || step == 12 || step == 24 || step == 48) durA = 6;
         if (durA > 0) {
-            uint16_t pA = scale_mid[prog]; // Mid range
-	    if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6)); // Vibrato
+            uint16_t pA = scale_mid[prog];
+            if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6));
             r[0] = pA & 0xFF; r[1] = pA >> 8;
             r[8] = 13; r[7] &= ~(1 << 0);
             durA--;
         }
 
         // --- DRUMS C ---
-        if (step % 16 == 0) {
-	  r[6] = 2;
-	  r[10] = 12;
-	  r[7] &= ~(1 << 5);
-	} 
+        if (step % 16 == 0) { r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); } 
         if (step == 32) {
             r[4] = 0x00; r[5] = 0x08; r[6] = 12;
             r[11] = 0x00; r[12] = 0x08; r[13] = 0x00;
