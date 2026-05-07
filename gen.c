@@ -83,34 +83,40 @@ int main() {
         int step = frame % 64;
         int bar = (frame / 64) % 4;
         
+        // Every 512 frames: Change Progression and Potentially Shift
         if (frame % 512 == 0) {
             prog = rand() % 5;
             leadStyle = (rand() % 10 < 8) ? 0 : (rand() % 3);
             rhythmStyle = rand() % 3;
-            //octShiftA = 0; octShiftB = 0;
-            if (rand() % 3 < 2) {
+
+            // Decoupled Shift: If a transition just finished, force a change in both
+            if (trans > 0) {
+                octShiftA = (rand() % 5) - 2;
+                octShiftB = (rand() % 5) - 2;
+                printf("[BLOCK RESET - TRANS] Both Shifts Updated! ");
+            } else if (rand() % 3 < 2) {
+                // Normal logic: only change one at a time
                 if (rand() % 2 == 0) octShiftA = (rand() % 5) - 2;
                 else octShiftB = (rand() % 5) - 2;
             }
+
             printf("[BLOCK] Prog:%d LStyle:%d RStyle:%d ShiftA:%d ShiftB:%d\n", 
                    prog, leadStyle, rhythmStyle, octShiftA, octShiftB);
         }
 
-        if (frame % 256 == 0) {
+        if (frame % 256 == 0 && frame % 512 != 0) {
             trans = (rand() % 4 == 0) ? (rand() % 5 + 1) : 0;
-            if (trans > 0) printf("  -> Transition Triggered: Type %d\n", trans);
+            if (trans > 0) printf("  -> Transition Triggered: Type %d (Shifts will rotate next block)\n", trans);
         }
 
         int mute_melody = (bar == 3 && (trans == 2 || trans == 4 || trans == 5));
 
         // --- B Rhythm ---
         if (!mute_melody) {
-            int trigB = 0;
-            if (rhythmStyle == 0 && (step == 0 || step == 32)) trigB = 12;
-            else if (rhythmStyle == 1 && (step == 0 || step == 4 || step == 32 || step == 36)) trigB = 4;
-            else if (rhythmStyle == 2 && (step == 0 || step == 32 || step == 48)) trigB = 10;
+            if (step == 0 || step == 32) durB = 12;
+            else if (rhythmStyle == 1 && (step == 4 || step == 36)) durB = 4;
+            else if (rhythmStyle == 2 && step == 48) durB = 10;
 
-            if (trigB) durB = trigB;
             if (durB > 0) {
                 uint16_t pB = scale_high[prog];
                 if (octShiftB > 0) pB <<= octShiftB; else if (octShiftB < 0) pB >>= (-octShiftB);
@@ -148,13 +154,14 @@ int main() {
             r[6] = 20 - (step-32)/2; r[10] = 8 + (step-32)/4; if (step % 4 == 0) r[7] &= ~(1 << 5);
         } else {
              if (step % 16 == 0) { r[6] = 2; r[10] = 11; r[7] &= ~(1 << 5); } 
-             if (step == 32) { r[4] = 0; r[5] = 0x08; r[6] = 12; r[11] = 0; r[12] = 0x08; r[10] = 0x10; r[7] &= ~0x24; env_level = 31; env_holding = 0; }
+             if (step == 32) { r[4] = 0; r[5] = 0x08; r[6] = 12; r[11] = 0; r[12] = 0x08; r[13] = 0; r[10] = 0x10; r[7] &= ~0x24; env_level = 31; env_holding = 0; }
         }
 
         fill_buffer_with_ym(r, buf);
         if (fwrite(buf, 2, SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) break;
         fflush(audio_pipe);
         frame++;
+        if (frame % 512 == 1) trans = 0; // Clear transition flag after reset
     }
     pclose(audio_pipe);
     return 0;
