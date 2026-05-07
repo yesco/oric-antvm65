@@ -16,8 +16,6 @@ static int16_t out_state[3] = {1, 1, 1};
 static uint32_t noise_rng = 1; 
 static double noise_countdown = 0;
 static int16_t noise_state = 1;
-
-/* Envelope State */
 static double env_countdown = 0;
 static int32_t env_level = 0;
 static int8_t env_holding = 1;
@@ -32,7 +30,6 @@ void fill_buffer_with_ym(unsigned char *regs, int16_t *buffer) {
     double ticks_per_sample = YM_CLOCK / SAMPLE_RATE;
 
     for (int i = 0; i < SAMPLES_PER_FRAME; i++) {
-        // 1. Envelope (Drum Decay)
         if (!env_holding) {
             double env_step_ticks = (env_period < 1) ? 256.0 : (double)env_period * 256.0;
             env_countdown -= ticks_per_sample;
@@ -41,15 +38,12 @@ void fill_buffer_with_ym(unsigned char *regs, int16_t *buffer) {
                 if (--env_level < 0) { env_level = 0; env_holding = 1; }
             }
         }
-        // 2. Noise
-        double n_eff_p = (regs[6] < 1) ? 16.0 : (double)regs[6] * 16.0;
         noise_countdown -= ticks_per_sample;
         while (noise_countdown <= 0) {
-            noise_countdown += n_eff_p;
+            noise_countdown += (regs[6] < 1 ? 16.0 : (double)regs[6] * 16.0);
             noise_rng = (noise_rng >> 1) | (((noise_rng ^ (noise_rng >> 3)) & 1) << 16);
             noise_state = (noise_rng & 1) ? 1 : -1;
         }
-        // 3. Mix
         int32_t mixed = 0;
         for (int ch = 0; ch < 3; ch++) {
             if (periods[ch] > 0) {
@@ -74,33 +68,36 @@ int main() {
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0;
-    // C-Pentatonic: C, D, E, G, A
-    uint16_t mel[] = {478, 426, 379, 319, 284};
+    uint16_t mel[] = {478, 426, 379, 319, 284}; // C, D, E, G, A
 
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
         r[7] = 0x3F;
-        int step = frame % 32;
-        if (frame % 128 == 0) prog = rand() % 5;
+        int step = frame % 64; // 1.28 second phrase
+        if (frame % 256 == 0) prog = rand() % 5;
 
-        // BASS (Ch B): Walking Reggae Line
-        int b_step = (step / 8);
-        uint16_t pB = (b_step == 0) ? 0 : (mel[(prog + b_step) % 5] * 2);
-        if(pB > 0) { r[2] = pB & 0xFF; r[3] = pB >> 8; r[9] = 11; r[7] &= ~(1 << 1); }
-
-        // LEAD SKANK (Ch A): Off-beats
-        if (step == 8 || step == 24) {
-            uint16_t pA = mel[prog];
-            r[0] = pA & 0xFF; r[1] = pA >> 8; r[8] = 13; r[7] &= ~(1 << 0);
+        // --- BASS (Channel B): The Bubble ---
+        // Skipping Beat 1 (0-7), playing on 2 (16), 3 (32), and "and" of 4 (56)
+        if (step == 16 || step == 32 || step == 56) {
+            uint16_t pB = mel[prog] * 2;
+            r[2] = pB & 0xFF; r[3] = pB >> 8;
+            r[9] = 11; r[7] &= ~(1 << 1);
         }
 
-        // DRUMS (Ch C): The One Drop (Step 16)
-        if (step == 16) {
-            r[4] = 0x00; r[5] = 0x06; // Deep Kick
-            r[6] = 22;               // Snare Crispness
-            r[11] = 0x00; r[12] = 0x0A; // Longer Decay (~0.5s)
-            r[13] = 0x00; r[10] = 0x10; // Use Env
-            r[7] &= ~0x24;           // Tone + Noise
+        // --- SKANK (Channel A): Up-beats (The "And") ---
+        // Hitting exactly between the beats
+        if (step == 8 || step == 24 || step == 40 || step == 56) {
+            uint16_t pA = mel[prog];
+            r[0] = pA & 0xFF; r[1] = pA >> 8;
+            r[8] = 12; r[7] &= ~(1 << 0);
+        }
+
+        // --- DRUMS (Channel C): One Drop on Beat 3 ---
+        if (step == 32) {
+            r[4] = 0x00; r[5] = 0x08; // Deep Kick
+            r[6] = 20;               // Snare
+            r[11] = 0x00; r[12] = 0x10; // Long-ish decay
+            r[10] = 0x10; r[7] &= ~0x24; // Env + Tone + Noise
             env_level = 31; env_holding = 0;
         }
 
