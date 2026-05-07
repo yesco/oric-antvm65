@@ -71,7 +71,8 @@ int main() {
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
     int frame = 0, prog = 0, style = 0, durA = 0, durB = 0;
-    uint16_t pA_current = 0;
+    int octShiftA = 0, octShiftB = 0;
+    uint16_t pA_base = 0;
 
     uint16_t scale_high[] = {239, 213, 190, 159, 142}; 
     uint16_t scale_mid[]  = {478, 426, 379, 319, 284}; 
@@ -81,59 +82,70 @@ int main() {
         r[7] = 0x3F;
         int step = frame % 64;
         
-        if (frame % 128 == 0) {
+        if (frame % 256 == 0) {
             prog = rand() % 5;
             style = rand() % 3;
+	    printf("prog=%d style=%d..\n", prog, style);
         }
 
-        // --- RHYTHM CHORD B ---
-        if (step == 0 || step == 32) durB = 12; 
+        // Every 512 frames: Randomized Octave Shift for A OR B
+        if (frame % 512 == 0) {
+            octShiftA = 0; octShiftB = 0;
+            if (rand() % 3 < 2) { // 673% chance to shift
+                if (rand() % 2 == 0) octShiftA = (rand() % 5) - 2;
+                else octShiftB = (rand() % 5) - 2;
+		printf("shiftA=%d, hisftB=%d...\n", octShiftA, octShiftB);
+            }
+        }
+
+        // --- B ---
+        if (step == 0 || step == 32) durB = 16; 
         if (durB > 0) {
             uint16_t pB = scale_high[prog];
-	    //pB <<= 1;
-            r[2] = pB & 0xFF; r[3] = pB >> 8;
+            if (octShiftB > 0) pB <<= octShiftB; else if (octShiftB < 0) pB >>= (-octShiftB);
+            if (pB < 1) pB = 1;
+            r[2] = pB & 0xFF; r[3] = (pB >> 8) & 0x0F;
             r[9] = (step < 32) ? 14 : 10; 
             r[7] &= ~(1 << 1);
             durB--;
         }
 
-        // --- FIXED LEAD A ---
-        // Force a note trigger based on style
-        int trigger = 0;
-        int offset = 0;
-        if (style == 0) { // Classic
+        // --- A ---
+        int trigger = 0, offset = 0;
+        if (style == 0) {
             if (step == 8 || step == 24 || step == 48) { trigger = 1; durA = 8; offset = 0; }
-        } else if (style == 1) { // Triplet Riff
+        } else if (style == 1) {
             if (step == 4 || step == 12 || step == 20) { trigger = 1; durA = 4; offset = (step/8); }
-        } else { // Syncopated
+        } else {
             if (step == 10 || step == 26) { trigger = 1; durA = 12; offset = 1; }
         }
 
-        if (trigger) pA_current = scale_mid[(prog + offset) % 5];
+        if (trigger) pA_base = scale_mid[(prog + offset) % 5];
 
         if (durA > 0) {
-            uint16_t pA = pA_current;
-	    //	    pA <<= 1; // bass
-	    //pA >>= 1;
-            if (durA > 4) pA += (int)(5.0 * sin(frame * 0.6));
-            r[0] = pA & 0xFF; r[1] = pA >> 8;
-            r[8] = 15; r[7] &= ~(1 << 0);
+            uint16_t pA = pA_base;
+            if (octShiftA > 0) pA <<= octShiftA; else if (octShiftA < 0) pA >>= (-octShiftA);
+            if (pA < 1) pA = 1;
+            if (durA > 4) pA += (int)(4.0 * sin(frame * 0.6));
+            r[0] = pA & 0xFF; r[1] = (pA >> 8) & 0x0F;
+            r[8] = 13; r[7] &= ~(1 << 0);
             durA--;
         }
 
-        // --- DRUMS C ---
-        if (step % 16 == 0) { r[6] = 2; r[10] = 10; r[7] &= ~(1 << 5); } 
+        // --- C ---
+        if (step % 16 == 0) { r[6] = 2; r[10] = 12; r[7] &= ~(1 << 5); } 
         if (step == 32) {
-            r[4] = 0x00; r[5] = 0x08; r[6] = 12;
-            r[11] = 0x00; r[12] = 0x08; r[13] = 0x00;
+            r[4] = 0; r[5] = 0x08; r[6] = 12;
+            r[11] = 0; r[12] = 0x08; r[13] = 0;
             r[10] = 0x10; r[7] &= ~0x24; 
             env_level = 31; env_holding = 0;
         }
 
         fill_buffer_with_ym(r, buf);
-        if (fwrite(buf, sizeof(int16_t), SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) break;
+        if (fwrite(buf, 2, SAMPLES_PER_FRAME, audio_pipe) < SAMPLES_PER_FRAME) break;
         fflush(audio_pipe);
         frame++;
     }
+    pclose(audio_pipe);
     return 0;
 }
