@@ -50,18 +50,20 @@ if ($opts{r}) {
 	my $n= 3;
 	my @bytes= (0) x 14;
 	my $mixer= 0b111111;
-	#	while(/(\d+)v\s+([\.0-9]+)hz/ig) {
 	my $got= 0;
 	while(/v(\d+)N?(\d*)\s+([.0-9]+)hz/ig) {
 	    $got++;
 	    my ($v,$noise,$f) = ($1,$2,$3);
-	    #print "---- >$v< >$noise< >$f<\n";
+
+	    print "---- >$v< >$noise< >$f<\n";
+
 	    $f=1 if +$f==0;
     	    my $p= int(1000000/16/+$f + 0.5);
 
 	    my $hi= int($p/256);
 	    my $lo= $p % 256;
 
+	    # TODO:
 $noise= undef;
 	    
 	    $bytes[11]= 0+($noise || 0);
