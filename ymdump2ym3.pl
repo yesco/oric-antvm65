@@ -51,9 +51,12 @@ if ($opts{r}) {
 	my @bytes= (0) x 14;
 	my $mixer= 0b111111;
 	#	while(/(\d+)v\s+([\.0-9]+)hz/ig) {
+	my $got= 0;
 	while(/v(\d+)N?(\d*)\s+([.0-9]+)hz/ig) {
+	    $got++;
 	    my ($v,$noise,$f) = ($1,$2,$3);
 	    #print "---- >$v< >$noise< >$f<\n";
+	    $f=1 if +$f==0;
     	    my $p= int(1000000/16/+$f + 0.5);
 
 	    my $hi= int($p/256);
@@ -108,14 +111,16 @@ $noise= undef;
 
 	$bytes[7]= $mixer;
 
-	push @frames, [ @bytes ];
+	if ($got) {
+	    push @frames, [ @bytes ];
 
 
-	if ($opts{'f'}) {
-	    # TODO: currently the .f samples are too sparse - 4x slower!
-	    push @frames, [ @bytes ];
-	    push @frames, [ @bytes ];
-	    push @frames, [ @bytes ];
+	    if ($opts{'f'}) {
+		# TODO: currently the .f samples are too sparse - 4x slower!
+		push @frames, [ @bytes ];
+		push @frames, [ @bytes ];
+		push @frames, [ @bytes ];
+	    }
 	}
 
     }
