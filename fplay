@@ -1,0 +1,5 @@
+echo python freqs.py "$@" ">" fil.f
+python freqs.py "$@" >fil.f
+echo ./fayplay fil.f
+./fayplay fil.f
+
