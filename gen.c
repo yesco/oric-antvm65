@@ -162,15 +162,105 @@ void do_song1_tick(char* r) {
 }
 
 
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+
+void parse_line(const char *line, unsigned char *regs) {
+    memset(regs, 0, 14);
+
+    // Case 1: AY: hex string
+    const char *ay_ptr = strstr(line, "AY:");
+    if (ay_ptr) {
+        ay_ptr += 3;
+        int count = 0;
+        unsigned int val;
+        while (count < 14 && sscanf(ay_ptr, "%2x", &val) == 1) {
+            regs[count++] = (unsigned char)val;
+            while (*ay_ptr && isxdigit(*ay_ptr)) ay_ptr++;
+            while (*ay_ptr && isspace(*ay_ptr)) ay_ptr++;
+        }
+        return;
+    }
+
+    // Case 2: Frequency/Volume tokens
+    int n = 0; // Channel index: 0=A, 1=B, 2=C
+    unsigned char mixer = 0x3F; // Default: all bits 1 (off)
+    const char *ptr = line;
+
+    while (n < 3) {
+        int v, noise_val;
+        float f;
+        int offset = 0;
+        char noise_flag[2] = {0};
+
+        // Find next 'v'
+        const char *v_start = strchr(ptr, 'v');
+        if (!v_start) break;
+
+        // Pattern: v(vol) [N(noise_val)] (freq)hz
+        // We look for 'N' specifically to handle the optional noise data
+        int found = sscanf(v_start, "v%d%1[N]%d %fhz%n", &v, noise_flag, &noise_val, &f, &offset);
+        
+        if (found < 2) { // No N found, try simple v(vol) (freq)hz
+            found = sscanf(v_start, "v%d %fhz%n", &v, &f, &offset);
+        } else if (found == 3) { // Found 'N' but sscanf thought noise_val was f
+             // This happens if input is "v15N 100hz" (no noise frequency)
+             sscanf(v_start, "v%d%1[N] %fhz%n", &v, noise_flag, &f, &offset);
+        }
+
+        if (found >= 2) {
+            // Volume clamping (6-15)
+            int yv = (v > 15) ? 15 : (v < 6 ? 6 : v);
+            regs[8 + n] = (unsigned char)yv;
+
+            if (f > 0.0f) {
+                // Calculate Period and set Tone registers
+                int p = (int)((YM_CLOCK / (16.0 * f)) + 0.5);
+                regs[n * 2 + 0] = p & 0xFF;         // Fine
+                regs[n * 2 + 1] = (p >> 8) & 0x0F;  // Coarse
+                
+                // Enable Tone (clear bit 0, 1, or 2)
+                mixer &= ~(1 << n);
+            }
+
+            // Handle Noise Flag
+            if (noise_flag[0] == 'N') {
+                // If noise value exists, set register 6 (Noise Period)
+                if (found >= 3) {
+                    regs[6] = (unsigned char)(noise_val & 0x1F);
+                }
+                // Enable Noise (clear bit 3, 4, or 5)
+                mixer &= ~(1 << (n + 3));
+            }
+
+            ptr = v_start + offset;
+            n++;
+        } else {
+            ptr = v_start + 1;
+        }
+    }
+    regs[7] = mixer;
+}
+
+
+
+
 int main() {
     FILE *audio_pipe = popen("pacat --raw --format=s16le --rate=44100 --channels=1 --latency-msec=20", "w");
     unsigned char r[14];
     int16_t buf[SAMPLES_PER_FRAME];
-
+    char* line= NULL; size_t llen= 0;
+    
     while (1) {
         for(int i=0; i<14; i++) r[i] = 0;
 
-	do_song1_tick(r);
+	if (0) {
+	  if (!getline(&line, &llen, stdin)) break;
+	  parse_line(line, r);
+	} else {
+	  do_song1_tick(r);
+	}
 
         fill_buffer_with_ym(r, buf);
 
@@ -180,5 +270,6 @@ int main() {
         frame++;
     }
     pclose(audio_pipe);
+    free(line);
     return 0;
 }
