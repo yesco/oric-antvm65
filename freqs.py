@@ -7,7 +7,7 @@ np.seterr(divide='ignore', invalid='ignore')
 def extract_ay_final(input_file):
     fs = 44100
     target_fps = 50
-    step_size = int(fs / target_fps)  # 882 samples
+    step_size = int(fs / target_fps)  # Exactly 882 samples
     window_size = 4096                 # 10.76 Hz per bin
 
     command = ['ffmpeg', '-i', str(input_file), '-f', 's16le', '-ac', '1', '-ar', str(fs), '-']
@@ -41,31 +41,40 @@ def extract_ay_final(input_file):
                 hf_peak = np.argmax(hf_region)
                 noise_period = int(np.clip(20 - (hf_peak / 30), 4, 28))
 
-            # 3. TONE EXTRACTION (Scanning from 32 Hz upwards)
-            search_data = fft_res[3:370] 
-            top_3_sub = np.argsort(search_data)[-3:][::-1]
+            # 3. DIRECT PEAK EXTRACTION
+            working_fft = np.copy(fft_res)
             
+            # Target boundaries
+            working_fft[:4] = 0.0
+            working_fft[368:] = 0.0
+            
+            top_3_sub = []
+            for _ in range(3):
+                i = np.argmax(working_fft)
+                if working_fft[i] < 1e-5:
+                    break
+                    
+                top_3_sub.append(i)
+                # Clear neighbor bins to prevent duplicate frequency rows
+                working_fft[max(0, i-4):min(len(working_fft), i+5)] = 0.0
+
+            # 4. OUTPUT FORMATTING
             parts = []
-            for idx, i_sub in enumerate(top_3_sub):
-                i = i_sub + 3
+            for idx, i in enumerate(top_3_sub):
+                raw_mag = fft_res[i]
                 
-                # PARABOLIC INTERPOLATION 
-                # This calculates the TRUE peak frequency and TRUE maximum magnitude
-                # even if the note falls exactly between two FFT bins.
-                y0, y1, y2 = np.log(fft_res[i-1:i+2] + 1e-10)
-                p = (y0 - y2) / (2 * (y0 - 2 * y1 + y2))
+                # Precise Linear Interpolation
+                alpha = fft_res[i-1]
+                beta = fft_res[i]
+                gamma = fft_res[i+1]
+                denom = alpha + beta + gamma
+                p = 0.5 * (alpha - gamma) / (alpha - 2*beta + gamma + 1e-10) if denom > 1e-10 else 0.0
                 precise_freq = (i + p) * (fs / window_size)
-                
-                # Reconstruct the real magnitude at the true interpolated peak position
-                # This prevents low bass notes from dropping below the volume gate floor.
-                actual_mag = fft_res[i] * np.exp((p**2) * (y0 - 2*y1 + y2) / 2.0)
-                if np.isnan(actual_mag) or np.isinf(actual_mag):
-                    actual_mag = fft_res[i]
 
-                # Stretch the range using the corrected true magnitude
-                ay_vol = int(np.clip((13 * np.log10(actual_mag + 1e-10) - 40) / 3.5 * 1.15, 0, 15))
+                # Safe Volume Scaling
+                ay_vol = int(np.clip((13 * np.log10(raw_mag + 1e-10) - 40) / 3.5 * 1.15, 0, 15))
 
-                if ay_vol < 4:
+                if ay_vol < 2:  # Relaxed slightly to catch quiet high notes
                     parts.append("    ---      ")
                 else:
                     if idx == 2 and is_percussive:
@@ -73,6 +82,9 @@ def extract_ay_final(input_file):
                     else:
                         parts.append(f"v{ay_vol:02d}    {precise_freq:>6.1f}Hz")
             
+            while len(parts) < 3:
+                parts.append("    ---      ")
+                
             print(" | ".join(parts))
             
     except KeyboardInterrupt:

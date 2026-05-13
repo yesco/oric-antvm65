@@ -75,7 +75,7 @@ $noise= undef;
 		#		$mixer &= 0b000111;
 
 		# force volume
-		$v=15;
+#		$v=15;
 	    }
 
 	    # volume 1v-150v (?) what meaning, is linear?
