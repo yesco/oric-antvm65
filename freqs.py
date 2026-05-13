@@ -8,18 +8,12 @@ def extract_ay_final(input_file):
     fs = 44100
     target_fps = 50
     step_size = int(fs / target_fps)  # Exactly 882 samples (20ms step)
-    
-    # Dual-Band Window Sizes
     window_treble = 4096              # High time resolution for arpeggios
-    window_bass = 16384               # High frequency resolution for low bass
 
     command = ['ffmpeg', '-i', str(input_file), '-f', 's16le', '-ac', '1', '-ar', str(fs), '-']
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     
-    # Separate parallel audio rolling buffers
     buffer_treble = np.zeros(window_treble, dtype=np.int16)
-    buffer_bass = np.zeros(window_bass, dtype=np.int16)
-    
     prev_energy = 1.0
     
     try:
@@ -29,25 +23,17 @@ def extract_ay_final(input_file):
             
             new_samples = np.frombuffer(raw_data, dtype=np.int16)
             
-            # Roll and update treble buffer
             buffer_treble = np.roll(buffer_treble, -step_size)
             buffer_treble[-step_size:] = new_samples
             
-            # Roll and update parallel bass buffer
-            buffer_bass = np.roll(buffer_bass, -step_size)
-            buffer_bass[-step_size:] = new_samples
-            
-            # 1. TRANSIENT DETECTION (The "Punch")
+            # 1. TRANSIENT DETECTION
             current_energy = np.sum(np.abs(new_samples))
             energy_surge = current_energy / (prev_energy + 1e-6)
             prev_energy = max(1.0, current_energy)
 
-            # 2. RUN PARALLEL FFTS
+            # 2. RUN FFT ON TREBLE
             windowed_treble = buffer_treble * np.hanning(window_treble)
             fft_treble = np.abs(np.fft.rfft(windowed_treble))
-            
-            windowed_bass = buffer_bass * np.hanning(window_bass)
-            fft_bass = np.abs(np.fft.rfft(windowed_bass))
             
             # 3. NOISE ANALYSIS
             hf_region = fft_treble[200:800] 
@@ -58,79 +44,83 @@ def extract_ay_final(input_file):
                 hf_peak = np.argmax(hf_region)
                 noise_period = int(np.clip(20 - (hf_peak / 30), 4, 28))
 
-            # 4. BASS EXTRACTION WITH INTEGRATED SIDE-BAND ENERGY BOOST
-            # Bin resolution is ~2.69 Hz per bin. Look from bin 10 (~27 Hz) to bin 65 (~175 Hz).
-            bass_search_data = fft_bass[10:65]
-            bass_i_sub = np.argmax(bass_search_data)
-            bass_i = bass_i_sub + 10
+            # 4. EXTRACT ALL DOMINANT TREBLE FREQUENCIES
+            treble_search_data = fft_treble[3:370] # Include lower bins to catch mid-range overtones
+            top_indices = np.argsort(treble_search_data)[::-1][:6] # Look at top 6 peaks
             
-            # Boost: Sum energy of the peak bin + neighboring bins to reclaim leaked power
-            bass_mag_boosted = np.sum(fft_bass[bass_i-2:bass_i+3])
-            
-            # Parabolic interpolation for fine tuning frequency
-            y0, y1, y2 = np.log(fft_bass[bass_i-1:bass_i+2] + 1e-10)
-            p_bass = (y0 - y2) / (2 * (y0 - 2 * y1 + y2))
-            bass_freq = (bass_i + p_bass) * (fs / window_bass)
-            
-            # Separate volume profile for bass to prevent it dropping below the gate floor
-            bass_vol = int(np.clip((14 * np.log10(bass_mag_boosted + 1e-10) - 35) / 3.5 * 1.25, 0, 15))
-            
-            # Base variables for accumulating captured ghost-harmonic energy
-            harvested_harmonic_magnitude = 0.0
-
-            # 5. EXTRACT MID/TREBLE TONES & HARMONIC RECLAMATION
-            treble_search_data = fft_treble[14:370]
-            top_treble_sub = np.argsort(treble_search_data)[::-1]
-            
-            valid_treble_notes = []
-            
-            for idx in top_treble_sub:
-                i = idx + 14
+            detected_tones = []
+            for idx in top_indices:
+                i = idx + 3
                 raw_mag = fft_treble[i]
                 
-                # Interpolate precise treble frequency
+                # Precise Frequency
                 y0, y1, y2 = np.log(fft_treble[i-1:i+2] + 1e-10)
                 p = (y0 - y2) / (2 * (y0 - 2 * y1 + y2))
-                precise_freq = (i + p) * (fs / window_treble)
+                freq = (i + p) * (fs / window_treble)
                 
-                # HARMONIC GHOST FILTER WITH MAGNITUDE HARVESTING
-                if bass_vol >= 4 and bass_freq > 0:
-                    ratio = precise_freq / bass_freq
-                    if abs(ratio - round(ratio)) < 0.16 and ratio > 1.2:
-                        # Reclaim this removed frequency's energy and feed it back to the base tone
-                        harvested_harmonic_magnitude += raw_mag
-                        continue 
-                
-                ay_vol = int(np.clip((13 * np.log10(raw_mag + 1e-10) - 40) / 3.5 * 1.15, 0, 15))
-                if ay_vol >= 4:
-                    valid_treble_notes.append((precise_freq, ay_vol))
+                detected_tones.append({'freq': freq, 'mag': raw_mag})
 
-            # 6. APPLY HARVESTED ENERGY TO THE FINAL BASS VOLUME
-            if harvested_harmonic_magnitude > 0 and bass_vol >= 4:
-                # Add harvested mid-range harmonic energy directly to the fundamental bass weight
-                boosted_bass_mag = bass_mag_boosted + (harvested_harmonic_magnitude * 0.5)
-                bass_vol = int(np.clip((14 * np.log10(boosted_bass_mag + 1e-10) - 35) / 3.5 * 1.25, 0, 15))
+            # 5. DIRECT OVERTONE MAPPING TO BASE TONE
+            # Find the loudest tone that looks like an overtone of a deep bass note (30Hz - 150Hz)
+            base_freq = 0.0
+            accumulated_bass_mag = 0.0
+            overtone_indices_to_remove = []
 
-            # 7. CHANNELS MAPPING
+            for target_sub in range(len(detected_tones)):
+                t_freq = detected_tones[target_sub]['freq']
+                t_mag = detected_tones[target_sub]['mag']
+
+                # Test possible sub-harmonics (octaves down: /2, /3, /4)
+                for divisor in [2, 3, 4]:
+                    possible_base = t_freq / divisor
+                    if 30.0 <= possible_base <= 150.0:
+                        # Found a valid bass candidate! Let's lock onto it.
+                        base_freq = possible_base
+                        accumulated_bass_mag += t_mag
+                        overtone_indices_to_remove.append(target_sub)
+                        break
+                if base_freq > 0.0:
+                    break # Locked onto the primary base generator
+
+            # Accumulate any other overtones that fit this base tone
+            if base_freq > 0.0:
+                for idx, tone in enumerate(detected_tones):
+                    if idx in overtone_indices_to_remove:
+                        continue
+                    ratio = tone['freq'] / base_freq
+                    if abs(ratio - round(ratio)) < 0.15:
+                        accumulated_bass_mag += tone['mag']
+                        overtone_indices_to_remove.append(idx)
+
+            # Filter out the hijacked overtones from the melody pool
+            melody_tones = [t for idx, t in enumerate(detected_tones) if idx not in overtone_indices_to_remove]
+
+            # 6. CONVERT ACCUMULATED MAGNITUDES TO AY VOLUMES
             selected_notes = []
-            
-            # Lock Channel A to the boosted Bass pipeline
-            if bass_vol >= 4:
-                selected_notes.append((bass_freq, bass_vol))
+
+            # Channel A: Pure Base Tone (with added overtone volumes)
+            if base_freq > 0.0:
+                bass_vol = int(np.clip((13 * np.log10(accumulated_bass_mag + 1e-10) - 40) / 3.5 * 1.15, 0, 15))
+                if bass_vol >= 4:
+                    selected_notes.append((base_freq, bass_vol))
+                else:
+                    selected_notes.append((0.0, 0))
             else:
                 selected_notes.append((0.0, 0))
-                
-            # Assign remaining melodic channels from filtered treble list
-            for note in valid_treble_notes:
+
+            # Channels B and C: Remaining Melodies
+            for tone in melody_tones:
                 if len(selected_notes) >= 3:
                     break
-                selected_notes.append(note)
+                ay_vol = int(np.clip((13 * np.log10(tone['mag'] + 1e-10) - 40) / 3.5 * 1.15, 0, 15))
+                if ay_vol >= 4:
+                    selected_notes.append((tone['freq'], ay_vol))
 
             # Pad output array if insufficient frequencies found
             while len(selected_notes) < 3:
                 selected_notes.append((0.0, 0))
 
-            # 8. PRINT CHIP VALUE OUTPUT
+            # 7. PRINT CHIP VALUE OUTPUT
             parts = []
             for idx, (freq, vol) in enumerate(selected_notes):
                 if vol < 4 or freq == 0:
