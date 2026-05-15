@@ -7,10 +7,10 @@
 
 #define POPULATION_SIZE   64
 #define GENOME_SIZE       14
-#define GENERATIONS       40        // Fast tracking using historical seed injection
-#define TICK_RATE         50        // Standard 50 Hz music tracker frame updates
-#define AY_CLOCK          1789772   // Standard 1.78 MHz master clock frequency
-#define CACHE_SIZE        64        // History cache lookback depth
+#define GENERATIONS       40        
+#define TICK_RATE         50        
+#define AY_CLOCK          1789772   
+#define CACHE_SIZE        64        
 
 int sample_rate = 44100;
 int window_size = 0;              
@@ -19,7 +19,6 @@ int total_wav_samples = 0;
 float* full_target_waveform = NULL;
 float* current_window_spectrum = NULL;
 
-// History ring buffer to seed temporal variations
 uint8_t winner_cache[CACHE_SIZE][GENOME_SIZE];
 int cache_count = 0;
 
@@ -45,7 +44,6 @@ uint32_t xorshift32() {
     return x;
 }
 
-// Robust metadata subchunk parsing scanner
 int load_full_wav(const char* filename) {
     FILE* f = fopen(filename, "rb");
     if (!f) {
@@ -57,11 +55,9 @@ int load_full_wav(const char* filename) {
         fclose(f); return 0; 
     }
     
-    // Read out sample rate baseline fields directly (Bytes 24-27)
     memcpy(&sample_rate, &header[24], 4);
     if (sample_rate <= 0) sample_rate = 44100;
 
-    // Wind back file pointer to start searching dynamically for data tag chunks
     fseek(f, 12, SEEK_SET); 
     uint32_t chunk_id = 0;
     uint32_t data_size = 0;
@@ -127,10 +123,11 @@ void write_output_wav(const char* filename, float* buffer, int num_samples) {
     fclose(f);
 }
 
-void run_ay_emulator(uint8_t* regs, float* out_buffer) {
+void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples) {
     AY_Chip chip;
     memset(&chip, 0, sizeof(AY_Chip));
     
+    // Map individual registers uniquely to Channel A, B, and C
     chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
     chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
     chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
@@ -148,7 +145,7 @@ void run_ay_emulator(uint8_t* regs, float* out_buffer) {
     double ticks_per_sample = (double)AY_CLOCK / (16.0 * sample_rate);
     double env_ticks_per_sample = (double)AY_CLOCK / (256.0 * sample_rate);
 
-    for (int s = 0; s < window_size; s++) {
+    for (int s = 0; s < num_samples; s++) {
         if (!chip.env_holding && chip.env_period > 0) {
             chip.env_counter++;
             if (chip.env_counter >= chip.env_period * env_ticks_per_sample) {
@@ -174,6 +171,8 @@ void run_ay_emulator(uint8_t* regs, float* out_buffer) {
         }
 
         float mix = 0.0f;
+        int active_channels = 0;
+
         for (int c = 0; c < 3; c++) {
             if (chip.tone_period[c] > 0) {
                 chip.tone_counter[c]++;
@@ -182,14 +181,25 @@ void run_ay_emulator(uint8_t* regs, float* out_buffer) {
                     chip.tone_state[c] ^= 1;
                 }
             }
-            if (!(chip.mixer & (1 << c))) {
+            
+            // FIXED: CORRECTED ACTIVE-LOW MIXER INTERPRETATION LOGIC 
+            // Bit = 0 means Tone is ENABLED on this channel!
+            int tone_enabled = !((chip.mixer >> c) & 1);
+            
+            if (tone_enabled) {
+                active_channels++;
                 if (chip.tone_state[c]) {
                     float current_vol = (chip.amplitude[c] & 0x10) ? (float)chip.env_step : (float)(chip.amplitude[c] & 0x0F);
                     mix += current_vol / 15.0f;
                 }
             }
         }
-        out_buffer[s] = (mix / 3.0f) * 2.0f - 1.0f;
+        
+        if (active_channels > 0) {
+            out_buffer[s] = (mix / (float)active_channels) * 2.0f - 1.0f;
+        } else {
+            out_buffer[s] = 0.0f; // Silence output baseline when all pins pull high
+        }
     }
 }
 
@@ -210,7 +220,7 @@ float evaluate_fitness(uint8_t* genome) {
     float* candidate_waveform = (float*)malloc(window_size * sizeof(float));
     float* candidate_spectrum = (float*)malloc((window_size / 2) * sizeof(float));
     
-    run_ay_emulator(genome, candidate_waveform);
+    run_ay_emulator_flexible(genome, candidate_waveform, window_size);
     compute_simplified_spectrum(candidate_waveform, candidate_spectrum);
     
     float error = 0.0f;
@@ -226,14 +236,26 @@ float evaluate_fitness(uint8_t* genome) {
 int main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
     
-    // FIXED: Formats usage tracking cleanly against binary execution context string names
-    if (argc < 2) {
-        printf("Usage: %s <target.wav>\n", argv[0]); 
+    int is_silent = 0;
+    int skip_ms = 0; 
+    char* wav_filename = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-silent") == 0) {
+            is_silent = 1;
+        } else if (strcmp(argv[i], "-skip_ms") == 0 && (i + 1 < argc)) {
+            skip_ms = atoi(argv[++i]);
+        } else {
+            wav_filename = argv[i];
+        }
+    }
+
+    if (!wav_filename) {
+        printf("Usage: %s <target.wav> [-silent] [-skip_ms <ms>]\n", argv[0]); 
         return 1;
     }
     
-    // FIXED: Passes individual array values (index 1) directly down into filesystem reader
-    if (!load_full_wav(argv[1])) {
+    if (!load_full_wav(wav_filename)) {
         printf("[!] Failed to parse WAV metadata structure.\n"); 
         return 1;
     }
@@ -243,9 +265,16 @@ int main(int argc, char** argv) {
 
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* frame_waveform = (float*)malloc(window_size * sizeof(float));
-    int frame_index = 0;
+    
+    int play_buffer_samples = sample_rate * 0.5;
+    float* play_buffer = (float*)malloc(play_buffer_samples * sizeof(float));
 
-    for (int offset = 0; offset + window_size <= total_wav_samples; offset += window_size) {
+    int frame_index = 0;
+    
+    // FIXED: Calculate dynamic stride interval layout accurately 
+    int sample_stride = (skip_ms > 0) ? (sample_rate * skip_ms / 1000) : window_size;
+
+    for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         printf("\n============================================================\n");
         printf("Frame #%04d (Time Offset: %06.2fs)\n", frame_index, (float)offset / sample_rate);
         printf("============================================================\n");
@@ -256,7 +285,7 @@ int main(int argc, char** argv) {
         float fitness[POPULATION_SIZE];
 
         int idx = 0;
-        memset(population[idx++], 0, GENOME_SIZE); // Inject all-zero baseline candidate first
+        memset(population[idx++], 0, GENOME_SIZE); 
 
         int available_seeds = (cache_count < CACHE_SIZE) ? cache_count : CACHE_SIZE;
         for (int i = 0; i < available_seeds && idx < POPULATION_SIZE; i++) {
@@ -277,7 +306,6 @@ int main(int argc, char** argv) {
                 if (fitness[i] > max_fit) { max_fit = fitness[i]; best_idx = i; }
             }
 
-            // Prints exactly 10 tabular generation metrics checks per window step
             if (g % 4 == 0) {
                 printf("  Gen [%02d/%02d] -> Current Best Fitness Factor: %12.4f\n", g, GENERATIONS, max_fit);
             }
@@ -309,7 +337,6 @@ int main(int argc, char** argv) {
         memcpy(final_ay, population[winner], GENOME_SIZE);
         float baseline_winner_fitness = final_fit;
 
-        // Post-processing structural zero flattening pass 
         for (int j = 0; j < GENOME_SIZE; j++) {
             if (final_ay[j] != 0) {
                 uint8_t temporary_hold = final_ay[j];
@@ -322,7 +349,6 @@ int main(int argc, char** argv) {
             }
         }
 
-        // Output formatting structure printed precisely on a single line
         printf("\t\tAY:");
         for (int j = 0; j < GENOME_SIZE; j++) {
             printf(" %02x", final_ay[j]);
@@ -332,15 +358,30 @@ int main(int argc, char** argv) {
         memcpy(winner_cache[cache_count % CACHE_SIZE], final_ay, GENOME_SIZE);
         cache_count++;
 
-        run_ay_emulator(final_ay, frame_waveform);
-        memcpy(&complete_assembled_preview[offset], frame_waveform, window_size * sizeof(float));
+        run_ay_emulator_flexible(final_ay, frame_waveform, window_size);
+        
+        if (offset + window_size <= total_wav_samples) {
+            memcpy(&complete_assembled_preview[offset], frame_waveform, window_size * sizeof(float));
+        }
+
+        if (!is_silent) {
+            run_ay_emulator_flexible(final_ay, play_buffer, play_buffer_samples);
+            write_output_wav(".tick_preview.wav", play_buffer, play_buffer_samples);
+            
+            char sys_cmd[256];
+            snprintf(sys_cmd, sizeof(sys_cmd), "aplay -q .tick_preview.wav > /dev/null 2>&1 & pid=$!; sleep 0.5; kill $pid >/dev/null 2>&1");
+            int ret = system(sys_cmd);
+            (void)ret;
+        }
+
         frame_index++;
     }
 
     printf("\n[*] Done! Output match generated: match_preview.wav\n");
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
-    free(frame_waveform); free(complete_assembled_preview);
+    free(frame_waveform); free(play_buffer); free(complete_assembled_preview);
     free(full_target_waveform); free(current_window_spectrum);
+    unlink(".tick_preview.wav");
     return 0;
 }
