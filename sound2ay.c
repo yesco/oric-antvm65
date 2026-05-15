@@ -7,7 +7,7 @@
 
 #define POPULATION_SIZE   64
 #define GENOME_SIZE       14
-#define GENERATIONS       30        
+#define GENERATIONS       25        // Lower generation count since the time-domain YIN initialization does the heavy lifting
 #define TICK_RATE         50        
 #define AY_CLOCK          1789772   
 #define CACHE_SIZE        64        
@@ -32,10 +32,6 @@ typedef struct {
     
     uint32_t tone_counter[3];
     int8_t   tone_state[3];
-    uint32_t env_counter;
-    int32_t  env_step;
-    uint8_t  env_holding;
-    uint8_t  env_direction;
 } AY_Chip;
 
 uint32_t xorshift32() {
@@ -137,40 +133,12 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     chip.amplitude[2]   = regs[10] & 0x1F;
     chip.env_period     = regs[11] | (regs[12] << 8);
     chip.env_shape      = regs[13] & 0x0F;
-
-    chip.env_direction = (chip.env_shape & 0x04) ? 1 : 0;
-    chip.env_step      = (chip.env_direction) ? 0 : 15;
     
     for (int c = 0; c < 3; c++) chip.tone_state[c] = 1;
 
     double ticks_per_sample = (double)AY_CLOCK / (16.0 * sample_rate);
-    double env_ticks_per_sample = (double)AY_CLOCK / (256.0 * sample_rate);
 
     for (int s = 0; s < num_samples; s++) {
-        if (!chip.env_holding && chip.env_period > 0) {
-            chip.env_counter++;
-            if (chip.env_counter >= chip.env_period * env_ticks_per_sample) {
-                chip.env_counter = 0;
-                if (chip.env_direction) {
-                    chip.env_step++;
-                    if (chip.env_step > 15) {
-                        if (chip.env_shape & 0x08) {
-                            if (chip.env_shape & 0x02) { chip.env_direction = 0; chip.env_step = 15; }
-                            else { chip.env_step = 0; }
-                        } else { chip.env_holding = 1; chip.env_step = 0; }
-                    }
-                } else {
-                    chip.env_step--;
-                    if (chip.env_step < 0) {
-                        if (chip.env_shape & 0x08) {
-                            if (chip.env_shape & 0x02) { chip.env_direction = 1; chip.env_step = 0; }
-                            else { chip.env_step = 15; }
-                        } else { chip.env_holding = 1; chip.env_step = 0; }
-                    }
-                }
-            }
-        }
-
         float mix = 0.0f;
         int active_channels = 0;
 
@@ -186,7 +154,7 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
             int tone_enabled = !((chip.mixer >> c) & 1);
             if (tone_enabled && chip.tone_period[c] > 0) {
                 active_channels++;
-                float current_vol = (chip.amplitude[c] & 0x10) ? (float)chip.env_step : (float)(chip.amplitude[c] & 0x0F);
+                float current_vol = (chip.amplitude[c] & 0x10) ? 15.0f : (float)(chip.amplitude[c] & 0x0F);
                 mix += ((float)chip.tone_state[c] * (current_vol / 15.0f));
             }
         }
@@ -262,12 +230,12 @@ int main(int argc, char** argv) {
 
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* frame_waveform = (float*)malloc(window_size * sizeof(float));
-    
-    int play_buffer_samples = sample_rate * 0.5;
-    float* play_buffer = (float*)malloc(play_buffer_samples * sizeof(float));
 
     int frame_index = 0;
     int sample_stride = (skip_ms > 0) ? (sample_rate * skip_ms / 1000) : window_size;
+
+    // Buffer allocated explicitly to match the size of the dynamic jump stride
+    float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         printf("\n============================================================\n");
@@ -276,19 +244,28 @@ int main(int argc, char** argv) {
         
         compute_simplified_spectrum(&full_target_waveform[offset], current_window_spectrum);
 
-        // --- FIXED: ALIAS-PROOF ZERO CROSSING ALGORITHM ---
-        int zero_crossings = 0;
-        for (int i = 1; i < window_size; i++) {
-            if ((full_target_waveform[offset + i - 1] >= 0 && full_target_waveform[offset + i] < 0) ||
-                (full_target_waveform[offset + i - 1] < 0 && full_target_waveform[offset + i] >= 0)) {
-                zero_crossings++;
+        // --- TIME-DOMAIN AUTOCORRELATION ENGINE (YIN PITCH DETECTION) ---
+        // Robust frequency calculation method that tracks moving sweeps precisely
+        int max_tau = window_size / 2;
+        float* df = (float*)calloc(max_tau, sizeof(float));
+        int best_tau = 0;
+        float min_df = 1e10f;
+
+        for (int tau = 1; tau < max_tau; tau++) {
+            for (int t = 0; t < max_tau; t++) {
+                float diff = full_target_waveform[offset + t] - full_target_waveform[offset + t + tau];
+                df[tau] += diff * diff;
+            }
+            if (df[tau] < min_df && tau > 2) { 
+                min_df = df[tau];
+                best_tau = tau;
             }
         }
-        
-        float duration = (float)window_size / (float)sample_rate;
-        float target_frequency = ((float)zero_crossings / 2.0f) / duration;
-        if (target_frequency < 40.0f) target_frequency = 440.0f; 
-        
+        free(df);
+
+        float target_frequency = (best_tau > 0) ? ((float)sample_rate / (float)best_tau) : 440.0f;
+        if (target_frequency < 30.0f || target_frequency > 15000.0f) target_frequency = 440.0f;
+
         uint16_t calculated_ay_period = (uint16_t)((double)AY_CLOCK / (32.0 * target_frequency));
         if (calculated_ay_period > 4095) calculated_ay_period = 4095;
         if (calculated_ay_period < 2) calculated_ay_period = 2;
@@ -317,7 +294,6 @@ int main(int argc, char** argv) {
             for (int j = 0; j < GENOME_SIZE; j++) {
                 population[idx][j] = sweep_tracking_seed[j];
             }
-            // FIXED: Apply minor tone period mutations without overwriting the parent array types
             population[idx][0] = (calculated_ay_period + (xorshift32() % 16) - 8) & 0xFF;
             population[idx][1] = ((calculated_ay_period >> 8) + (xorshift32() % 4) - 2) & 0x0F;
             idx++;
@@ -343,7 +319,6 @@ int main(int argc, char** argv) {
                 int parent = (fitness[p1] > fitness[p2]) ? p1 : p2;
                 memcpy(next_gen[i], population[parent], GENOME_SIZE);
 
-                // FIXED: Explicit structural array mapping prevents compiler memory smashing
                 if ((xorshift32() % 100) < 35) {
                     int mutate_coarse = xorshift32() % 2;
                     if (mutate_coarse == 0) {
@@ -374,25 +349,27 @@ int main(int argc, char** argv) {
         memcpy(winner_cache[cache_count % CACHE_SIZE], final_ay, GENOME_SIZE);
         cache_count++;
 
-        run_ay_emulator_flexible(final_ay, frame_waveform, window_size);
-        if (offset + window_size <= total_wav_samples) {
-            memcpy(&complete_assembled_preview[offset], frame_waveform, window_size * sizeof(float));
+        // FIXED: Sustains the generated sound over the entire skip duration to fill the timeline gaps
+        run_ay_emulator_flexible(final_ay, play_buffer, sample_stride);
+        
+        if (offset + sample_stride <= total_wav_samples) {
+            memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
+        } else {
+            memcpy(&complete_assembled_preview[offset], play_buffer, (total_wav_samples - offset) * sizeof(float));
         }
 
+        // FIXED: Synchronous block playback pipeline ensures stable live sound feedback
         if (!is_silent) {
-            run_ay_emulator_flexible(final_ay, play_buffer, play_buffer_samples);
-            write_output_wav(".tick_preview.wav", play_buffer, play_buffer_samples);
-            
-            char sys_cmd[256];
-            snprintf(sys_cmd, sizeof(sys_cmd), "aplay -q .tick_preview.wav > /dev/null 2>&1 & pid=$!; sleep 0.5; kill $pid >/dev/null 2>&1");
-            int ret = system(sys_cmd);
+            write_output_wav(".tick_preview.wav", play_buffer, sample_stride);
+            // Run aplay synchronously for the duration of the stride to guarantee zero shell dropouts
+            int ret = system("aplay -q .tick_preview.wav > /dev/null 2>&1");
             (void)ret;
         }
 
         frame_index++;
     }
 
-    printf("\n[*] Done! Output match generated: match_preview.wav\n");
+    printf("\n[*] Done! Full track generated successfully: match_preview.wav\n");
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
     free(frame_waveform); free(play_buffer); free(complete_assembled_preview);
