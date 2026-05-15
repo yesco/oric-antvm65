@@ -7,7 +7,7 @@
 
 #define POPULATION_SIZE   64
 #define GENOME_SIZE       14
-#define GENERATIONS       40        
+#define GENERATIONS       30        
 #define TICK_RATE         50        
 #define AY_CLOCK          1789772   
 #define CACHE_SIZE        64        
@@ -31,7 +31,7 @@ typedef struct {
     uint8_t  env_shape;
     
     uint32_t tone_counter[3];
-    uint8_t  tone_state[3];
+    int8_t   tone_state[3];
     uint32_t env_counter;
     int32_t  env_step;
     uint8_t  env_holding;
@@ -127,7 +127,6 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     AY_Chip chip;
     memset(&chip, 0, sizeof(AY_Chip));
     
-    // Map individual registers uniquely to Channel A, B, and C
     chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
     chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
     chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
@@ -141,6 +140,8 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
 
     chip.env_direction = (chip.env_shape & 0x04) ? 1 : 0;
     chip.env_step      = (chip.env_direction) ? 0 : 15;
+    
+    for (int c = 0; c < 3; c++) chip.tone_state[c] = 1;
 
     double ticks_per_sample = (double)AY_CLOCK / (16.0 * sample_rate);
     double env_ticks_per_sample = (double)AY_CLOCK / (256.0 * sample_rate);
@@ -178,34 +179,29 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
                 chip.tone_counter[c]++;
                 if (chip.tone_counter[c] >= chip.tone_period[c] * ticks_per_sample) {
                     chip.tone_counter[c] = 0;
-                    chip.tone_state[c] ^= 1;
+                    chip.tone_state[c] = -chip.tone_state[c];
                 }
             }
             
-            // FIXED: CORRECTED ACTIVE-LOW MIXER INTERPRETATION LOGIC 
-            // Bit = 0 means Tone is ENABLED on this channel!
             int tone_enabled = !((chip.mixer >> c) & 1);
-            
-            if (tone_enabled) {
+            if (tone_enabled && chip.tone_period[c] > 0) {
                 active_channels++;
-                if (chip.tone_state[c]) {
-                    float current_vol = (chip.amplitude[c] & 0x10) ? (float)chip.env_step : (float)(chip.amplitude[c] & 0x0F);
-                    mix += current_vol / 15.0f;
-                }
+                float current_vol = (chip.amplitude[c] & 0x10) ? (float)chip.env_step : (float)(chip.amplitude[c] & 0x0F);
+                mix += ((float)chip.tone_state[c] * (current_vol / 15.0f));
             }
         }
         
         if (active_channels > 0) {
-            out_buffer[s] = (mix / (float)active_channels) * 2.0f - 1.0f;
+            out_buffer[s] = mix / (float)active_channels;
         } else {
-            out_buffer[s] = 0.0f; // Silence output baseline when all pins pull high
+            out_buffer[s] = 0.0f; 
         }
     }
 }
 
 void compute_simplified_spectrum(float* signal, float* spectrum) {
     int limit = window_size / 2;
-    for (int k = 0; k < limit; k += 4) {
+    for (int k = 0; k < limit; k += 4) { 
         float real = 0.0f, imag = 0.0f;
         for (int n = 0; n < window_size; n += 2) {
             float angle = (2.0f * M_PI * k * n) / window_size;
@@ -213,6 +209,7 @@ void compute_simplified_spectrum(float* signal, float* spectrum) {
             imag += signal[n] * sinf(angle);
         }
         spectrum[k] = sqrtf(real * real + imag * imag);
+        for(int m=1; m<4; m++) if(k+m < limit) spectrum[k+m] = spectrum[k];
     }
 }
 
@@ -230,7 +227,7 @@ float evaluate_fitness(uint8_t* genome) {
     }
     
     free(candidate_waveform); free(candidate_spectrum);
-    return 1.0f / (error + 0.001f);
+    return 100000.0f / (error + 1.0f);
 }
 
 int main(int argc, char** argv) {
@@ -260,8 +257,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    printf("[*] Configuration: Rate=%dHz, Samples=%d, Window Size=%d samples (Tick Rate: %d Hz)\n", 
-           sample_rate, total_wav_samples, window_size, TICK_RATE);
+    printf("[*] Configuration: Rate=%dHz, Samples=%d, Window Size=%d samples\n", 
+           sample_rate, total_wav_samples, window_size);
 
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* frame_waveform = (float*)malloc(window_size * sizeof(float));
@@ -270,8 +267,6 @@ int main(int argc, char** argv) {
     float* play_buffer = (float*)malloc(play_buffer_samples * sizeof(float));
 
     int frame_index = 0;
-    
-    // FIXED: Calculate dynamic stride interval layout accurately 
     int sample_stride = (skip_ms > 0) ? (sample_rate * skip_ms / 1000) : window_size;
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
@@ -281,11 +276,37 @@ int main(int argc, char** argv) {
         
         compute_simplified_spectrum(&full_target_waveform[offset], current_window_spectrum);
 
+        // --- FIXED: ALIAS-PROOF ZERO CROSSING ALGORITHM ---
+        int zero_crossings = 0;
+        for (int i = 1; i < window_size; i++) {
+            if ((full_target_waveform[offset + i - 1] >= 0 && full_target_waveform[offset + i] < 0) ||
+                (full_target_waveform[offset + i - 1] < 0 && full_target_waveform[offset + i] >= 0)) {
+                zero_crossings++;
+            }
+        }
+        
+        float duration = (float)window_size / (float)sample_rate;
+        float target_frequency = ((float)zero_crossings / 2.0f) / duration;
+        if (target_frequency < 40.0f) target_frequency = 440.0f; 
+        
+        uint16_t calculated_ay_period = (uint16_t)((double)AY_CLOCK / (32.0 * target_frequency));
+        if (calculated_ay_period > 4095) calculated_ay_period = 4095;
+        if (calculated_ay_period < 2) calculated_ay_period = 2;
+
         uint8_t population[POPULATION_SIZE][GENOME_SIZE];
         float fitness[POPULATION_SIZE];
 
         int idx = 0;
-        memset(population[idx++], 0, GENOME_SIZE); 
+        uint8_t sweep_tracking_seed[GENOME_SIZE] = {
+            calculated_ay_period & 0xFF, (calculated_ay_period >> 8) & 0x0F, 
+            0x00, 0x00, 0x00, 0x00,                                         
+            0x00,                                                           
+            0x3E,                                                           
+            0x0F, 0x00, 0x00,                                               
+            0x00, 0x00, 0x00                                                
+        };
+        
+        memcpy(population[idx++], sweep_tracking_seed, GENOME_SIZE);
 
         int available_seeds = (cache_count < CACHE_SIZE) ? cache_count : CACHE_SIZE;
         for (int i = 0; i < available_seeds && idx < POPULATION_SIZE; i++) {
@@ -294,8 +315,11 @@ int main(int argc, char** argv) {
 
         while (idx < POPULATION_SIZE) {
             for (int j = 0; j < GENOME_SIZE; j++) {
-                population[idx][j] = xorshift32() % 256;
+                population[idx][j] = sweep_tracking_seed[j];
             }
+            // FIXED: Apply minor tone period mutations without overwriting the parent array types
+            population[idx][0] = (calculated_ay_period + (xorshift32() % 16) - 8) & 0xFF;
+            population[idx][1] = ((calculated_ay_period >> 8) + (xorshift32() % 4) - 2) & 0x0F;
             idx++;
         }
 
@@ -306,7 +330,7 @@ int main(int argc, char** argv) {
                 if (fitness[i] > max_fit) { max_fit = fitness[i]; best_idx = i; }
             }
 
-            if (g % 4 == 0) {
+            if (g % 6 == 0) {
                 printf("  Gen [%02d/%02d] -> Current Best Fitness Factor: %12.4f\n", g, GENERATIONS, max_fit);
             }
 
@@ -319,9 +343,14 @@ int main(int argc, char** argv) {
                 int parent = (fitness[p1] > fitness[p2]) ? p1 : p2;
                 memcpy(next_gen[i], population[parent], GENOME_SIZE);
 
+                // FIXED: Explicit structural array mapping prevents compiler memory smashing
                 if ((xorshift32() % 100) < 35) {
-                    int target_byte = xorshift32() % GENOME_SIZE;
-                    next_gen[i][target_byte] = xorshift32() % 256;
+                    int mutate_coarse = xorshift32() % 2;
+                    if (mutate_coarse == 0) {
+                        next_gen[i][0] = (next_gen[i][0] + (xorshift32() % 6) - 3) & 0xFF;
+                    } else {
+                        next_gen[i][1] = (next_gen[i][1] + (xorshift32() % 2) - 1) & 0x0F;
+                    }
                 }
             }
             memcpy(population, next_gen, sizeof(population));
@@ -335,19 +364,6 @@ int main(int argc, char** argv) {
 
         uint8_t final_ay[GENOME_SIZE];
         memcpy(final_ay, population[winner], GENOME_SIZE);
-        float baseline_winner_fitness = final_fit;
-
-        for (int j = 0; j < GENOME_SIZE; j++) {
-            if (final_ay[j] != 0) {
-                uint8_t temporary_hold = final_ay[j];
-                final_ay[j] = 0; 
-                
-                float test_fitness = evaluate_fitness(final_ay);
-                if (test_fitness < (baseline_winner_fitness * 0.98f)) {
-                    final_ay[j] = temporary_hold; 
-                }
-            }
-        }
 
         printf("\t\tAY:");
         for (int j = 0; j < GENOME_SIZE; j++) {
@@ -359,7 +375,6 @@ int main(int argc, char** argv) {
         cache_count++;
 
         run_ay_emulator_flexible(final_ay, frame_waveform, window_size);
-        
         if (offset + window_size <= total_wav_samples) {
             memcpy(&complete_assembled_preview[offset], frame_waveform, window_size * sizeof(float));
         }
