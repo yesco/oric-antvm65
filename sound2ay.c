@@ -7,7 +7,7 @@
 
 #define POPULATION_SIZE   32        
 #define GENOME_SIZE       14
-#define GENERATIONS       15        
+#define GENERATIONS       10        // Low generation count needed because direct math injection does the heavy lifting
 #define TICK_RATE         50        
 #define EVAL_WINDOW_MS    50        
 #define AY_CLOCK          1789772   
@@ -21,7 +21,6 @@ float* full_target_waveform = NULL;
 uint8_t winner_cache[CACHE_SIZE][GENOME_SIZE];
 int cache_count = 0;
 
-// FIXED: Converted to arrays to handle independent 3-channel architecture parameters
 typedef struct {
     uint16_t tone_period[3];      
     uint8_t  noise_period;
@@ -119,7 +118,7 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     AY_Chip chip;
     memset(&chip, 0, sizeof(AY_Chip));
     
-    // FIXED: Formatted register offsets to map uniquely onto 3 channels arrays cleanly
+    // FIXED: Explicit unrolled linear array indexing matches hardware specs directly
     chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
     chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
     chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
@@ -159,7 +158,7 @@ float evaluate_fitness_fast(uint8_t* genome, float* target_segment) {
     run_ay_emulator_flexible(genome, candidate, window_size);
     
     float error = 0.0f;
-    for (int i = 0; i < window_size; i += 4) {
+    for (int i = 0; i < window_size; i += 2) { 
         float diff = target_segment[i] - candidate[i];
         error += diff * diff;
     }
@@ -183,17 +182,18 @@ int main(int argc, char** argv) {
     }
 
     if (!wav_filename || !load_full_wav(wav_filename)) {
-        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", argv[0]); 
+        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", argv); 
         return 1;
     }
 
-    fprintf(stderr, "[*] Processing: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
+    fprintf(stderr, "[*] Processing Target Content: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
 
     int sample_stride = (skip_ms > 0) ? (sample_rate * skip_ms / 1000) : ((sample_rate * 20) / 1000); 
     
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
     float* norm_window = (float*)malloc(window_size * sizeof(float));
+    float* amdf_array = (float*)calloc(window_size / 2, sizeof(float));
 
     int frame_index = 0;
 
@@ -211,18 +211,30 @@ int main(int argc, char** argv) {
         int best_tau = 0;
         float min_amdf = 1e10f;
 
-        for (int tau = 4; tau < max_tau; tau += 2) {
+        for (int tau = 2; tau < max_tau; tau++) {
             float amdf = 0.0f;
-            for (int t = 0; t < max_tau; t += 4) {
+            for (int t = 0; t < max_tau; t += 2) {
                 amdf += fabsf(norm_window[t] - norm_window[t + tau]);
             }
-            if (amdf < min_amdf) {
+            amdf_array[tau] = amdf;
+            if (amdf < min_amdf && tau > 2) {
                 min_amdf = amdf;
                 best_tau = tau;
             }
         }
 
-        float target_frequency = (best_tau > 0) ? ((float)sample_rate / (float)best_tau) : 440.0f;
+        float exact_tau = (float)best_tau;
+        if (best_tau > 3 && best_tau < max_tau - 1) {
+            float y1 = amdf_array[best_tau - 1];
+            float y2 = amdf_array[best_tau];
+            float y3 = amdf_array[best_tau + 1];
+            float denominator = (y3 - 2.0f * y2 + y1);
+            if (fabsf(denominator) > 0.0001f) {
+                exact_tau = (float)best_tau + (y1 - y3) / (2.0f * denominator);
+            }
+        }
+
+        float target_frequency = (exact_tau > 0.0f) ? ((float)sample_rate / exact_tau) : 440.0f;
         uint16_t period = (uint16_t)((double)AY_CLOCK / (32.0 * target_frequency));
         if (period > 4095) period = 4095;
         if (period < 2) period = 2; 
@@ -243,8 +255,9 @@ int main(int argc, char** argv) {
 
         while (idx < POPULATION_SIZE) {
             for (int j = 0; j < GENOME_SIZE; j++) population[idx][j] = sweep_tracking_seed[j];
-            population[idx][0] = (period + (xorshift32() % 8) - 4) & 0xFF;
-            population[idx][1] = ((period >> 8) + (xorshift32() % 2) - 1) & 0x0F;
+            uint16_t mutated_period = (period + (xorshift32() % 16) - 8) & 0x0FFF;
+            population[idx][0] = mutated_period & 0xFF;
+            population[idx][1] = (mutated_period >> 8) & 0x0F;
             idx++;
         }
 
@@ -267,9 +280,11 @@ int main(int argc, char** argv) {
                 int parent = (fitness[p1] > fitness[p2]) ? p1 : p2;
                 memcpy(next_gen[i], population[parent], GENOME_SIZE);
 
-                if ((xorshift32() % 100) < 30) {
-                    next_gen[i][0] = (next_gen[i][0] + (xorshift32() % 4) - 2) & 0xFF;
-                    next_gen[i][1] = (next_gen[i][1] + (xorshift32() % 2) - 1) & 0x0F;
+                if ((xorshift32() % 100) < 35) {
+                    uint16_t current_p = next_gen[i][0] | ((next_gen[i][1] & 0x0F) << 8);
+                    current_p = (current_p + (xorshift32() % 10) - 5) & 0x0FFF;
+                    next_gen[i][0] = current_p & 0xFF;        
+                    next_gen[i][1] = (current_p >> 8) & 0x0F; 
                 }
             }
             memcpy(population, next_gen, sizeof(population));
@@ -284,27 +299,27 @@ int main(int argc, char** argv) {
         uint8_t final_ay[GENOME_SIZE];
         memcpy(final_ay, population[winner], GENOME_SIZE);
 
-        // STREAMS REDIRECTION FIX: Log status checks to stderr, print tracker string exclusively to stdout 
-        fprintf(stdout, "\t\tAY:");
-        fprintf(stderr, "\t\tAY:");
+        // HARD MATH OVERRIDE INJECTION: Bypasses evolutionary local optima traps for pure tone sweep clarity
+        final_ay[0] = period & 0xFF;
+        final_ay[1] = (period >> 8) & 0x0F;
+        final_ay[7] = 0x3E; // Force Channel A tone active
+        final_ay[8] = 0x0F; // Force Channel A volume to max
+
+        fprintf(stdout, "\t\tAY:"); fprintf(stderr, "\t\tAY:");
         for (int j = 0; j < GENOME_SIZE; j++) {
-            fprintf(stdout, " %02x", final_ay[j]);
-            fprintf(stderr, " %02x", final_ay[j]);
+            fprintf(stdout, " %02x", final_ay[j]); fprintf(stderr, " %02x", final_ay[j]);
         }
-        fprintf(stdout, "\n");
-        fprintf(stderr, "\n");
+        fprintf(stdout, "\n"); fprintf(stderr, "\n");
 
         memcpy(winner_cache[cache_count % CACHE_SIZE], final_ay, GENOME_SIZE);
         cache_count++;
 
         run_ay_emulator_flexible(final_ay, play_buffer, sample_stride);
         
-        // Save the sustained audio block segment cleanly to render memory
         if (offset + sample_stride <= total_wav_samples) {
             memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
         }
 
-        // Handle raw pipe parameters if the -pipe flag is given
         if (pipe_audio) {
             for (int k = 0; k < sample_stride; k++) {
                 int16_t pcm_sample = (int16_t)(play_buffer[k] * 0.15f * 32767.0f);
@@ -318,6 +333,6 @@ int main(int argc, char** argv) {
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
     fprintf(stderr, "[*] Processing Complete!\n");
-    free(play_buffer); free(norm_window); free(complete_assembled_preview); free(full_target_waveform);
+    free(play_buffer); free(norm_window); free(amdf_array); free(complete_assembled_preview); free(full_target_waveform);
     return 0;
 }
