@@ -1,2 +1,2 @@
-clang -lm -O3 sound2ay.c && ./a.out $*
+clang -lm -O3 sound2ay.c && ./a.out "$@"
 
