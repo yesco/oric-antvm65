@@ -7,7 +7,7 @@
 
 #define POPULATION_SIZE   64
 #define GENOME_SIZE       14
-#define GENERATIONS       25        // Lower generation count since the time-domain YIN initialization does the heavy lifting
+#define GENERATIONS       20        
 #define TICK_RATE         50        
 #define AY_CLOCK          1789772   
 #define CACHE_SIZE        64        
@@ -177,11 +177,11 @@ void compute_simplified_spectrum(float* signal, float* spectrum) {
             imag += signal[n] * sinf(angle);
         }
         spectrum[k] = sqrtf(real * real + imag * imag);
-        for(int m=1; m<4; m++) if(k+m < limit) spectrum[k+m] = spectrum[k];
+        for(int m = 1; m < 4; m++) if(k + m < limit) spectrum[k + m] = spectrum[k];
     }
 }
 
-float evaluate_fitness(uint8_t* genome) {
+float evaluate_fitness(uint8_t* genome, float* norm_target_spectrum) {
     float* candidate_waveform = (float*)malloc(window_size * sizeof(float));
     float* candidate_spectrum = (float*)malloc((window_size / 2) * sizeof(float));
     
@@ -190,7 +190,7 @@ float evaluate_fitness(uint8_t* genome) {
     
     float error = 0.0f;
     for (int i = 0; i < window_size / 2; i += 4) {
-        float diff = current_window_spectrum[i] - candidate_spectrum[i];
+        float diff = norm_target_spectrum[i] - candidate_spectrum[i];
         error += diff * diff;
     }
     
@@ -234,18 +234,26 @@ int main(int argc, char** argv) {
     int frame_index = 0;
     int sample_stride = (skip_ms > 0) ? (sample_rate * skip_ms / 1000) : window_size;
 
-    // Buffer allocated explicitly to match the size of the dynamic jump stride
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
+    float* norm_window = (float*)malloc(window_size * sizeof(float));
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         printf("\n============================================================\n");
         printf("Frame #%04d (Time Offset: %06.2fs)\n", frame_index, (float)offset / sample_rate);
         printf("============================================================\n");
         
-        compute_simplified_spectrum(&full_target_waveform[offset], current_window_spectrum);
+        float peak_amp = 0.0001f;
+        for (int i = 0; i < window_size; i++) {
+            float abs_val = fabsf(full_target_waveform[offset + i]);
+            if (abs_val > peak_amp) peak_amp = abs_val;
+        }
+        
+        for (int i = 0; i < window_size; i++) {
+            norm_window[i] = full_target_waveform[offset + i] / peak_amp;
+        }
 
-        // --- TIME-DOMAIN AUTOCORRELATION ENGINE (YIN PITCH DETECTION) ---
-        // Robust frequency calculation method that tracks moving sweeps precisely
+        compute_simplified_spectrum(norm_window, current_window_spectrum);
+
         int max_tau = window_size / 2;
         float* df = (float*)calloc(max_tau, sizeof(float));
         int best_tau = 0;
@@ -253,10 +261,10 @@ int main(int argc, char** argv) {
 
         for (int tau = 1; tau < max_tau; tau++) {
             for (int t = 0; t < max_tau; t++) {
-                float diff = full_target_waveform[offset + t] - full_target_waveform[offset + t + tau];
+                float diff = norm_window[t] - norm_window[t + tau];
                 df[tau] += diff * diff;
             }
-            if (df[tau] < min_df && tau > 2) { 
+            if (df[tau] < min_df && tau > 1) { 
                 min_df = df[tau];
                 best_tau = tau;
             }
@@ -264,11 +272,10 @@ int main(int argc, char** argv) {
         free(df);
 
         float target_frequency = (best_tau > 0) ? ((float)sample_rate / (float)best_tau) : 440.0f;
-        if (target_frequency < 30.0f || target_frequency > 15000.0f) target_frequency = 440.0f;
-
+        
         uint16_t calculated_ay_period = (uint16_t)((double)AY_CLOCK / (32.0 * target_frequency));
         if (calculated_ay_period > 4095) calculated_ay_period = 4095;
-        if (calculated_ay_period < 2) calculated_ay_period = 2;
+        if (calculated_ay_period < 2) calculated_ay_period = 2; 
 
         uint8_t population[POPULATION_SIZE][GENOME_SIZE];
         float fitness[POPULATION_SIZE];
@@ -302,11 +309,11 @@ int main(int argc, char** argv) {
         for (int g = 0; g < GENERATIONS; g++) {
             float max_fit = -1.0f; int best_idx = 0;
             for (int i = 0; i < POPULATION_SIZE; i++) {
-                fitness[i] = evaluate_fitness(population[i]);
+                fitness[i] = evaluate_fitness(population[i], current_window_spectrum);
                 if (fitness[i] > max_fit) { max_fit = fitness[i]; best_idx = i; }
             }
 
-            if (g % 6 == 0) {
+            if (g % 5 == 0) {
                 printf("  Gen [%02d/%02d] -> Current Best Fitness Factor: %12.4f\n", g, GENERATIONS, max_fit);
             }
 
@@ -333,7 +340,7 @@ int main(int argc, char** argv) {
 
         float final_fit = -1.0f; int winner = 0;
         for (int i = 0; i < POPULATION_SIZE; i++) {
-            float f = evaluate_fitness(population[i]);
+            float f = evaluate_fitness(population[i], current_window_spectrum);
             if (f > final_fit) { final_fit = f; winner = i; }
         }
 
@@ -349,7 +356,6 @@ int main(int argc, char** argv) {
         memcpy(winner_cache[cache_count % CACHE_SIZE], final_ay, GENOME_SIZE);
         cache_count++;
 
-        // FIXED: Sustains the generated sound over the entire skip duration to fill the timeline gaps
         run_ay_emulator_flexible(final_ay, play_buffer, sample_stride);
         
         if (offset + sample_stride <= total_wav_samples) {
@@ -358,11 +364,12 @@ int main(int argc, char** argv) {
             memcpy(&complete_assembled_preview[offset], play_buffer, (total_wav_samples - offset) * sizeof(float));
         }
 
-        // FIXED: Synchronous block playback pipeline ensures stable live sound feedback
         if (!is_silent) {
+            // SAFE VOLUME EAR SAFEGUARD: Attenuates the playback signal down to a safe, quiet 15% amplitude bound
+            for(int k=0; k<sample_stride; k++) play_buffer[k] *= 0.15f;
+            
             write_output_wav(".tick_preview.wav", play_buffer, sample_stride);
-            // Run aplay synchronously for the duration of the stride to guarantee zero shell dropouts
-            int ret = system("aplay -q .tick_preview.wav > /dev/null 2>&1");
+            int ret = system("aplay -q .tick_preview.wav >/dev/null 2>&1");
             (void)ret;
         }
 
@@ -372,7 +379,7 @@ int main(int argc, char** argv) {
     printf("\n[*] Done! Full track generated successfully: match_preview.wav\n");
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
-    free(frame_waveform); free(play_buffer); free(complete_assembled_preview);
+    free(frame_waveform); free(play_buffer); free(norm_window); free(complete_assembled_preview);
     free(full_target_waveform); free(current_window_spectrum);
     unlink(".tick_preview.wav");
     return 0;
