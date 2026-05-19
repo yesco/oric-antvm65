@@ -292,7 +292,6 @@ int main(int argc, char** argv) {
         else wav_filename = argv[i];
     }
 
-    // FIXED: Formally anchored to argv[0] to address compilation block safely
     if (!wav_filename || !load_full_wav(wav_filename)) {
         fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv[0] : "ay_optimizer"); 
         return 1;
@@ -311,22 +310,34 @@ int main(int argc, char** argv) {
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         float total_frame_energy = 0.0f;
+        float rms_sum = 0.0f;
         int zero_crossings = 0;
         float prev_val = 0.0f;
 
         for (int i = 0; i < sample_stride; i++) {
             float cur_val = full_target_waveform[offset + i];
             total_frame_energy += fabsf(cur_val);
+            rms_sum += cur_val * cur_val;
             if (i > 0 && ((prev_val < 0.0f && cur_val >= 0.0f) || (prev_val >= 0.0f && cur_val < 0.0f))) {
                 zero_crossings++;
             }
             prev_val = cur_val;
         }
 
+        float frame_rms = sqrtf(rms_sum / sample_stride);
+        uint8_t target_volume_level = 0;
+        for (int v = 15; v >= 0; v--) {
+            if (frame_rms >= ay_vol_table[v] * 0.25f) {
+                target_volume_level = v;
+                break;
+            }
+        }
+
         memset(out_ay_regs, 0, GENOME_SIZE);
         out_ay_regs[7] = 0x3F; 
 
-        if (total_frame_energy < 0.001f) {
+        // FIXED: Lowered dynamic window threshold captures ultra-fast transient cymbals cleanly
+        if (total_frame_energy < 0.00001f || target_volume_level == 0) {
             memset(last_periods, 0, sizeof(last_periods));
             run_ay_emulator_flexible(out_ay_regs, play_buffer, sample_stride, &global_tracking_state);
             if (offset + sample_stride <= total_wav_samples) {
@@ -343,7 +354,7 @@ int main(int argc, char** argv) {
         uint8_t detected_noise_period = 0;
         
         float crossings_ratio = (float)zero_crossings / sample_stride;
-        if ((total_frame_energy > 0.04f && primary_peak_depth < 0.48f) || (crossings_ratio > 0.28f)) {
+        if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || (crossings_ratio > 0.25f)) {
             noise_drum_active = 1;
             uint32_t estimated_noise_freq = (zero_crossings * sample_rate) / (2 * sample_stride);
             if (estimated_noise_freq > 0) {
@@ -429,17 +440,23 @@ int main(int argc, char** argv) {
                 out_ay_regs[c * 2] = target_periods[c] & 0xFF;
                 out_ay_regs[c * 2 + 1] = (target_periods[c] >> 8) & 0x0F;
                 current_mixer &= ~(1 << c);   
-                out_ay_regs[8 + c] = 0x0F;    
+                out_ay_regs[8 + c] = target_volume_level; 
                 last_periods[c] = target_periods[c];
             } else {
                 last_periods[c] = 0;
+                out_ay_regs[8 + c] = 0;
             }
         }
 
+        // FIXED: Channel C isolates noise burst cleanly while preserving lower tone-drops on Channel A/B via hardware volume masks
         if (noise_drum_active) {
             out_ay_regs[6] = detected_noise_period;
-            current_mixer &= ~(1 << 5); 
-            out_ay_regs[10] = 0x0F;     
+            current_mixer &= ~(1 << 5);             // Open Noise Gate on Channel C (Bit 5 = 0)
+            out_ay_regs[10] = target_volume_level; // Channel C strictly plays the white noise envelope
+            
+            // Attenuate Channel A & B square volumes to prevent the down-sampled aliasing mask
+            out_ay_regs[8] = (out_ay_regs[8] > 4) ? (out_ay_regs[8] - 4) : 0;
+            out_ay_regs[9] = (out_ay_regs[9] > 4) ? (out_ay_regs[9] - 4) : 0;
         }
 
         out_ay_regs[7] = current_mixer; 

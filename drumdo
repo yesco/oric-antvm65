@@ -1,0 +1,1 @@
+ls snare_* kick_* hihat_* | xargs -L 1 ./ymdo
