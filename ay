@@ -1,2 +1,3 @@
-rm a.out ; clang -O3 sound2ay.c -lm && ./a.out "$@"
+rm a.out ; clang -O3 sound2ay.c -lm && (./a.out "$@" | tee ay.log ; grep AY ay.log; play match_preview.wav 2>/dev/null)
+
 

@@ -351,7 +351,7 @@ int main(int argc, char** argv) {
         }
 
         memset(out_ay_regs, 0, GENOME_SIZE);
-        out_ay_regs[7] = 0x3F; 
+        out_ay_regs[7] = 0x3F; // Default: Everything muted
 
         if (total_frame_energy < 0.00001f || target_volume_level == 0) {
             memset(global_last_periods, 0, sizeof(global_last_periods));
@@ -370,9 +370,8 @@ int main(int argc, char** argv) {
         uint8_t detected_noise_period = 0;
         
         float crossings_ratio = (float)zero_crossings / sample_stride;
-        
-        // FIXED: Shaved down hi-hat open boundaries. Identifies unpitched cymbal sweeps cleanly
         int is_hihat_track = (crossings_ratio > 0.32f);
+
         if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || is_hihat_track) {
             noise_drum_active = 1;
             uint32_t estimated_noise_freq = (zero_crossings * sample_rate) / (2 * sample_stride);
@@ -387,6 +386,7 @@ int main(int argc, char** argv) {
         uint16_t raw_periods[3] = {0, 0, 0};
         int validated_count = 0;
 
+        // RESTORED: Pitch detection populates virtual registers continuously, ignoring the takeover state completely
         for (int p = 0; p < pitches_found; p++) {
             if (detected_freqs[p] > 30.0f && detected_freqs[p] < 4000.0f) {
                 uint16_t p_val = (uint16_t)round((double)AY_CLOCK / (16.0 * (double)detected_freqs[p]));
@@ -451,7 +451,7 @@ int main(int argc, char** argv) {
                 if (global_last_periods[c] > 0) {
                     int diff = abs((int)target_periods[c] - (int)global_last_periods[c]);
                     if ((float)diff / (float)global_last_periods[c] > 0.14f) {
-                        fast_pitch_sweep_active = 1; // Mark pure drop transient thuds
+                        fast_pitch_sweep_active = 1; 
                     }
                     if (diff <= 1 || (float)diff / (float)global_last_periods[c] < 0.012f) {
                         target_periods[c] = global_last_periods[c];
@@ -466,9 +466,8 @@ int main(int argc, char** argv) {
                 current_mixer &= ~(1 << c);   
                 
                 if (fast_pitch_sweep_active && c == 0) {
-                    // FIXED: Injects short noise transient onto Channel C for pure kick drops
                     noise_drum_active = 1;
-                    if (detected_noise_period == 0) detected_noise_period = 18; // Sharp thud click period
+                    if (detected_noise_period == 0) detected_noise_period = 16; // Click transient
                     out_ay_regs[8 + c] = (target_volume_level > 5) ? (target_volume_level - 3) : 0; 
                 } else {
                     out_ay_regs[8 + c] = target_volume_level; 
@@ -481,26 +480,29 @@ int main(int argc, char** argv) {
             }
         }
 
-        // FIXED: Acoustic Head Shaving pass limits maximum hi-hat volume to prevent loud ringing
         if (is_hihat_track && target_volume_level > 12) {
             target_volume_level = 12; 
         }
 
+        // FIXED: Non-Destructive Interlocking Mixer Handshaking
         if (noise_drum_active) {
             out_ay_regs[6] = detected_noise_period;
-            current_mixer &= ~(1 << 5);             // Unmute noise generator on Channel C
-            out_ay_regs[10] = target_volume_level; // Channel C handles noise exclusively
+            current_mixer &= ~(1 << 5); // Layer White Noise onto Channel C (Bit 5 = 0)
             
-            // FIXED: Tone Layer Blending. Attenuates but preserves bass drop weight on A & B on hybrid tracks
-            if (!is_hihat_track && primary_peak_depth > 0.25f) {
+            // Channel C safely plays BOTH noise and its virtual underlying tone simultaneously
+            out_ay_regs[10] = target_volume_level; 
+            
+            if (is_hihat_track) {
+                // Completely kill melody tone bleeds for cymbals
+                current_mixer |= (1 << 0) | (1 << 1) | (1 << 2);
+                out_ay_regs[8] = 0; out_ay_regs[9] = 0;
+            } else if (primary_peak_depth > 0.25f) {
+                // FIXED: Blend underlying bass tones gracefully on hybrid kick impacts
                 out_ay_regs[8] = (out_ay_regs[8] > 4) ? (out_ay_regs[8] - 4) : 2;
                 out_ay_regs[9] = (out_ay_regs[9] > 4) ? (out_ay_regs[9] - 4) : 0;
-            } else {
-                out_ay_regs[8] = 0; out_ay_regs[9] = 0;
             }
         }
 
-        // FIXED: Extends snare long tails slightly to capture full reverb decay depth smoothly
         if (!is_hihat_track && noise_drum_active && target_volume_level < 6 && target_volume_level > 1) {
             out_ay_regs[10] += 1; 
         }
