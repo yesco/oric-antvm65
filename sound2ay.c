@@ -39,13 +39,12 @@ typedef struct {
 } AY_Chip;
 
 AY_Chip global_tracking_state;
+uint16_t global_last_periods[3] = {0, 0, 0};
 
 typedef struct {
     float freq;
     float depth;
 } PitchCandidate;
-
-int compare_candidates(const void* a, const void* b);
 
 int compare_candidates(const void* a, const void* b) {
     float depthA = ((PitchCandidate*)a)->depth;
@@ -84,15 +83,20 @@ int load_full_wav(const char* filename) {
     }
     
     if (data_size == 0) {
-        fprintf(stderr, "[!] Corrupt data segment layouts.\n");
+        fprintf(stderr, "[!] Corrupt data segment identifier inside headers.\n");
         fclose(f); return 0;
     }
     
     int sample_bytes = bits_per_sample / 8;
     int frame_bytes = sample_bytes * num_channels;
     total_wav_samples = data_size / frame_bytes;
-    window_size = (sample_rate * EVAL_WINDOW_MS) / 1000;
     
+    // FIXED: Dynamic Evaluation window sizing prevents brief assets from zero padding decay distortions
+    int calculated_window = (sample_rate * EVAL_WINDOW_MS) / 1000;
+    window_size = (total_wav_samples < calculated_window) ? total_wav_samples : calculated_window;
+    if (window_size < 128) window_size = 128;
+
+    if (full_target_waveform) free(full_target_waveform);
     full_target_waveform = (float*)calloc(total_wav_samples, sizeof(float));
     uint8_t* raw_frame = (uint8_t*)malloc(frame_bytes);
     
@@ -109,6 +113,13 @@ int load_full_wav(const char* filename) {
     
     free(raw_frame);
     fclose(f);
+
+    // FIXED: Full State Cleansing hooks erase leftover context registers before beginning optimization runs
+    memset(&global_tracking_state, 0, sizeof(AY_Chip));
+    memset(global_last_periods, 0, sizeof(global_last_periods));
+    for(int c=0; c<3; c++) global_tracking_state.tone_state[c] = 1;
+    global_tracking_state.noise_rng = 0x0001;
+
     return 1;
 }
 
@@ -300,13 +311,8 @@ int main(int argc, char** argv) {
     int sample_stride = (sample_rate * 20) / 1000; 
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
-    
-    uint8_t out_ay_regs[GENOME_SIZE] = {0};
-    uint16_t last_periods[] = {0, 0, 0};
 
-    memset(&global_tracking_state, 0, sizeof(AY_Chip));
-    for(int c=0; c<3; c++) global_tracking_state.tone_state[c] = 1;
-    global_tracking_state.noise_rng = 0x0001;
+    uint8_t out_ay_regs[GENOME_SIZE] = {0};
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         float total_frame_energy = 0.0f;
@@ -327,7 +333,7 @@ int main(int argc, char** argv) {
         float frame_rms = sqrtf(rms_sum / sample_stride);
         uint8_t target_volume_level = 0;
         for (int v = 15; v >= 0; v--) {
-            if (frame_rms >= ay_vol_table[v] * 0.25f) {
+            if (frame_rms >= ay_vol_table[v] * 0.18f) {
                 target_volume_level = v;
                 break;
             }
@@ -336,9 +342,8 @@ int main(int argc, char** argv) {
         memset(out_ay_regs, 0, GENOME_SIZE);
         out_ay_regs[7] = 0x3F; 
 
-        // FIXED: Lowered dynamic window threshold captures ultra-fast transient cymbals cleanly
         if (total_frame_energy < 0.00001f || target_volume_level == 0) {
-            memset(last_periods, 0, sizeof(last_periods));
+            memset(global_last_periods, 0, sizeof(global_last_periods));
             run_ay_emulator_flexible(out_ay_regs, play_buffer, sample_stride, &global_tracking_state);
             if (offset + sample_stride <= total_wav_samples) {
                 memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
@@ -347,14 +352,14 @@ int main(int argc, char** argv) {
         }
 
         float primary_peak_depth = 0.0f;
-        float detected_freqs[] = {0.0f, 0.0f, 0.0f};
+        float detected_freqs[3] = {0.0f, 0.0f, 0.0f};
         int pitches_found = calculate_polyphonic_yin_frequencies(&full_target_waveform[offset], window_size, sample_rate, detected_freqs, &primary_peak_depth);
 
         int noise_drum_active = 0;
         uint8_t detected_noise_period = 0;
         
         float crossings_ratio = (float)zero_crossings / sample_stride;
-        if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || (crossings_ratio > 0.25f)) {
+        if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || (crossings_ratio > 0.22f)) {
             noise_drum_active = 1;
             uint32_t estimated_noise_freq = (zero_crossings * sample_rate) / (2 * sample_stride);
             if (estimated_noise_freq > 0) {
@@ -365,7 +370,7 @@ int main(int argc, char** argv) {
             }
         }
 
-        uint16_t raw_periods[] = {0, 0, 0};
+        uint16_t raw_periods[3] = {0, 0, 0};
         int validated_count = 0;
 
         for (int p = 0; p < pitches_found; p++) {
@@ -389,23 +394,23 @@ int main(int argc, char** argv) {
             }
         }
 
-        uint16_t target_periods[] = {0, 0, 0};
-        int assigned_peaks[] = {0, 0, 0};
+        uint16_t target_periods[3] = {0, 0, 0};
+        int assigned_peaks[3] = {0, 0, 0};
 
         for (int c = 0; c < 3; c++) {
-            if (last_periods[c] > 0) {
+            if (global_last_periods[c] > 0) {
                 int best_idx = -1;
                 float best_diff = 999999.0f;
                 for (int p = 0; p < validated_count; p++) {
                     if (!assigned_peaks[p]) {
-                        float diff = fabsf((float)raw_periods[p] - (float)last_periods[c]);
+                        float diff = fabsf((float)raw_periods[p] - (float)global_last_periods[c]);
                         if (diff < best_diff) {
                             best_diff = diff;
                             best_idx = p;
                         }
                     }
                 }
-                if (best_idx != -1 && best_diff / (float)last_periods[c] < 0.15f) {
+                if (best_idx != -1 && best_diff / (float)global_last_periods[c] < 0.15f) {
                     target_periods[c] = raw_periods[best_idx];
                     assigned_peaks[best_idx] = 1;
                 }
@@ -427,10 +432,10 @@ int main(int argc, char** argv) {
         uint8_t current_mixer = 0x3F;
         for (int c = 0; c < 3; c++) {
             if (target_periods[c] > 0) {
-                if (last_periods[c] > 0) {
-                    int diff = abs((int)target_periods[c] - (int)last_periods[c]);
-                    if (diff <= 1 || (float)diff / (float)last_periods[c] < 0.012f) {
-                        target_periods[c] = last_periods[c];
+                if (global_last_periods[c] > 0) {
+                    int diff = abs((int)target_periods[c] - (int)global_last_periods[c]);
+                    if (diff <= 1 || (float)diff / (float)global_last_periods[c] < 0.012f) {
+                        target_periods[c] = global_last_periods[c];
                     }
                 }
                 
@@ -441,22 +446,21 @@ int main(int argc, char** argv) {
                 out_ay_regs[c * 2 + 1] = (target_periods[c] >> 8) & 0x0F;
                 current_mixer &= ~(1 << c);   
                 out_ay_regs[8 + c] = target_volume_level; 
-                last_periods[c] = target_periods[c];
+                global_last_periods[c] = target_periods[c];
             } else {
-                last_periods[c] = 0;
+                global_last_periods[c] = 0;
                 out_ay_regs[8 + c] = 0;
             }
         }
 
-        // FIXED: Channel C isolates noise burst cleanly while preserving lower tone-drops on Channel A/B via hardware volume masks
+        // FIXED: Explicitly mutes tone tracking volume pathways for Channels A and B during noise strikes
         if (noise_drum_active) {
             out_ay_regs[6] = detected_noise_period;
-            current_mixer &= ~(1 << 5);             // Open Noise Gate on Channel C (Bit 5 = 0)
-            out_ay_regs[10] = target_volume_level; // Channel C strictly plays the white noise envelope
+            current_mixer &= ~(1 << 5);             // Open Noise on Channel C
+            out_ay_regs[10] = target_volume_level;  // Channel C handles noise exclusively
             
-            // Attenuate Channel A & B square volumes to prevent the down-sampled aliasing mask
-            out_ay_regs[8] = (out_ay_regs[8] > 4) ? (out_ay_regs[8] - 4) : 0;
-            out_ay_regs[9] = (out_ay_regs[9] > 4) ? (out_ay_regs[9] - 4) : 0;
+            out_ay_regs[8]  = 0;                    // Force absolute tone silence on A & B
+            out_ay_regs[9]  = 0;
         }
 
         out_ay_regs[7] = current_mixer; 
