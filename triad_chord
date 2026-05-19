@@ -1,0 +1,1 @@
+ffmpeg -f lavfi -i "sine=frequency=440:duration=5" -f lavfi -i "sine=frequency=554.37:duration=5" -f lavfi -i "sine=frequency=659.25:duration=5" -filter_complex "amix=inputs=3:duration=first" -ac 1 -ar 44100 triad_chord.wav -y

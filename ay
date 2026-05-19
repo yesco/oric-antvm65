@@ -1,2 +1,2 @@
-clang -lm -O3 sound2ay.c && ./a.out "$@"
+rm a.out ; clang -O3 sound2ay.c -lm && ./a.out "$@"
 

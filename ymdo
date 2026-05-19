@@ -1,1 +1,3 @@
-rm match_preview.wav  ; ./ay $1 -skip_ms 1000 | tee ay.log ; grep AY ay.log ; play match_preview.wav 2>/dev/null
+#rm match_preview.wav  ; ./ay $1 -skip_ms 1000 | tee ay.log ; grep AY ay.log ; play match_preview.wav 2>/dev/null
+
+rm match_preview.wav  ; ./ay $1 | tee ay.log ; grep AY ay.log ; play match_preview.wav 2>/dev/null

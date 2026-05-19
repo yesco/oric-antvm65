@@ -1,0 +1,1 @@
+ffmpeg -f lavfi -i "sine=frequency=440:duration=10" -f lavfi -i "aevalsrc='sin(2*PI*(100+1100*t/10)*t)':d=10" -filter_complex "amix=inputs=2:duration=first" -ac 1 -ar 44100 drone_sweep.wav -y

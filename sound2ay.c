@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define TICK_RATE         50        
-#define EVAL_WINDOW_MS    60        // 60ms window cushion remains intact to natively support low bass parameters
+#define EVAL_WINDOW_MS    100       
 #define AY_CLOCK          1000000   // 1 MHz Target Hardware
 #define GENOME_SIZE       14
 
@@ -27,15 +27,20 @@ const float ay_vol_table[] = {
 };
 
 typedef struct {
-    uint16_t tone_period;      
+    uint16_t tone_period[3];      
     uint8_t  noise_period;
     uint8_t  mixer;
-    uint8_t  amplitude;        
-    double   tone_counter;     
-    int8_t   tone_state;
+    uint8_t  amplitude[3];        
+    double   tone_counter[3];     
+    int8_t   tone_state[3];
 } AY_Chip;
 
 AY_Chip global_tracking_state;
+
+typedef struct {
+    float freq;
+    float depth;
+} PitchCandidate;
 
 int load_full_wav(const char* filename) {
     FILE* f = fopen(filename, "rb");
@@ -43,19 +48,22 @@ int load_full_wav(const char* filename) {
         fprintf(stderr, "[!] Could not open input file: %s\n", filename);
         return 0;
     }
-    uint8_t header[44]; 
+    
+    uint8_t header[44];
     if (fread(header, 1, 44, f) != 44) { 
         fclose(f); return 0; 
     }
     
-    memcpy(&sample_rate, &header[24], 4);
-    if (sample_rate <= 0) sample_rate = 44100;
-
-    fseek(f, 12, SEEK_SET); 
-    uint32_t chunk_id = 0, data_size = 0;
-
+    uint16_t num_channels = header[22] | (header[23] << 8);
+    uint32_t r_rate = header[24] | (header[25] << 8) | (header[26] << 16) | (header[27] << 24);
+    uint16_t bits_per_sample = header[34] | (header[35] << 8);
+    
+    if (r_rate > 0) sample_rate = r_rate;
+    if (num_channels < 1) num_channels = 1;
+    
+    fseek(f, 12, SEEK_SET);
+    uint32_t chunk_id, chunk_size, data_size = 0;
     while (fread(&chunk_id, 4, 1, f) == 1) {
-        uint32_t chunk_size = 0;
         if (fread(&chunk_size, 4, 1, f) != 1) break;
         if (memcmp(&chunk_id, "data", 4) == 0) {
             data_size = chunk_size;
@@ -63,26 +71,35 @@ int load_full_wav(const char* filename) {
         }
         fseek(f, chunk_size, SEEK_CUR);
     }
-
-    if (data_size <= 0) {
-        fprintf(stderr, "[!] Failed to locate a valid 'data' block.\n");
+    
+    if (data_size == 0) {
+        fprintf(stderr, "[!] Corrupt data segment descriptor tags.\n");
         fclose(f); return 0;
     }
-
-    total_wav_samples = data_size / sizeof(int16_t);
-    window_size = (sample_rate * EVAL_WINDOW_MS) / 1000; 
-
+    
+    int sample_bytes = bits_per_sample / 8;
+    int frame_bytes = sample_bytes * num_channels;
+    total_wav_samples = data_size / frame_bytes;
+    window_size = (sample_rate * EVAL_WINDOW_MS) / 1000;
+    
     full_target_waveform = (float*)calloc(total_wav_samples, sizeof(float));
-    int16_t sample;
+    uint8_t* raw_frame = (uint8_t*)malloc(frame_bytes);
+    
     for (int i = 0; i < total_wav_samples; i++) {
-        if (fread(&sample, sizeof(int16_t), 1, f) == 1) {
-            full_target_waveform[i] = (float)sample / 32768.0f;
+        if (fread(raw_frame, 1, frame_bytes, f) != (size_t)frame_bytes) break;
+        
+        if (bits_per_sample == 16) {
+            int16_t val = (int16_t)(raw_frame[0] | (raw_frame[1] << 8));
+            full_target_waveform[i] = (float)val / 32768.0f;
         } else {
-            total_wav_samples = i; 
-            break;
+            full_target_waveform[i] = ((float)raw_frame[0] - 128.0f) / 128.0f;
         }
     }
+    
+    free(raw_frame);
     fclose(f);
+    fprintf(stderr, "[*] Verified Load: Channels=%d, Bits=%d, Rate=%dHz, Len=%d\n", 
+            num_channels, bits_per_sample, sample_rate, total_wav_samples);
     return 1;
 }
 
@@ -116,98 +133,131 @@ void write_output_wav(const char* filename, float* buffer, int num_samples) {
 void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples, AY_Chip* state_ptr) {
     AY_Chip chip = *state_ptr;
     
-    chip.tone_period = regs[0] | ((regs[1] & 0x0F) << 8);
-    chip.mixer       = regs[7];
-    chip.amplitude   = regs[8] & 0x0F; 
+    chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
+    chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
+    chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
+    chip.mixer          = regs[7];
+    chip.amplitude[0]   = regs[8] & 0x0F; 
+    chip.amplitude[1]   = regs[9] & 0x0F; 
+    chip.amplitude[2]   = regs[10] & 0x0F; 
     
     double ay_ticks_per_sample = (double)AY_CLOCK / sample_rate;
 
     for (int s = 0; s < num_samples; s++) {
-        if (chip.tone_period > 0) {
-            chip.tone_counter += ay_ticks_per_sample;
-            uint32_t step_threshold = 16 * chip.tone_period; 
-            while (chip.tone_counter >= step_threshold) {
-                chip.tone_counter -= step_threshold;
-                chip.tone_state = -chip.tone_state;
+        float mix = 0.0f;
+        int active_channels = 0;
+
+        for (int c = 0; c < 3; c++) {
+            if (chip.tone_period[c] > 0) {
+                chip.tone_counter[c] += ay_ticks_per_sample;
+                uint32_t step_threshold = 16 * chip.tone_period[c]; 
+                while (chip.tone_counter[c] >= step_threshold) {
+                    chip.tone_counter[c] -= step_threshold;
+                    chip.tone_state[c] = -chip.tone_state[c];
+                }
+            }
+            int tone_enabled = !((chip.mixer >> c) & 1);
+            if (tone_enabled && chip.tone_period[c] > 0 && chip.amplitude[c] > 0) {
+                active_channels++;
+                mix += ((float)chip.tone_state[c] * ay_vol_table[chip.amplitude[c]]);
             }
         }
-        int tone_enabled = !((chip.mixer >> 0) & 1);
-        if (tone_enabled && chip.tone_period > 0 && chip.amplitude > 0) {
-            out_buffer[s] = ((float)chip.tone_state * ay_vol_table[chip.amplitude]);
-        } else {
-            out_buffer[s] = 0.0f;
-        }
+        out_buffer[s] = (active_channels > 0) ? (mix / 3.0f) : 0.0f; 
     }
     *state_ptr = chip;
 }
 
-// CHANGED: Upgraded the pitch engine to clean YIN-style Cumulative Mean Normalized Difference math
-float calculate_yin_frequency(float* signal, int length, int s_rate, float min_f, float max_f) {
-    int max_shift = (int)(s_rate / min_f);
-    int min_shift = (int)(s_rate / max_f);
+int compare_candidates(const void* a, const void* b) {
+    float depthA = ((PitchCandidate*)a)->depth;
+    float depthB = ((PitchCandidate*)b)->depth;
+    return (depthA < depthB) ? 1 : -1; 
+}
+
+int calculate_polyphonic_yin_frequencies(float* signal, int length, int s_rate, float* out_freqs) {
+    int max_shift = (int)(s_rate / 30.0f); 
+    int min_shift = (int)(s_rate / 4000.0f); 
     if (max_shift > length / 2) max_shift = length / 2;
-    if (min_shift < 2) min_shift = 2;
 
-    float* diff_buffer = (float*)calloc(max_shift + 1, sizeof(float));
+    float* autocorr = (float*)calloc(max_shift + 1, sizeof(float));
 
-    // Step 1: Compute raw absolute difference array values
-    for (int tau = 1; tau <= max_shift; tau++) {
-        float sq_diff = 0.0f;
-        for (int t = 0; t < length / 2; t++) {
-            float d = signal[t] - signal[t + tau];
-            sq_diff += d * d;
-        }
-        diff_buffer[tau] = sq_diff;
+    float energy_base = 0.0001f;
+    for (int t = 0; t < length / 2; t++) {
+        energy_base += signal[t] * signal[t];
     }
 
-    // Step 2: Apply Cumulative Mean Normalization algorithm blocks
-    diff_buffer[0] = 1.0f;
-    float running_sum = 0.0f;
-    for (int tau = 1; tau <= max_shift; tau++) {
-        running_sum += diff_buffer[tau];
-        if (running_sum > 0.0001f) {
-            diff_buffer[tau] = diff_buffer[tau] / (running_sum / (float)tau);
-        } else {
-            diff_buffer[tau] = 1.0f;
-        }
-    }
-
-    // Step 3: Absolute Threshold Selection pass to isolate the fundamental period trough
-    int best_tau = -1;
-    float threshold = 0.15f; // Standard YIN fundamental cut-off threshold value container
     for (int tau = min_shift; tau <= max_shift; tau++) {
-        if (diff_buffer[tau] < threshold) {
-            best_tau = tau;
-            break;
+        float sum = 0.0f;
+        float energy_offset = 0.0001f;
+        for (int t = 0; t < length / 2; t++) {
+            sum += signal[t] * signal[t + tau];
+            energy_offset += signal[t + tau] * signal[t + tau];
         }
+        autocorr[tau] = sum / sqrtf(energy_base * energy_offset);
     }
 
-    // Fallback: If no point crosses the threshold grid cleanly, pick the absolute local minimum
-    if (best_tau < 0) {
-        float min_val = 1e10f;
-        for (int tau = min_shift; tau <= max_shift; tau++) {
-            if (diff_buffer[tau] < min_val) {
-                min_val = diff_buffer[tau];
-                best_tau = tau;
+    PitchCandidate candidates[32];
+    int candidate_count = 0;
+    float threshold = 0.20f; 
+
+    // Scan from left to right (highest frequency first) to preserve physical time steps
+    for (int tau = min_shift + 1; tau < max_shift && candidate_count < 32; tau++) {
+        if (autocorr[tau] > autocorr[tau - 1] && autocorr[tau] > autocorr[tau + 1]) {
+            if (autocorr[tau] > threshold) {
+                
+                // Parabolic sub-sample peak localization interpolates micro-steps perfectly
+                float exact_tau = (float)tau;
+                float y1 = autocorr[tau - 1];
+                float y2 = autocorr[tau];
+                float y3 = autocorr[tau + 1];
+                float denom = 2.0f * y2 - y1 - y3;
+                if (fabsf(denom) > 0.0001f) {
+                    exact_tau = (float)tau + (y1 - y3) / (2.0f * denom);
+                }
+
+                float found_freq = (float)s_rate / exact_tau;
+                if (found_freq >= 30.0f && found_freq <= 4000.0f) {
+                    
+                    int is_subharmonic = 0;
+                    for (int i = 0; i < candidate_count; i++) {
+                        float ratio = candidates[i].freq / found_freq;
+                        float rounded_ratio = roundf(ratio);
+                        if (rounded_ratio >= 2.0f && fabsf(ratio - rounded_ratio) < 0.03f) {
+                            is_subharmonic = 1;
+                            break;
+                        }
+                    }
+
+                    if (!is_subharmonic) {
+                        candidates[candidate_count].freq = found_freq;
+                        candidates[candidate_count].depth = autocorr[tau];
+                        candidate_count++;
+
+                        int blank_width = (int)(exact_tau * 0.50f);
+                        for (int b = tau - blank_width / 2; b <= tau + blank_width && b <= max_shift; b++) {
+                            if (b >= 0) autocorr[b] *= 0.1f;
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Step 4: High-precision sub-sample parabolic interpolation calculation loop pass
-    float exact_tau = (float)best_tau;
-    if (best_tau > min_shift && best_tau < max_shift) {
-        float y1 = diff_buffer[best_tau - 1];
-        float y2 = diff_buffer[best_tau];
-        float y3 = diff_buffer[best_tau + 1];
-        float denom = y3 - 2.0f * y2 + y1;
-        if (fabsf(denom) > 0.0001f) {
-            exact_tau = (float)best_tau + (y1 - y3) / (2.0f * denom);
+    int peak_count = 0;
+    if (candidate_count > 0) {
+        // FIXED: Dominance Gate. If peak 0 is pure and towers high, lock to single-tone immediately
+        if (candidates[0].depth > 0.82f) {
+            out_freqs[peak_count++] = candidates[0].freq;
+        } else {
+            // Sort remaining nodes cleanly to fill triad space columns
+            qsort(candidates, candidate_count, sizeof(PitchCandidate), compare_candidates);
+            for(int i = 0; i < candidate_count && peak_count < 3; i++) {
+                out_freqs[peak_count++] = candidates[i].freq;
+            }
         }
     }
 
-    free(diff_buffer);
-    if (best_tau < 0 || exact_tau <= 0.0f) return 0.0f;
-    return (float)s_rate / exact_tau;
+    free(autocorr);
+    return peak_count;
 }
 
 int main(int argc, char** argv) {
@@ -229,8 +279,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    fprintf(stderr, "[*] Target Wave Loaded: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
-
     int sample_stride = (sample_rate * 20) / 1000; 
     
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
@@ -238,10 +286,10 @@ int main(int argc, char** argv) {
     
     int frame_index = 0;
     uint8_t out_ay_regs[GENOME_SIZE] = {0};
-    uint16_t last_period = 0;
+    uint16_t last_periods[] = {0, 0, 0};
 
     memset(&global_tracking_state, 0, sizeof(AY_Chip));
-    global_tracking_state.tone_state = 1;
+    for(int c=0; c<3; c++) global_tracking_state.tone_state[c] = 1;
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         float total_frame_energy = 0.0f;
@@ -250,10 +298,10 @@ int main(int argc, char** argv) {
         }
 
         memset(out_ay_regs, 0, GENOME_SIZE);
-        out_ay_regs[7] = 0x3F; 
+        out_ay_regs[7] = 0x3F; // Default: All channels muted
 
         if (total_frame_energy < 0.01f) {
-            last_period = 0; 
+            memset(last_periods, 0, sizeof(last_periods));
             run_ay_emulator_flexible(out_ay_regs, play_buffer, sample_stride, &global_tracking_state);
             if (offset + sample_stride <= total_wav_samples) {
                 memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
@@ -262,30 +310,94 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // FIXED: Invokes the new YIN normalization engine to completely stop subharmonic octave lock errors
-        float freq = calculate_yin_frequency(&full_target_waveform[offset], window_size, sample_rate, 30.0f, 4000.0f);
-        uint16_t raw_period = 0;
+        float detected_freqs[] = {0.0f, 0.0f, 0.0f};
+        int pitches_found = calculate_polyphonic_yin_frequencies(&full_target_waveform[offset], window_size, sample_rate, detected_freqs);
 
-        if (freq > 30.0f && freq < 4000.0f) {
-            raw_period = (uint16_t)round((double)AY_CLOCK / (16.0 * (double)freq));
-        }
+        uint16_t raw_periods[] = {0, 0, 0};
+        int validated_count = 0;
 
-        if (raw_period > 0) {
-            if (last_period > 0 && abs((int)raw_period - (int)last_period) <= 1) {
-                raw_period = last_period; 
+        for (int p = 0; p < pitches_found; p++) {
+            if (detected_freqs[p] > 30.0f && detected_freqs[p] < 4000.0f) {
+                uint16_t p_val = (uint16_t)round((double)AY_CLOCK / (16.0 * (double)detected_freqs[p]));
+                
+                int duplicate = 0;
+                for (int i = 0; i < validated_count; i++) {
+                    float ratio = (float)raw_periods[i] / (float)p_val;
+                    if (fabsf(log2f(ratio)) < 0.04f || 
+                        fabsf(log2f(ratio) - 1.0f) < 0.012f || 
+                        fabsf(log2f(ratio) + 1.0f) < 0.012f ||
+                        fabsf(ratio - 2.0f) < 0.012f ||
+                        fabsf(ratio - 0.5f) < 0.012f) {
+                        duplicate = 1;
+                        break;
+                    }
+                }
+                if (!duplicate) {
+                    raw_periods[validated_count++] = p_val;
+                }
             }
-            
-            if (raw_period > 4095) raw_period = 4095;
-            if (raw_period < 1) raw_period = 1;
-
-            out_ay_regs[0] = raw_period & 0xFF;
-            out_ay_regs[1] = (raw_period >> 8) & 0x0F;
-            out_ay_regs[7] = 0x3E; 
-            out_ay_regs[8] = 0x0F; 
-            last_period = raw_period;
-        } else {
-            last_period = 0;
         }
+
+        // FIXED: Proximity Matrix Assignment prevents voices from swapping channel routes frame-by-frame
+        uint16_t target_periods[] = {0, 0, 0};
+        int assigned_peaks[] = {0, 0, 0};
+
+        for (int c = 0; c < 3; c++) {
+            if (last_periods[c] > 0) {
+                int best_idx = -1;
+                float best_diff = 999999.0f;
+                for (int p = 0; p < validated_count; p++) {
+                    if (!assigned_peaks[p]) {
+                        float diff = fabsf((float)raw_periods[p] - (float)last_periods[c]);
+                        if (diff < best_diff) {
+                            best_diff = diff;
+                            best_idx = p;
+                        }
+                    }
+                }
+                if (best_idx != -1 && best_diff / (float)last_periods[c] < 0.15f) {
+                    target_periods[c] = raw_periods[best_idx];
+                    assigned_peaks[best_idx] = 1;
+                }
+            }
+        }
+
+        // Fill remaining empty channels sequentially
+        for (int p = 0; p < validated_count; p++) {
+            if (!assigned_peaks[p]) {
+                for (int c = 0; c < 3; c++) {
+                    if (target_periods[c] == 0) {
+                        target_periods[c] = raw_periods[p];
+                        assigned_peaks[p] = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        uint8_t current_mixer = 0x3F;
+        for (int c = 0; c < 3; c++) {
+            if (target_periods[c] > 0) {
+                if (last_periods[c] > 0) {
+                    int diff = abs((int)target_periods[c] - (int)last_periods[c]);
+                    if (diff <= 1 || (float)diff / (float)last_periods[c] < 0.012f) {
+                        target_periods[c] = last_periods[c];
+                    }
+                }
+                
+                if (target_periods[c] > 4095) target_periods[c] = 4095;
+                if (target_periods[c] < 1) target_periods[c] = 1;
+
+                out_ay_regs[c * 2] = target_periods[c] & 0xFF;
+                out_ay_regs[c * 2 + 1] = (target_periods[c] >> 8) & 0x0F;
+                current_mixer &= ~(1 << c);   
+                out_ay_regs[8 + c] = 0x0F;    
+                last_periods[c] = target_periods[c];
+            } else {
+                last_periods[c] = 0;
+            }
+        }
+        out_ay_regs[7] = current_mixer; 
 
         printf("AY:");
         for (int j = 0; j < GENOME_SIZE; j++) printf(" %02x", out_ay_regs[j]);
@@ -302,6 +414,6 @@ int main(int argc, char** argv) {
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
     free(play_buffer);
-    free(complete_assembled_preview); free(full_target_waveform);
+    free(complete_assembled_preview); full_target_waveform = NULL;
     return 0;
 }
