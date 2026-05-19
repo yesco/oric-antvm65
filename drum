@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# 1. Standard 8-bit Noise Snare (Short, sharp explosion)
+ffmpeg -y -f lavfi -i "anoisesrc=d=0.12:c=white:r=44100" \
+  -af "volume=eval=frame:volume='exp(-25*(t+0.001))'" \
+  -ac 1 -c:a pcm_s16le snare_short.wav
+
+# 2. Heavy Noise Snare (Longer acoustic footprint)
+ffmpeg -y -f lavfi -i "anoisesrc=d=0.25:c=white:r=44100" \
+  -af "volume=eval=frame:volume='exp(-12*(t+0.001))'" \
+  -ac 1 -c:a pcm_s16le snare_long.wav
+
+# 3. FIXED: Closed Hi-Hat (Ultra-fast unpitched transient check)
+ffmpeg -y -f lavfi -i "anoisesrc=d=0.04:c=white:r=44100" \
+  -af "highpass=f=7000,volume=2.5,volume=eval=frame:volume='exp(-90*(t+0.001))'" \
+  -ac 1 -c:a pcm_s16le hihat_closed.wav
+
+# NEW: Open Hi-Hat (Sustained unpitched cymbal ring)
+ffmpeg -y -f lavfi -i "anoisesrc=d=0.30:c=white:r=44100" \
+  -af "highpass=f=6500,volume=2.0,volume=eval=frame:volume='exp(-15*(t+0.001))'" \
+  -ac 1 -c:a pcm_s16le hihat_open.wav
+
+# 5. Pure Periodic Kick Drum
+ffmpeg -y -f lavfi -i "aevalsrc='sin(2*PI*(150*(t+0.001)-350*(t+0.001)*(t+0.001)))':d=0.15:s=44100" \
+  -af "volume=eval=frame:volume='exp(-15*(t+0.001))'" \
+  -ac 1 -c:a pcm_s16le kick_pure_tone.wav
+
+# 6. FIXED: Hybrid Analog Kick Drum (Amplified Transient Click boundary space)
+ffmpeg -y -f lavfi -i "anoisesrc=d=0.020:c=white:r=44100" \
+       -f lavfi -i "aevalsrc='sin(2*PI*(150*(t+0.001)-350*(t+0.001)*(t+0.001)))':d=0.18:s=44100" \
+  -filter_complex "[0:a]volume=1.8,highpass=f=2000[noise]; [1:a]volume=eval=frame:volume='exp(-18*(t+0.001))'[sub]; [noise][sub]amix=inputs=2:duration=longest" \
+  -ac 1 -c:a pcm_s16le kick_hybrid.wav
