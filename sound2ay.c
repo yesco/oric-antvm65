@@ -21,7 +21,14 @@ float* full_target_waveform = NULL;
 uint8_t winner_cache[CACHE_SIZE][GENOME_SIZE];
 int cache_count = 0;
 
-// FIXED: Locked indices mapping to distinct arrays handles multi-track separation cleanly
+// Accurate AY-3-8910 logarithmic voltage volume mapping table
+const float ay_vol_table[16] = {
+    0.0000f, 0.0137f, 0.0205f, 0.0291f, 
+    0.0423f, 0.0618f, 0.0847f, 0.1269f,
+    0.1716f, 0.2442f, 0.3445f, 0.4672f, 
+    0.6190f, 0.7745f, 0.9161f, 1.0000f
+};
+
 typedef struct {
     uint16_t tone_period[3];      
     uint8_t  noise_period;
@@ -29,7 +36,7 @@ typedef struct {
     uint8_t  amplitude[3];        
     uint16_t env_period;
     uint8_t  env_shape;
-    uint32_t tone_counter[3];
+    double   tone_counter[3];     // CHANGED: Double precision for phase scaling stability
     int8_t   tone_state[3];
 } AY_Chip;
 
@@ -45,7 +52,7 @@ int load_full_wav(const char* filename) {
         fprintf(stderr, "[!] Could not open input file: %s\n", filename);
         return 0;
     }
-    uint8_t header[44]; // FIXED: Allocated structural 44-byte array container mapping
+    uint8_t header[44]; 
     if (fread(header, 1, 44, f) != 44) { 
         fclose(f); return 0; 
     }
@@ -119,7 +126,6 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     AY_Chip chip;
     memset(&chip, 0, sizeof(AY_Chip));
     
-    // FIXED: Explicit unrolled array indices map registers accurately without reference decay crashes
     chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
     chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
     chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
@@ -130,7 +136,9 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     chip.amplitude[2]   = regs[10] & 0x1F; 
     
     for (int c = 0; c < 3; c++) chip.tone_state[c] = 1;
-    double ticks_per_sample = (double)AY_CLOCK / (16.0 * sample_rate);
+    
+    // FIXED: True hardware cycle step increments map tracking values linearly per sound frame loop
+    double ay_ticks_per_sample = (double)AY_CLOCK / sample_rate;
 
     for (int s = 0; s < num_samples; s++) {
         float mix = 0.0f;
@@ -138,34 +146,37 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
 
         for (int c = 0; c < 3; c++) {
             if (chip.tone_period[c] > 0) {
-                chip.tone_counter[c]++;
-                if (chip.tone_counter[c] >= chip.tone_period[c] * ticks_per_sample) {
-                    chip.tone_counter[c] = 0;
+                chip.tone_counter[c] += ay_ticks_per_sample;
+                uint32_t step_threshold = 16 * chip.tone_period[c];
+                while (chip.tone_counter[c] >= step_threshold) {
+                    chip.tone_counter[c] -= step_threshold;
                     chip.tone_state[c] = -chip.tone_state[c];
                 }
             }
             int tone_enabled = !((chip.mixer >> c) & 1);
             if (tone_enabled && chip.tone_period[c] > 0) {
                 active_channels++;
-                mix += ((float)chip.tone_state[c] * ((float)(chip.amplitude[c] & 0x0F) / 15.0f));
+                // FIXED: Now maps to the correct vintage logarithmic hardware step structure
+                mix += ((float)chip.tone_state[c] * ay_vol_table[chip.amplitude[c] & 0x0F]);
             }
         }
         out_buffer[s] = (active_channels > 0) ? (mix / (float)active_channels) : 0.0f;
     }
 }
 
-float evaluate_fitness_fast(uint8_t* genome, float* target_segment) {
-    float* candidate = (float*)malloc(window_size * sizeof(float));
-    run_ay_emulator_flexible(genome, candidate, window_size);
+// FIXED: Added pre-allocated candidate window scratchpad pointer to eliminate inner loop malloc/free calls completely
+float evaluate_fitness_fast(uint8_t* genome, float* target_segment, float* scratchpad, float peak_amp) {
+    run_ay_emulator_flexible(genome, scratchpad, window_size);
     
     float error = 0.0f;
     for (int i = 0; i < window_size; i += 2) { 
-        float diff = target_segment[i] - candidate[i];
+        // FIXED: Scaling candidate to target's normalized space using local window peak amplitude matching
+        float scaled_candidate = scratchpad[i] * peak_amp;
+        float diff = target_segment[i] - scaled_candidate;
         error += diff * diff;
     }
     
-    free(candidate);
-    return 1000.0f / (error + 1.0f);
+    return 1000.0f / (error + 0.0001f);
 }
 
 int main(int argc, char** argv) {
@@ -182,8 +193,9 @@ int main(int argc, char** argv) {
         else wav_filename = argv[i];
     }
 
+    // FIXED: Correct usage print configuration argument error tracking pass structural crash guard
     if (!wav_filename || !load_full_wav(wav_filename)) {
-        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", argv); 
+        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv[0] : "ay_optimizer"); 
         return 1;
     }
 
@@ -195,6 +207,7 @@ int main(int argc, char** argv) {
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
     float* norm_window = (float*)malloc(window_size * sizeof(float));
     float* amdf_array = (float*)calloc(window_size / 2, sizeof(float));
+    float* fitness_scratchpad = (float*)malloc(window_size * sizeof(float)); // New persistent allocations block container
 
     int frame_index = 0;
     uint8_t last_valid_ay[GENOME_SIZE] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -224,6 +237,12 @@ int main(int argc, char** argv) {
             run_ay_emulator_flexible(last_valid_ay, play_buffer, sample_stride);
             if (offset + sample_stride <= total_wav_samples) {
                 memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
+            }
+            if (pipe_audio) {
+                for (int k = 0; k < sample_stride; k++) {
+                    int16_t pcm_sample = (int16_t)(play_buffer[k] * 0.15f * 32767.0f);
+                    fwrite(&pcm_sample, sizeof(int16_t), 1, stdout);
+                }
             }
             frame_index++;
             continue;
@@ -294,7 +313,8 @@ int main(int argc, char** argv) {
         for (int g = 0; g < GENERATIONS; g++) {
             float max_fit = -1.0f; int best_idx = 0;
             for (int i = 0; i < POPULATION_SIZE; i++) {
-                fitness[i] = evaluate_fitness_fast(population[i], norm_window);
+                // FIXED: Now passing scratchpad tracking arrays and current peak metrics dynamically inside loop parameters
+                fitness[i] = evaluate_fitness_fast(population[i], norm_window, fitness_scratchpad, peak_amp);
                 if (fitness[i] > max_fit) { max_fit = fitness[i]; best_idx = i; }
             }
 
@@ -322,17 +342,15 @@ int main(int argc, char** argv) {
 
         float final_fit = -1.0f; int winner = 0;
         for (int i = 0; i < POPULATION_SIZE; i++) {
-            float f = evaluate_fitness_fast(population[i], norm_window);
+            // FIXED: Passing persistent execution layout boundaries
+            float f = evaluate_fitness_fast(population[i], norm_window, fitness_scratchpad, peak_amp);
             if (f > final_fit) { final_fit = f; winner = i; }
         }
 
         uint8_t final_ay[GENOME_SIZE];
         memcpy(final_ay, population[winner], GENOME_SIZE);
 
-        final_ay[0] = period & 0xFF;
-        final_ay[1] = (period >> 8) & 0x0F;
-        final_ay[7] = 0x3E; 
-        final_ay[8] = 0x0F; 
+        // FIXED: Dropped the raw manual variable overrides that were discarding genetic fine-tuning optimizations
 
         fprintf(stdout, "\t\tAY:"); fprintf(stderr, "\t\tAY:");
         for (int j = 0; j < GENOME_SIZE; j++) {
@@ -363,6 +381,7 @@ int main(int argc, char** argv) {
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
     fprintf(stderr, "[*] Processing Complete!\n");
-    free(play_buffer); free(norm_window); free(amdf_array); free(complete_assembled_preview); free(full_target_waveform);
+    free(play_buffer); free(norm_window); free(amdf_array); 
+    free(fitness_scratchpad); free(complete_assembled_preview); free(full_target_waveform);
     return 0;
 }
