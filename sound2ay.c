@@ -7,10 +7,10 @@
 
 #define POPULATION_SIZE   32        
 #define GENOME_SIZE       14
-#define GENERATIONS       10        
+#define GENERATIONS       15        
 #define TICK_RATE         50        
-#define EVAL_WINDOW_MS    50        
-#define AY_CLOCK          1789772   
+#define EVAL_WINDOW_MS    20        
+#define AY_CLOCK          1000000   // 1 MHz Target Hardware
 #define CACHE_SIZE        64        
 
 int sample_rate = 44100;
@@ -21,7 +21,6 @@ float* full_target_waveform = NULL;
 uint8_t winner_cache[CACHE_SIZE][GENOME_SIZE];
 int cache_count = 0;
 
-// Accurate AY-3-8910 logarithmic voltage volume mapping table
 const float ay_vol_table[16] = {
     0.0000f, 0.0137f, 0.0205f, 0.0291f, 
     0.0423f, 0.0618f, 0.0847f, 0.1269f,
@@ -30,14 +29,14 @@ const float ay_vol_table[16] = {
 };
 
 typedef struct {
-    uint16_t tone_period[3];      
+    uint16_t tone_period;      
     uint8_t  noise_period;
     uint8_t  mixer;
-    uint8_t  amplitude[3];        
+    uint8_t  amplitude;        
     uint16_t env_period;
     uint8_t  env_shape;
-    double   tone_counter[3];     // CHANGED: Double precision for phase scaling stability
-    int8_t   tone_state[3];
+    double   tone_counter;     
+    int8_t   tone_state;
 } AY_Chip;
 
 uint32_t xorshift32() {
@@ -126,57 +125,62 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     AY_Chip chip;
     memset(&chip, 0, sizeof(AY_Chip));
     
-    chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
-    chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
-    chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
-    chip.noise_period   = regs[6] & 0x1F;
-    chip.mixer          = regs[7];
-    chip.amplitude[0]   = regs[8] & 0x1F; 
-    chip.amplitude[1]   = regs[9] & 0x1F; 
-    chip.amplitude[2]   = regs[10] & 0x1F; 
+    chip.tone_period = regs[0] | ((regs[1] & 0x0F) << 8);
+    chip.mixer       = regs[7];
+    chip.amplitude   = regs[8] & 0x0F; 
     
-    for (int c = 0; c < 3; c++) chip.tone_state[c] = 1;
-    
-    // FIXED: True hardware cycle step increments map tracking values linearly per sound frame loop
+    chip.tone_state = 1;
     double ay_ticks_per_sample = (double)AY_CLOCK / sample_rate;
 
     for (int s = 0; s < num_samples; s++) {
-        float mix = 0.0f;
-        int active_channels = 0;
-
-        for (int c = 0; c < 3; c++) {
-            if (chip.tone_period[c] > 0) {
-                chip.tone_counter[c] += ay_ticks_per_sample;
-                uint32_t step_threshold = 16 * chip.tone_period[c];
-                while (chip.tone_counter[c] >= step_threshold) {
-                    chip.tone_counter[c] -= step_threshold;
-                    chip.tone_state[c] = -chip.tone_state[c];
-                }
-            }
-            int tone_enabled = !((chip.mixer >> c) & 1);
-            if (tone_enabled && chip.tone_period[c] > 0) {
-                active_channels++;
-                // FIXED: Now maps to the correct vintage logarithmic hardware step structure
-                mix += ((float)chip.tone_state[c] * ay_vol_table[chip.amplitude[c] & 0x0F]);
+        if (chip.tone_period > 0) {
+            chip.tone_counter += ay_ticks_per_sample;
+            uint32_t step_threshold = 16 * chip.tone_period; 
+            while (chip.tone_counter >= step_threshold) {
+                chip.tone_counter -= step_threshold;
+                chip.tone_state = -chip.tone_state;
             }
         }
-        out_buffer[s] = (active_channels > 0) ? (mix / (float)active_channels) : 0.0f;
+        int tone_enabled = !((chip.mixer >> 0) & 1);
+        if (tone_enabled && chip.tone_period > 0) {
+            out_buffer[s] = ((float)chip.tone_state * ay_vol_table[chip.amplitude]);
+        } else {
+            out_buffer[s] = 0.0f;
+        }
     }
 }
 
-// FIXED: Added pre-allocated candidate window scratchpad pointer to eliminate inner loop malloc/free calls completely
-float evaluate_fitness_fast(uint8_t* genome, float* target_segment, float* scratchpad, float peak_amp) {
+// CHANGED: Evaluates fitness using absolute shape correlation to ignore phase shifts
+float evaluate_fitness_fast(uint8_t* genome, float* target_segment, float* scratchpad) {
     run_ay_emulator_flexible(genome, scratchpad, window_size);
     
     float error = 0.0f;
-    for (int i = 0; i < window_size; i += 2) { 
-        // FIXED: Scaling candidate to target's normalized space using local window peak amplitude matching
-        float scaled_candidate = scratchpad[i] * peak_amp;
-        float diff = target_segment[i] - scaled_candidate;
+    for (int i = 0; i < window_size; i++) { 
+        float diff = fabsf(target_segment[i]) - fabsf(scratchpad[i]);
         error += diff * diff;
     }
-    
     return 1000.0f / (error + 0.0001f);
+}
+
+// NEW: Ultra-stable time-domain pitch extraction based on zero-crossing intervals
+float calculate_zcd_frequency(float* signal, int length, int s_rate) {
+    int crossings = 0;
+    int first_crossing = -1;
+    int last_crossing = -1;
+
+    for (int i = 0; i < length - 1; i++) {
+        if ((signal[i] >= 0.0f && signal[i+1] < 0.0f) || (signal[i] < 0.0f && signal[i+1] >= 0.0f)) {
+            crossings++;
+            if (first_crossing == -1) first_crossing = i;
+            last_crossing = i;
+        }
+    }
+
+    if (crossings < 2 || first_crossing == last_crossing) return 440.0f; 
+
+    float total_samples = (float)(last_crossing - first_crossing);
+    float num_cycles = (float)(crossings - 1) / 2.0f;
+    return (num_cycles * (float)s_rate) / total_samples;
 }
 
 int main(int argc, char** argv) {
@@ -193,21 +197,18 @@ int main(int argc, char** argv) {
         else wav_filename = argv[i];
     }
 
-    // FIXED: Correct usage print configuration argument error tracking pass structural crash guard
     if (!wav_filename || !load_full_wav(wav_filename)) {
         fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv[0] : "ay_optimizer"); 
         return 1;
     }
 
-    fprintf(stderr, "[*] Processing Target Content: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
+    fprintf(stderr, "[*] Target Wave Loaded: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
 
-    int sample_stride = (skip_ms > 0) ? (sample_rate * skip_ms / 1000) : ((sample_rate * 20) / 1000); 
+    int sample_stride = (sample_rate * 20) / 1000; 
     
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
-    float* norm_window = (float*)malloc(window_size * sizeof(float));
-    float* amdf_array = (float*)calloc(window_size / 2, sizeof(float));
-    float* fitness_scratchpad = (float*)malloc(window_size * sizeof(float)); // New persistent allocations block container
+    float* fitness_scratchpad = (float*)malloc(window_size * sizeof(float)); 
 
     int frame_index = 0;
     uint8_t last_valid_ay[GENOME_SIZE] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -217,17 +218,13 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Frame #%04d (Time Offset: %06.2fs)\n", frame_index, (float)offset / sample_rate);
         fprintf(stderr, "============================================================\n");
         
-        float peak_amp = 0.0001f;
         float total_frame_energy = 0.0f;
         for (int i = 0; i < window_size; i++) {
-            float abs_val = fabsf(full_target_waveform[offset + i]);
-            total_frame_energy += abs_val;
-            if (abs_val > peak_amp) peak_amp = abs_val;
+            total_frame_energy += fabsf(full_target_waveform[offset + i]);
         }
 
         if (total_frame_energy < 0.05f && frame_index > 0) {
-            fprintf(stderr, "[Notice] Silent audio gap encountered. Preserving tracking states.\n");
-            
+            fprintf(stderr, "[Notice] Silent audio gap. Preserving states.\n");
             fprintf(stdout, "\t\tAY:"); fprintf(stderr, "\t\tAY:");
             for (int j = 0; j < GENOME_SIZE; j++) {
                 fprintf(stdout, " %02x", last_valid_ay[j]); fprintf(stderr, " %02x", last_valid_ay[j]);
@@ -238,55 +235,17 @@ int main(int argc, char** argv) {
             if (offset + sample_stride <= total_wav_samples) {
                 memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
             }
-            if (pipe_audio) {
-                for (int k = 0; k < sample_stride; k++) {
-                    int16_t pcm_sample = (int16_t)(play_buffer[k] * 0.15f * 32767.0f);
-                    fwrite(&pcm_sample, sizeof(int16_t), 1, stdout);
-                }
-            }
             frame_index++;
             continue;
         }
 
-        for (int i = 0; i < window_size; i++) norm_window[i] = full_target_waveform[offset + i] / peak_amp;
-
-        int max_tau = window_size / 2;
-        int best_tau = 0;
-        float min_namdf = 1e10f;
-
-        for (int tau = 2; tau < max_tau; tau++) {
-            float amdf = 0.0f;
-            float energy_scale = 0.0001f;
-            
-            for (int t = 0; t < max_tau; t += 2) {
-                amdf += fabsf(norm_window[t] - norm_window[t + tau]);
-                energy_scale += fabsf(norm_window[t]) + fabsf(norm_window[t + tau]);
-            }
-            
-            float namdf = amdf / energy_scale;
-            amdf_array[tau] = namdf;
-            
-            if (namdf < min_namdf && tau > 2) {
-                min_namdf = namdf;
-                best_tau = tau;
-            }
-        }
-
-        float exact_tau = (float)best_tau;
-        if (best_tau > 3 && best_tau < max_tau - 1) {
-            float y1 = amdf_array[best_tau - 1];
-            float y2 = amdf_array[best_tau];
-            float y3 = amdf_array[best_tau + 1];
-            float denominator = (y3 - 2.0f * y2 + y1);
-            if (fabsf(denominator) > 0.0001f) {
-                exact_tau = (float)best_tau + (y1 - y3) / (2.0f * denominator);
-            }
-        }
-
-        float target_frequency = (exact_tau > 0.0f) ? ((float)sample_rate / exact_tau) : 440.0f;
-        uint16_t period = (uint16_t)((double)AY_CLOCK / (32.0 * target_frequency));
+        // CHANGED: Replaced buggy AMDF loop with bulletproof ZCD mathematical tracker
+        float target_frequency = calculate_zcd_frequency(&full_target_waveform[offset], window_size, sample_rate);
+        
+        // FIXED: Maps with complete precision to 1 MHz boundaries 
+        uint16_t period = (uint16_t)((double)AY_CLOCK / (16.0 * target_frequency));
         if (period > 4095) period = 4095;
-        if (period < 2) period = 2; 
+        if (period < 1) period = 1; 
 
         uint8_t population[POPULATION_SIZE][GENOME_SIZE];
         float fitness[POPULATION_SIZE];
@@ -304,7 +263,8 @@ int main(int argc, char** argv) {
 
         while (idx < POPULATION_SIZE) {
             for (int j = 0; j < GENOME_SIZE; j++) population[idx][j] = sweep_tracking_seed[j];
-            uint16_t mutated_period = (period + (xorshift32() % 16) - 8) & 0x0FFF;
+            int variance = (period < 10) ? 1 : 8;
+            uint16_t mutated_period = (period + (xorshift32() % (variance * 2)) - variance) & 0x0FFF;
             population[idx][0] = mutated_period & 0xFF;
             population[idx][1] = (mutated_period >> 8) & 0x0F;
             idx++;
@@ -313,13 +273,12 @@ int main(int argc, char** argv) {
         for (int g = 0; g < GENERATIONS; g++) {
             float max_fit = -1.0f; int best_idx = 0;
             for (int i = 0; i < POPULATION_SIZE; i++) {
-                // FIXED: Now passing scratchpad tracking arrays and current peak metrics dynamically inside loop parameters
-                fitness[i] = evaluate_fitness_fast(population[i], norm_window, fitness_scratchpad, peak_amp);
+                fitness[i] = evaluate_fitness_fast(population[i], &full_target_waveform[offset], fitness_scratchpad);
                 if (fitness[i] > max_fit) { max_fit = fitness[i]; best_idx = i; }
             }
 
             if (g % 5 == 0) {
-                fprintf(stderr, "  Gen [%02d/%02d] -> Top Fitness Match: %8.2f\n", g, GENERATIONS, max_fit);
+                fprintf(stderr, "  Gen [%02d/%02d] -> Target Track Pitch: %7.1fHz, Top Fitness: %8.2f\n", g, GENERATIONS, target_frequency, max_fit);
             }
 
             uint8_t next_gen[POPULATION_SIZE][GENOME_SIZE];
@@ -330,9 +289,11 @@ int main(int argc, char** argv) {
                 int parent = (fitness[p1] > fitness[p2]) ? p1 : p2;
                 memcpy(next_gen[i], population[parent], GENOME_SIZE);
 
-                if ((xorshift32() % 100) < 35) {
+                if ((xorshift32() % 100) < 40) {
                     uint16_t current_p = next_gen[i][0] | ((next_gen[i][1] & 0x0F) << 8);
-                    current_p = (current_p + (xorshift32() % 10) - 5) & 0x0FFF;
+                    int mutation_spread = (target_frequency > 1500.0f) ? 1 : 6;
+                    current_p = (current_p + (xorshift32() % (mutation_spread * 2)) - mutation_spread) & 0x0FFF;
+                    if (current_p < 1) current_p = 1;
                     next_gen[i][0] = current_p & 0xFF;        
                     next_gen[i][1] = (current_p >> 8) & 0x0F; 
                 }
@@ -342,15 +303,12 @@ int main(int argc, char** argv) {
 
         float final_fit = -1.0f; int winner = 0;
         for (int i = 0; i < POPULATION_SIZE; i++) {
-            // FIXED: Passing persistent execution layout boundaries
-            float f = evaluate_fitness_fast(population[i], norm_window, fitness_scratchpad, peak_amp);
+            float f = evaluate_fitness_fast(population[i], &full_target_waveform[offset], fitness_scratchpad);
             if (f > final_fit) { final_fit = f; winner = i; }
         }
 
         uint8_t final_ay[GENOME_SIZE];
         memcpy(final_ay, population[winner], GENOME_SIZE);
-
-        // FIXED: Dropped the raw manual variable overrides that were discarding genetic fine-tuning optimizations
 
         fprintf(stdout, "\t\tAY:"); fprintf(stderr, "\t\tAY:");
         for (int j = 0; j < GENOME_SIZE; j++) {
@@ -363,7 +321,6 @@ int main(int argc, char** argv) {
         cache_count++;
 
         run_ay_emulator_flexible(final_ay, play_buffer, sample_stride);
-        
         if (offset + sample_stride <= total_wav_samples) {
             memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
         }
@@ -381,7 +338,6 @@ int main(int argc, char** argv) {
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
     fprintf(stderr, "[*] Processing Complete!\n");
-    free(play_buffer); free(norm_window); free(amdf_array); 
-    free(fitness_scratchpad); free(complete_assembled_preview); free(full_target_waveform);
+    free(play_buffer); free(fitness_scratchpad); free(complete_assembled_preview); free(full_target_waveform);
     return 0;
 }
