@@ -6,7 +6,7 @@
 #include <unistd.h>
 
 #define TICK_RATE         50        
-#define EVAL_WINDOW_MS    20        
+#define EVAL_WINDOW_MS    60        // 60ms window cushion remains intact to natively support low bass parameters
 #define AY_CLOCK          1000000   // 1 MHz Target Hardware
 #define GENOME_SIZE       14
 
@@ -27,35 +27,15 @@ const float ay_vol_table[] = {
 };
 
 typedef struct {
-    uint16_t tone_period[3];      
+    uint16_t tone_period;      
     uint8_t  noise_period;
     uint8_t  mixer;
-    uint8_t  amplitude[3];        
-    double   tone_counter[3];     
-    int8_t   tone_state[3];
+    uint8_t  amplitude;        
+    double   tone_counter;     
+    int8_t   tone_state;
 } AY_Chip;
 
 AY_Chip global_tracking_state;
-
-void apply_bandpass(float* input, float* output, int len, float low_cut, float high_cut) {
-    float norm_low = low_cut / (sample_rate / 2.0f);
-    float norm_high = high_cut / (sample_rate / 2.0f);
-    float center = sqrtf(norm_low * norm_high);
-    float bw = norm_high - norm_low;
-    
-    float r = 1.0f - 3.0f * bw;
-    float k = (1.0f - 2.0f * r * cosf(2.0f * (float)M_PI * center) + r * r) / (2.0f - 2.0f * cosf(2.0f * (float)M_PI * center));
-    float b0 = 1.0f - k, b1 = 2.0f * (k - r) * cosf(2.0f * (float)M_PI * center), b2 = r * r - k;
-    float a1 = 2.0f * r * cosf(2.0f * (float)M_PI * center), a2 = -r * r;
-
-    float x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-    for (int i = 0; i < len; i++) {
-        float out = b0 * input[i] + b1 * x1 + b2 * x2 + a1 * y1 + a2 * y2;
-        x2 = x1; x1 = input[i];
-        y2 = y1; y1 = out;
-        output[i] = out;
-    }
-}
 
 int load_full_wav(const char* filename) {
     FILE* f = fopen(filename, "rb");
@@ -136,67 +116,98 @@ void write_output_wav(const char* filename, float* buffer, int num_samples) {
 void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples, AY_Chip* state_ptr) {
     AY_Chip chip = *state_ptr;
     
-    chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
-    chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
-    chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
-    chip.mixer          = regs[7];
-    chip.amplitude[0]   = regs[8] & 0x0F; 
-    chip.amplitude[1]   = regs[9] & 0x0F; 
-    chip.amplitude[2]   = regs[10] & 0x0F; 
+    chip.tone_period = regs[0] | ((regs[1] & 0x0F) << 8);
+    chip.mixer       = regs[7];
+    chip.amplitude   = regs[8] & 0x0F; 
     
     double ay_ticks_per_sample = (double)AY_CLOCK / sample_rate;
 
     for (int s = 0; s < num_samples; s++) {
-        float mix = 0.0f;
-        int active_channels = 0;
-
-        for (int c = 0; c < 3; c++) {
-            if (chip.tone_period[c] > 0) {
-                chip.tone_counter[c] += ay_ticks_per_sample;
-                uint32_t step_threshold = 16 * chip.tone_period[c]; 
-                while (chip.tone_counter[c] >= step_threshold) {
-                    chip.tone_counter[c] -= step_threshold;
-                    chip.tone_state[c] = -chip.tone_state[c];
-                }
-            }
-            int tone_enabled = !((chip.mixer >> c) & 1);
-            if (tone_enabled && chip.tone_period[c] > 0 && chip.amplitude[c] > 0) {
-                active_channels++;
-                mix += ((float)chip.tone_state[c] * ay_vol_table[chip.amplitude[c]]);
+        if (chip.tone_period > 0) {
+            chip.tone_counter += ay_ticks_per_sample;
+            uint32_t step_threshold = 16 * chip.tone_period; 
+            while (chip.tone_counter >= step_threshold) {
+                chip.tone_counter -= step_threshold;
+                chip.tone_state = -chip.tone_state;
             }
         }
-        out_buffer[s] = (active_channels > 0) ? (mix / 3.0f) : 0.0f; 
+        int tone_enabled = !((chip.mixer >> 0) & 1);
+        if (tone_enabled && chip.tone_period > 0 && chip.amplitude > 0) {
+            out_buffer[s] = ((float)chip.tone_state * ay_vol_table[chip.amplitude]);
+        } else {
+            out_buffer[s] = 0.0f;
+        }
     }
     *state_ptr = chip;
 }
 
-// Sub-sample linear interpolation pitch analyzer
-float calculate_precise_frequency(float* signal, int length, int s_rate) {
-    int crossings = 0;
-    double first_crossing_time = -1.0;
-    double last_crossing_time = -1.0;
+// CHANGED: Upgraded the pitch engine to clean YIN-style Cumulative Mean Normalized Difference math
+float calculate_yin_frequency(float* signal, int length, int s_rate, float min_f, float max_f) {
+    int max_shift = (int)(s_rate / min_f);
+    int min_shift = (int)(s_rate / max_f);
+    if (max_shift > length / 2) max_shift = length / 2;
+    if (min_shift < 2) min_shift = 2;
 
-    for (int i = 1; i < length - 1; i++) {
-        if ((signal[i] >= 0.0f && signal[i-1] < 0.0f) || (signal[i] < 0.0f && signal[i-1] >= 0.0f)) {
-            double left = fabsf(signal[i-1]);
-            double right = fabsf(signal[i]);
-            double total_dist = left + right;
-            double fraction = (total_dist > 0.0001) ? (left / total_dist) : 0.5;
-            
-            double exact_sample_idx = (double)(i - 1) + fraction;
-            double timestamp = exact_sample_idx / (double)s_rate;
+    float* diff_buffer = (float*)calloc(max_shift + 1, sizeof(float));
 
-            crossings++;
-            if (first_crossing_time < 0.0) first_crossing_time = timestamp;
-            last_crossing_time = timestamp;
+    // Step 1: Compute raw absolute difference array values
+    for (int tau = 1; tau <= max_shift; tau++) {
+        float sq_diff = 0.0f;
+        for (int t = 0; t < length / 2; t++) {
+            float d = signal[t] - signal[t + tau];
+            sq_diff += d * d;
+        }
+        diff_buffer[tau] = sq_diff;
+    }
+
+    // Step 2: Apply Cumulative Mean Normalization algorithm blocks
+    diff_buffer[0] = 1.0f;
+    float running_sum = 0.0f;
+    for (int tau = 1; tau <= max_shift; tau++) {
+        running_sum += diff_buffer[tau];
+        if (running_sum > 0.0001f) {
+            diff_buffer[tau] = diff_buffer[tau] / (running_sum / (float)tau);
+        } else {
+            diff_buffer[tau] = 1.0f;
         }
     }
 
-    if (crossings < 2 || first_crossing_time == last_crossing_time) return 0.0f; 
+    // Step 3: Absolute Threshold Selection pass to isolate the fundamental period trough
+    int best_tau = -1;
+    float threshold = 0.15f; // Standard YIN fundamental cut-off threshold value container
+    for (int tau = min_shift; tau <= max_shift; tau++) {
+        if (diff_buffer[tau] < threshold) {
+            best_tau = tau;
+            break;
+        }
+    }
 
-    double total_duration = last_crossing_time - first_crossing_time;
-    double total_cycles = (double)(crossings - 1) / 2.0;
-    return (float)(total_cycles / total_duration);
+    // Fallback: If no point crosses the threshold grid cleanly, pick the absolute local minimum
+    if (best_tau < 0) {
+        float min_val = 1e10f;
+        for (int tau = min_shift; tau <= max_shift; tau++) {
+            if (diff_buffer[tau] < min_val) {
+                min_val = diff_buffer[tau];
+                best_tau = tau;
+            }
+        }
+    }
+
+    // Step 4: High-precision sub-sample parabolic interpolation calculation loop pass
+    float exact_tau = (float)best_tau;
+    if (best_tau > min_shift && best_tau < max_shift) {
+        float y1 = diff_buffer[best_tau - 1];
+        float y2 = diff_buffer[best_tau];
+        float y3 = diff_buffer[best_tau + 1];
+        float denom = y3 - 2.0f * y2 + y1;
+        if (fabsf(denom) > 0.0001f) {
+            exact_tau = (float)best_tau + (y1 - y3) / (2.0f * denom);
+        }
+    }
+
+    free(diff_buffer);
+    if (best_tau < 0 || exact_tau <= 0.0f) return 0.0f;
+    return (float)s_rate / exact_tau;
 }
 
 int main(int argc, char** argv) {
@@ -218,33 +229,31 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    fprintf(stderr, "[*] Target Polyphonic Wave Loaded: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
+    fprintf(stderr, "[*] Target Wave Loaded: Rate=%dHz, Samples=%d\n", sample_rate, total_wav_samples);
 
     int sample_stride = (sample_rate * 20) / 1000; 
     
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
     
-    float* filtered_ch[3];
-    for (int i = 0; i < 3; i++) filtered_ch[i] = (float*)malloc(window_size * sizeof(float));
-
     int frame_index = 0;
     uint8_t out_ay_regs[GENOME_SIZE] = {0};
-    uint16_t last_periods[3] = {0, 0, 0};
+    uint16_t last_period = 0;
 
     memset(&global_tracking_state, 0, sizeof(AY_Chip));
-    for(int c=0; c<3; c++) global_tracking_state.tone_state[c] = 1;
+    global_tracking_state.tone_state = 1;
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         float total_frame_energy = 0.0f;
-        for (int i = 0; i < window_size; i++) {
+        for (int i = 0; i < sample_stride; i++) {
             total_frame_energy += fabsf(full_target_waveform[offset + i]);
         }
 
         memset(out_ay_regs, 0, GENOME_SIZE);
-        out_ay_regs[7] = 0x3F; // Default: All channels muted
+        out_ay_regs[7] = 0x3F; 
 
-        if (total_frame_energy < 0.05f) {
+        if (total_frame_energy < 0.01f) {
+            last_period = 0; 
             run_ay_emulator_flexible(out_ay_regs, play_buffer, sample_stride, &global_tracking_state);
             if (offset + sample_stride <= total_wav_samples) {
                 memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
@@ -253,54 +262,29 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        apply_bandpass(&full_target_waveform[offset], filtered_ch[0], window_size, 30.0f, 240.0f);   
-        apply_bandpass(&full_target_waveform[offset], filtered_ch[1], window_size, 241.0f, 1500.0f); 
-        apply_bandpass(&full_target_waveform[offset], filtered_ch[2], window_size, 1501.0f, 6000.0f);
+        // FIXED: Invokes the new YIN normalization engine to completely stop subharmonic octave lock errors
+        float freq = calculate_yin_frequency(&full_target_waveform[offset], window_size, sample_rate, 30.0f, 4000.0f);
+        uint16_t raw_period = 0;
 
-        uint16_t raw_periods[3] = {0, 0, 0};
+        if (freq > 30.0f && freq < 4000.0f) {
+            raw_period = (uint16_t)round((double)AY_CLOCK / (16.0 * (double)freq));
+        }
 
-        for (int c = 0; c < 3; c++) {
-            float band_energy = 0.0f;
-            for (int i = 0; i < window_size; i++) band_energy += fabsf(filtered_ch[c][i]);
+        if (raw_period > 0) {
+            if (last_period > 0 && abs((int)raw_period - (int)last_period) <= 1) {
+                raw_period = last_period; 
+            }
             
-            if (band_energy > (total_frame_energy * 0.15f)) {
-                float freq = calculate_precise_frequency(filtered_ch[c], window_size, sample_rate);
-                if (freq > 15.0f && freq < 6000.0f) {
-                    raw_periods[c] = (uint16_t)round((double)AY_CLOCK / (16.0 * (double)freq));
-                }
-            }
-        }
+            if (raw_period > 4095) raw_period = 4095;
+            if (raw_period < 1) raw_period = 1;
 
-        // Cross-channel deduplication logic pass
-        for (int i = 0; i < 3; i++) {
-            for (int j = i + 1; j < 3; j++) {
-                if (raw_periods[i] > 0 && raw_periods[j] > 0) {
-                    float ratio = (float)raw_periods[i] / (float)raw_periods[j];
-                    if (fabsf(log2f(ratio)) < 0.125f || fabsf(log2f(ratio) - 1.0f) < 0.05f) {
-                        raw_periods[j] = 0;
-                    }
-                }
-            }
-        }
-
-        // Apply 1-sample Dead-Band Hysteresis Filter directly to the register assignments
-        for (int c = 0; c < 3; c++) {
-            if (raw_periods[c] > 0) {
-                if (last_periods[c] > 0 && abs((int)raw_periods[c] - (int)last_periods[c]) <= 1) {
-                    raw_periods[c] = last_periods[c]; // Prevent integer rattling tremors completely
-                }
-                
-                if (raw_periods[c] > 4095) raw_periods[c] = 4095;
-                if (raw_periods[c] < 1) raw_periods[c] = 1;
-
-                out_ay_regs[c * 2] = raw_periods[c] & 0xFF;
-                out_ay_regs[c * 2 + 1] = (raw_periods[c] >> 8) & 0x0F;
-                out_ay_regs[7] &= ~(1 << c);   // Un-mute channel bit safely
-                out_ay_regs[8 + c] = 0x0F;    // Lock clean full volume output context
-                last_periods[c] = raw_periods[c];
-            } else {
-                last_periods[c] = 0;
-            }
+            out_ay_regs[0] = raw_period & 0xFF;
+            out_ay_regs[1] = (raw_period >> 8) & 0x0F;
+            out_ay_regs[7] = 0x3E; 
+            out_ay_regs[8] = 0x0F; 
+            last_period = raw_period;
+        } else {
+            last_period = 0;
         }
 
         printf("AY:");
@@ -318,7 +302,6 @@ int main(int argc, char** argv) {
     write_output_wav("match_preview.wav", complete_assembled_preview, total_wav_samples);
 
     free(play_buffer);
-    for(int i=0; i<3; i++) free(filtered_ch[i]);
     free(complete_assembled_preview); free(full_target_waveform);
     return 0;
 }
