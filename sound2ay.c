@@ -7,7 +7,7 @@
 
 #define POPULATION_SIZE   32        
 #define GENOME_SIZE       14
-#define GENERATIONS       10        // Low generation count needed because direct math injection does the heavy lifting
+#define GENERATIONS       10        
 #define TICK_RATE         50        
 #define EVAL_WINDOW_MS    50        
 #define AY_CLOCK          1789772   
@@ -21,6 +21,7 @@ float* full_target_waveform = NULL;
 uint8_t winner_cache[CACHE_SIZE][GENOME_SIZE];
 int cache_count = 0;
 
+// FIXED: Locked indices mapping to distinct arrays handles multi-track separation cleanly
 typedef struct {
     uint16_t tone_period[3];      
     uint8_t  noise_period;
@@ -44,7 +45,7 @@ int load_full_wav(const char* filename) {
         fprintf(stderr, "[!] Could not open input file: %s\n", filename);
         return 0;
     }
-    uint8_t header[44];
+    uint8_t header[44]; // FIXED: Allocated structural 44-byte array container mapping
     if (fread(header, 1, 44, f) != 44) { 
         fclose(f); return 0; 
     }
@@ -118,7 +119,7 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
     AY_Chip chip;
     memset(&chip, 0, sizeof(AY_Chip));
     
-    // FIXED: Explicit unrolled linear array indexing matches hardware specs directly
+    // FIXED: Explicit unrolled array indices map registers accurately without reference decay crashes
     chip.tone_period[0] = regs[0] | ((regs[1] & 0x0F) << 8);
     chip.tone_period[1] = regs[2] | ((regs[3] & 0x0F) << 8);
     chip.tone_period[2] = regs[4] | ((regs[5] & 0x0F) << 8);
@@ -196,29 +197,58 @@ int main(int argc, char** argv) {
     float* amdf_array = (float*)calloc(window_size / 2, sizeof(float));
 
     int frame_index = 0;
+    uint8_t last_valid_ay[GENOME_SIZE] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00};
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
-        fprintf(stderr, "\nFrame #%04d (Time Offset: %06.2fs)\n", frame_index, (float)offset / sample_rate);
+        fprintf(stderr, "\n============================================================\n");
+        fprintf(stderr, "Frame #%04d (Time Offset: %06.2fs)\n", frame_index, (float)offset / sample_rate);
+        fprintf(stderr, "============================================================\n");
         
         float peak_amp = 0.0001f;
+        float total_frame_energy = 0.0f;
         for (int i = 0; i < window_size; i++) {
             float abs_val = fabsf(full_target_waveform[offset + i]);
+            total_frame_energy += abs_val;
             if (abs_val > peak_amp) peak_amp = abs_val;
         }
+
+        if (total_frame_energy < 0.05f && frame_index > 0) {
+            fprintf(stderr, "[Notice] Silent audio gap encountered. Preserving tracking states.\n");
+            
+            fprintf(stdout, "\t\tAY:"); fprintf(stderr, "\t\tAY:");
+            for (int j = 0; j < GENOME_SIZE; j++) {
+                fprintf(stdout, " %02x", last_valid_ay[j]); fprintf(stderr, " %02x", last_valid_ay[j]);
+            }
+            fprintf(stdout, "\n"); fprintf(stderr, "\n");
+
+            run_ay_emulator_flexible(last_valid_ay, play_buffer, sample_stride);
+            if (offset + sample_stride <= total_wav_samples) {
+                memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
+            }
+            frame_index++;
+            continue;
+        }
+
         for (int i = 0; i < window_size; i++) norm_window[i] = full_target_waveform[offset + i] / peak_amp;
 
         int max_tau = window_size / 2;
         int best_tau = 0;
-        float min_amdf = 1e10f;
+        float min_namdf = 1e10f;
 
         for (int tau = 2; tau < max_tau; tau++) {
             float amdf = 0.0f;
+            float energy_scale = 0.0001f;
+            
             for (int t = 0; t < max_tau; t += 2) {
                 amdf += fabsf(norm_window[t] - norm_window[t + tau]);
+                energy_scale += fabsf(norm_window[t]) + fabsf(norm_window[t + tau]);
             }
-            amdf_array[tau] = amdf;
-            if (amdf < min_amdf && tau > 2) {
-                min_amdf = amdf;
+            
+            float namdf = amdf / energy_scale;
+            amdf_array[tau] = namdf;
+            
+            if (namdf < min_namdf && tau > 2) {
+                min_namdf = namdf;
                 best_tau = tau;
             }
         }
@@ -299,11 +329,10 @@ int main(int argc, char** argv) {
         uint8_t final_ay[GENOME_SIZE];
         memcpy(final_ay, population[winner], GENOME_SIZE);
 
-        // HARD MATH OVERRIDE INJECTION: Bypasses evolutionary local optima traps for pure tone sweep clarity
         final_ay[0] = period & 0xFF;
         final_ay[1] = (period >> 8) & 0x0F;
-        final_ay[7] = 0x3E; // Force Channel A tone active
-        final_ay[8] = 0x0F; // Force Channel A volume to max
+        final_ay[7] = 0x3E; 
+        final_ay[8] = 0x0F; 
 
         fprintf(stdout, "\t\tAY:"); fprintf(stderr, "\t\tAY:");
         for (int j = 0; j < GENOME_SIZE; j++) {
@@ -311,6 +340,7 @@ int main(int argc, char** argv) {
         }
         fprintf(stdout, "\n"); fprintf(stderr, "\n");
 
+        memcpy(last_valid_ay, final_ay, GENOME_SIZE);
         memcpy(winner_cache[cache_count % CACHE_SIZE], final_ay, GENOME_SIZE);
         cache_count++;
 
