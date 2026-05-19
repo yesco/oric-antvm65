@@ -83,7 +83,7 @@ int load_full_wav(const char* filename) {
     }
     
     if (data_size == 0) {
-        fprintf(stderr, "[!] Corrupt data segment identifier inside headers.\n");
+        fprintf(stderr, "[!] Corrupt data segment layouts.\n");
         fclose(f); return 0;
     }
     
@@ -91,7 +91,6 @@ int load_full_wav(const char* filename) {
     int frame_bytes = sample_bytes * num_channels;
     total_wav_samples = data_size / frame_bytes;
     
-    // FIXED: Dynamic Evaluation window sizing prevents brief assets from zero padding decay distortions
     int calculated_window = (sample_rate * EVAL_WINDOW_MS) / 1000;
     window_size = (total_wav_samples < calculated_window) ? total_wav_samples : calculated_window;
     if (window_size < 128) window_size = 128;
@@ -114,7 +113,6 @@ int load_full_wav(const char* filename) {
     free(raw_frame);
     fclose(f);
 
-    // FIXED: Full State Cleansing hooks erase leftover context registers before beginning optimization runs
     memset(&global_tracking_state, 0, sizeof(AY_Chip));
     memset(global_last_periods, 0, sizeof(global_last_periods));
     for(int c=0; c<3; c++) global_tracking_state.tone_state[c] = 1;
@@ -311,7 +309,7 @@ int main(int argc, char** argv) {
     int sample_stride = (sample_rate * 20) / 1000; 
     float* complete_assembled_preview = (float*)calloc(total_wav_samples, sizeof(float));
     float* play_buffer = (float*)malloc(sample_stride * sizeof(float));
-
+    
     uint8_t out_ay_regs[GENOME_SIZE] = {0};
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
@@ -332,11 +330,24 @@ int main(int argc, char** argv) {
 
         float frame_rms = sqrtf(rms_sum / sample_stride);
         uint8_t target_volume_level = 0;
-        for (int v = 15; v >= 0; v--) {
-            if (frame_rms >= ay_vol_table[v] * 0.18f) {
-                target_volume_level = v;
-                break;
-            }
+        if (frame_rms > 0.0001f) {
+            float db = 20.0f * log10f(frame_rms / 0.707f);
+            if (db < -46.0f) target_volume_level = 0;
+            else if (db < -41.0f) target_volume_level = 1;
+            else if (db < -37.0f) target_volume_level = 2;
+            else if (db < -33.0f) target_volume_level = 3;
+            else if (db < -29.0f) target_volume_level = 4;
+            else if (db < -25.0f) target_volume_level = 5;
+            else if (db < -21.0f) target_volume_level = 6;
+            else if (db < -18.0f) target_volume_level = 7;
+            else if (db < -15.0f) target_volume_level = 8;
+            else if (db < -12.0f) target_volume_level = 9;
+            else if (db < -9.0f)  target_volume_level = 10;
+            else if (db < -6.0f)  target_volume_level = 11;
+            else if (db < -4.0f)  target_volume_level = 12;
+            else if (db < -2.0f)  target_volume_level = 13;
+            else if (db < -0.5f)  target_volume_level = 14;
+            else target_volume_level = 15;
         }
 
         memset(out_ay_regs, 0, GENOME_SIZE);
@@ -359,7 +370,10 @@ int main(int argc, char** argv) {
         uint8_t detected_noise_period = 0;
         
         float crossings_ratio = (float)zero_crossings / sample_stride;
-        if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || (crossings_ratio > 0.22f)) {
+        
+        // FIXED: Shaved down hi-hat open boundaries. Identifies unpitched cymbal sweeps cleanly
+        int is_hihat_track = (crossings_ratio > 0.32f);
+        if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || is_hihat_track) {
             noise_drum_active = 1;
             uint32_t estimated_noise_freq = (zero_crossings * sample_rate) / (2 * sample_stride);
             if (estimated_noise_freq > 0) {
@@ -430,10 +444,15 @@ int main(int argc, char** argv) {
         }
 
         uint8_t current_mixer = 0x3F;
+        int fast_pitch_sweep_active = 0;
+        
         for (int c = 0; c < 3; c++) {
             if (target_periods[c] > 0) {
                 if (global_last_periods[c] > 0) {
                     int diff = abs((int)target_periods[c] - (int)global_last_periods[c]);
+                    if ((float)diff / (float)global_last_periods[c] > 0.14f) {
+                        fast_pitch_sweep_active = 1; // Mark pure drop transient thuds
+                    }
                     if (diff <= 1 || (float)diff / (float)global_last_periods[c] < 0.012f) {
                         target_periods[c] = global_last_periods[c];
                     }
@@ -445,7 +464,16 @@ int main(int argc, char** argv) {
                 out_ay_regs[c * 2] = target_periods[c] & 0xFF;
                 out_ay_regs[c * 2 + 1] = (target_periods[c] >> 8) & 0x0F;
                 current_mixer &= ~(1 << c);   
-                out_ay_regs[8 + c] = target_volume_level; 
+                
+                if (fast_pitch_sweep_active && c == 0) {
+                    // FIXED: Injects short noise transient onto Channel C for pure kick drops
+                    noise_drum_active = 1;
+                    if (detected_noise_period == 0) detected_noise_period = 18; // Sharp thud click period
+                    out_ay_regs[8 + c] = (target_volume_level > 5) ? (target_volume_level - 3) : 0; 
+                } else {
+                    out_ay_regs[8 + c] = target_volume_level; 
+                }
+                
                 global_last_periods[c] = target_periods[c];
             } else {
                 global_last_periods[c] = 0;
@@ -453,14 +481,28 @@ int main(int argc, char** argv) {
             }
         }
 
-        // FIXED: Explicitly mutes tone tracking volume pathways for Channels A and B during noise strikes
+        // FIXED: Acoustic Head Shaving pass limits maximum hi-hat volume to prevent loud ringing
+        if (is_hihat_track && target_volume_level > 12) {
+            target_volume_level = 12; 
+        }
+
         if (noise_drum_active) {
             out_ay_regs[6] = detected_noise_period;
-            current_mixer &= ~(1 << 5);             // Open Noise on Channel C
-            out_ay_regs[10] = target_volume_level;  // Channel C handles noise exclusively
+            current_mixer &= ~(1 << 5);             // Unmute noise generator on Channel C
+            out_ay_regs[10] = target_volume_level; // Channel C handles noise exclusively
             
-            out_ay_regs[8]  = 0;                    // Force absolute tone silence on A & B
-            out_ay_regs[9]  = 0;
+            // FIXED: Tone Layer Blending. Attenuates but preserves bass drop weight on A & B on hybrid tracks
+            if (!is_hihat_track && primary_peak_depth > 0.25f) {
+                out_ay_regs[8] = (out_ay_regs[8] > 4) ? (out_ay_regs[8] - 4) : 2;
+                out_ay_regs[9] = (out_ay_regs[9] > 4) ? (out_ay_regs[9] - 4) : 0;
+            } else {
+                out_ay_regs[8] = 0; out_ay_regs[9] = 0;
+            }
+        }
+
+        // FIXED: Extends snare long tails slightly to capture full reverb decay depth smoothly
+        if (!is_hihat_track && noise_drum_active && target_volume_level < 6 && target_volume_level > 1) {
+            out_ay_regs[10] += 1; 
         }
 
         out_ay_regs[7] = current_mixer; 
