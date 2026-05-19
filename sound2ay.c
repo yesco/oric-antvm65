@@ -39,6 +39,8 @@ typedef struct {
     int8_t   tone_state;
 } AY_Chip;
 
+AY_Chip global_tracking_state;
+
 uint32_t xorshift32() {
     static uint32_t x = 2463534242U;
     x ^= x << 13; x ^= x >> 17; x ^= x << 5;
@@ -121,15 +123,13 @@ void write_output_wav(const char* filename, float* buffer, int num_samples) {
     fclose(f);
 }
 
-void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples) {
-    AY_Chip chip;
-    memset(&chip, 0, sizeof(AY_Chip));
+void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples, AY_Chip* state_ptr) {
+    AY_Chip chip = *state_ptr;
     
     chip.tone_period = regs[0] | ((regs[1] & 0x0F) << 8);
     chip.mixer       = regs[7];
     chip.amplitude   = regs[8] & 0x0F; 
     
-    chip.tone_state = 1;
     double ay_ticks_per_sample = (double)AY_CLOCK / sample_rate;
 
     for (int s = 0; s < num_samples; s++) {
@@ -148,21 +148,40 @@ void run_ay_emulator_flexible(uint8_t* regs, float* out_buffer, int num_samples)
             out_buffer[s] = 0.0f;
         }
     }
+    *state_ptr = chip;
 }
 
-// CHANGED: Evaluates fitness using absolute shape correlation to ignore phase shifts
-float evaluate_fitness_fast(uint8_t* genome, float* target_segment, float* scratchpad) {
-    run_ay_emulator_flexible(genome, scratchpad, window_size);
-    
-    float error = 0.0f;
-    for (int i = 0; i < window_size; i++) { 
-        float diff = fabsf(target_segment[i]) - fabsf(scratchpad[i]);
-        error += diff * diff;
+// Quick helper to safely calculate the crossing count of a windowed frame segment
+int count_crossings(float* signal, int length) {
+    int crossings = 0;
+    for (int i = 0; i < length - 1; i++) {
+        if ((signal[i] >= 0.0f && signal[i+1] < 0.0f) || (signal[i] < 0.0f && signal[i+1] >= 0.0f)) {
+            crossings++;
+        }
     }
-    return 1000.0f / (error + 0.0001f);
+    return crossings;
 }
 
-// NEW: Ultra-stable time-domain pitch extraction based on zero-crossing intervals
+// CHANGED: Fitness evaluation now compares structural crossing distributions and uses logarithmic scaling penalties
+float evaluate_fitness_fast(uint8_t* genome, float* target_segment, float* scratchpad, uint16_t previous_period, int target_crossings) {
+    AY_Chip temp_state = global_tracking_state; 
+    run_ay_emulator_flexible(genome, scratchpad, window_size, &temp_state);
+    
+    int candidate_crossings = count_crossings(scratchpad, window_size);
+    float crossing_error = (float)abs(target_crossings - candidate_crossings);
+    
+    uint16_t current_period = genome[0] | ((genome[1] & 0x0F) << 8);
+    float continuity_penalty = 0.0f;
+    
+    if (previous_period > 0 && current_period > 0) {
+        // FIXED: Penalty calculations now scale logarithmically to allow sweeping values across octaves smoothly
+        float log_ratio = fabsf(log2f((float)current_period / (float)previous_period));
+        continuity_penalty = log_ratio * 1.5f; 
+    }
+    
+    return 1000.0f / (crossing_error + continuity_penalty + 0.0001f);
+}
+
 float calculate_zcd_frequency(float* signal, int length, int s_rate) {
     int crossings = 0;
     int first_crossing = -1;
@@ -198,7 +217,7 @@ int main(int argc, char** argv) {
     }
 
     if (!wav_filename || !load_full_wav(wav_filename)) {
-        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv[0] : "ay_optimizer"); 
+        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv : "ay_optimizer"); 
         return 1;
     }
 
@@ -212,6 +231,10 @@ int main(int argc, char** argv) {
 
     int frame_index = 0;
     uint8_t last_valid_ay[GENOME_SIZE] = {0x0e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x00};
+    
+    memset(&global_tracking_state, 0, sizeof(AY_Chip));
+    global_tracking_state.tone_state = 1;
+    uint16_t last_winning_period = 0;
 
     for (int offset = 0; offset + window_size <= total_wav_samples; offset += sample_stride) {
         fprintf(stderr, "\n============================================================\n");
@@ -231,7 +254,7 @@ int main(int argc, char** argv) {
             }
             fprintf(stdout, "\n"); fprintf(stderr, "\n");
 
-            run_ay_emulator_flexible(last_valid_ay, play_buffer, sample_stride);
+            run_ay_emulator_flexible(last_valid_ay, play_buffer, sample_stride, &global_tracking_state);
             if (offset + sample_stride <= total_wav_samples) {
                 memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
             }
@@ -239,10 +262,9 @@ int main(int argc, char** argv) {
             continue;
         }
 
-        // CHANGED: Replaced buggy AMDF loop with bulletproof ZCD mathematical tracker
         float target_frequency = calculate_zcd_frequency(&full_target_waveform[offset], window_size, sample_rate);
-        
-        // FIXED: Maps with complete precision to 1 MHz boundaries 
+        int target_crossings = count_crossings(&full_target_waveform[offset], window_size);
+
         uint16_t period = (uint16_t)((double)AY_CLOCK / (16.0 * target_frequency));
         if (period > 4095) period = 4095;
         if (period < 1) period = 1; 
@@ -263,8 +285,9 @@ int main(int argc, char** argv) {
 
         while (idx < POPULATION_SIZE) {
             for (int j = 0; j < GENOME_SIZE; j++) population[idx][j] = sweep_tracking_seed[j];
-            int variance = (period < 10) ? 1 : 8;
+            int variance = (period < 12) ? 2 : 12;
             uint16_t mutated_period = (period + (xorshift32() % (variance * 2)) - variance) & 0x0FFF;
+            if (mutated_period < 1) mutated_period = 1;
             population[idx][0] = mutated_period & 0xFF;
             population[idx][1] = (mutated_period >> 8) & 0x0F;
             idx++;
@@ -273,12 +296,12 @@ int main(int argc, char** argv) {
         for (int g = 0; g < GENERATIONS; g++) {
             float max_fit = -1.0f; int best_idx = 0;
             for (int i = 0; i < POPULATION_SIZE; i++) {
-                fitness[i] = evaluate_fitness_fast(population[i], &full_target_waveform[offset], fitness_scratchpad);
+                fitness[i] = evaluate_fitness_fast(population[i], &full_target_waveform[offset], fitness_scratchpad, last_winning_period, target_crossings);
                 if (fitness[i] > max_fit) { max_fit = fitness[i]; best_idx = i; }
             }
 
             if (g % 5 == 0) {
-                fprintf(stderr, "  Gen [%02d/%02d] -> Target Track Pitch: %7.1fHz, Top Fitness: %8.2f\n", g, GENERATIONS, target_frequency, max_fit);
+                fprintf(stderr, "  Gen [%02d/%02d] -> Tracked Pitch Target: %7.1fHz, Top Fitness: %8.2f\n", g, GENERATIONS, target_frequency, max_fit);
             }
 
             uint8_t next_gen[POPULATION_SIZE][GENOME_SIZE];
@@ -289,9 +312,9 @@ int main(int argc, char** argv) {
                 int parent = (fitness[p1] > fitness[p2]) ? p1 : p2;
                 memcpy(next_gen[i], population[parent], GENOME_SIZE);
 
-                if ((xorshift32() % 100) < 40) {
+                if ((xorshift32() % 100) < 45) {
                     uint16_t current_p = next_gen[i][0] | ((next_gen[i][1] & 0x0F) << 8);
-                    int mutation_spread = (target_frequency > 1500.0f) ? 1 : 6;
+                    int mutation_spread = (target_frequency > 1500.0f) ? 2 : 8;
                     current_p = (current_p + (xorshift32() % (mutation_spread * 2)) - mutation_spread) & 0x0FFF;
                     if (current_p < 1) current_p = 1;
                     next_gen[i][0] = current_p & 0xFF;        
@@ -303,7 +326,7 @@ int main(int argc, char** argv) {
 
         float final_fit = -1.0f; int winner = 0;
         for (int i = 0; i < POPULATION_SIZE; i++) {
-            float f = evaluate_fitness_fast(population[i], &full_target_waveform[offset], fitness_scratchpad);
+            float f = evaluate_fitness_fast(population[i], &full_target_waveform[offset], fitness_scratchpad, last_winning_period, target_crossings);
             if (f > final_fit) { final_fit = f; winner = i; }
         }
 
@@ -320,7 +343,9 @@ int main(int argc, char** argv) {
         memcpy(winner_cache[cache_count % CACHE_SIZE], final_ay, GENOME_SIZE);
         cache_count++;
 
-        run_ay_emulator_flexible(final_ay, play_buffer, sample_stride);
+        last_winning_period = final_ay[0] | ((final_ay[1] & 0x0F) << 8);
+
+        run_ay_emulator_flexible(final_ay, play_buffer, sample_stride, &global_tracking_state);
         if (offset + sample_stride <= total_wav_samples) {
             memcpy(&complete_assembled_preview[offset], play_buffer, sample_stride * sizeof(float));
         }
