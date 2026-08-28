@@ -293,16 +293,18 @@ int main(int argc, char** argv) {
     
     int pipe_audio = 0;
     int skip_ms = 0; 
+    int ignore_drums = 0; // NEW: Flag switch tracker hook
     char* wav_filename = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-pipe") == 0) pipe_audio = 1;
+        else if (strcmp(argv[i], "-nodrums") == 0) ignore_drums = 1; // NEW: Catch -nodrums parameter
         else if (strcmp(argv[i], "-skip_ms") == 0 && (i + 1 < argc)) skip_ms = atoi(argv[++i]);
         else wav_filename = argv[i];
     }
 
     if (!wav_filename || !load_full_wav(wav_filename)) {
-        fprintf(stderr, "Usage: %s <target.wav> [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv[0] : "ay_optimizer"); 
+        fprintf(stderr, "Usage: %s <target.wav> [-nodrums] [-pipe] [-skip_ms <ms>]\n", (argc > 0) ? argv[0] : "ay_optimizer"); 
         return 1;
     }
 
@@ -351,7 +353,7 @@ int main(int argc, char** argv) {
         }
 
         memset(out_ay_regs, 0, GENOME_SIZE);
-        out_ay_regs[7] = 0x3F; // Default: Everything muted
+        out_ay_regs[7] = 0x3F; 
 
         if (total_frame_energy < 0.00001f || target_volume_level == 0) {
             memset(global_last_periods, 0, sizeof(global_last_periods));
@@ -372,21 +374,23 @@ int main(int argc, char** argv) {
         float crossings_ratio = (float)zero_crossings / sample_stride;
         int is_hihat_track = (crossings_ratio > 0.32f);
 
-        if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || is_hihat_track) {
-            noise_drum_active = 1;
-            uint32_t estimated_noise_freq = (zero_crossings * sample_rate) / (2 * sample_stride);
-            if (estimated_noise_freq > 0) {
-                uint32_t n_div = (uint32_t)round((double)AY_CLOCK / (16.0 * estimated_noise_freq));
-                if (n_div > 31) n_div = 31;
-                if (n_div < 1) n_div = 1;
-                detected_noise_period = n_div;
+        // CHANGED: Added condition check. Bypasses the entire noise system when -nodrums switch is set active
+        if (!ignore_drums) {
+            if ((total_frame_energy > 0.01f && primary_peak_depth < 0.48f) || is_hihat_track) {
+                noise_drum_active = 1;
+                uint32_t estimated_noise_freq = (zero_crossings * sample_rate) / (2 * sample_stride);
+                if (estimated_noise_freq > 0) {
+                    uint32_t n_div = (uint32_t)round((double)AY_CLOCK / (16.0 * estimated_noise_freq));
+                    if (n_div > 31) n_div = 31;
+                    if (n_div < 1) n_div = 1;
+                    detected_noise_period = n_div;
+                }
             }
         }
 
         uint16_t raw_periods[3] = {0, 0, 0};
         int validated_count = 0;
 
-        // RESTORED: Pitch detection populates virtual registers continuously, ignoring the takeover state completely
         for (int p = 0; p < pitches_found; p++) {
             if (detected_freqs[p] > 30.0f && detected_freqs[p] < 4000.0f) {
                 uint16_t p_val = (uint16_t)round((double)AY_CLOCK / (16.0 * (double)detected_freqs[p]));
@@ -465,9 +469,10 @@ int main(int argc, char** argv) {
                 out_ay_regs[c * 2 + 1] = (target_periods[c] >> 8) & 0x0F;
                 current_mixer &= ~(1 << c);   
                 
-                if (fast_pitch_sweep_active && c == 0) {
+                // CHANGED: Explicitly disable transient noise injection pass when -nodrums switch is set active
+                if (!ignore_drums && fast_pitch_sweep_active && c == 0) {
                     noise_drum_active = 1;
-                    if (detected_noise_period == 0) detected_noise_period = 16; // Click transient
+                    if (detected_noise_period == 0) detected_noise_period = 16; 
                     out_ay_regs[8 + c] = (target_volume_level > 5) ? (target_volume_level - 3) : 0; 
                 } else {
                     out_ay_regs[8 + c] = target_volume_level; 
@@ -484,20 +489,15 @@ int main(int argc, char** argv) {
             target_volume_level = 12; 
         }
 
-        // FIXED: Non-Destructive Interlocking Mixer Handshaking
         if (noise_drum_active) {
             out_ay_regs[6] = detected_noise_period;
-            current_mixer &= ~(1 << 5); // Layer White Noise onto Channel C (Bit 5 = 0)
-            
-            // Channel C safely plays BOTH noise and its virtual underlying tone simultaneously
+            current_mixer &= ~(1 << 5); 
             out_ay_regs[10] = target_volume_level; 
             
             if (is_hihat_track) {
-                // Completely kill melody tone bleeds for cymbals
                 current_mixer |= (1 << 0) | (1 << 1) | (1 << 2);
                 out_ay_regs[8] = 0; out_ay_regs[9] = 0;
             } else if (primary_peak_depth > 0.25f) {
-                // FIXED: Blend underlying bass tones gracefully on hybrid kick impacts
                 out_ay_regs[8] = (out_ay_regs[8] > 4) ? (out_ay_regs[8] - 4) : 2;
                 out_ay_regs[9] = (out_ay_regs[9] > 4) ? (out_ay_regs[9] - 4) : 0;
             }

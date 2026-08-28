@@ -6,6 +6,20 @@
 \#*\#
 *.sim
 *.x
+.#*
+
+ORIC
+
+*.lst
+*.tap
+*.idx
+
+diff.c
+
+fil
+fil-*
+
+foo*
 
 # Prerequisites
 *.d

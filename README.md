@@ -4,12 +4,26 @@
 
 **Status: very early implementation in progress**
 
-
 *Note: this document contains extensive fragments of Gemeni discussions in trying to understand and refine as well as define, not only the functionality, but as well as description. Eventually, it should be edited out.*
 
 
-
 AntVM65 is a high-performance, 24-TET micro-synth designed for elite 8-bit music, organic speech synthesis, and custom FX. It’s a specialized VM that interprets "in-band" command streams alongside quarter-note data.
+
+
+## Demo
+
+Only single tone essentials is working/tested:
+
+```
+# sim-ant-asm.asm contains a simulator driver to run
+# and generate the frames and AY data which then is
+# converted and play. This skips on-device debugging!
+#
+# The file contains some scales and simple tonelength tests.
+# TODO: make the data compile from user ABC-notation format!
+
+./ant-play
+```
 
 
 ## The Architecture:
@@ -1989,3 +2003,67 @@ Proposed 011 Mapping:
 
 
 
+# Playing with Sounds
+
+The goal of the experiment is try to make a new sampling
+and efficient storage of "sounds", like music or speech.
+
+The main idea:
+- Run a window DFT (Fourier Transform) to extract dominant 3 frequencies to be played by the AY chip.
+- Bucket data to find noise, and pitch to "recreate drum-sounds".
+
+Capabilities:
+- It works on single tones to recreate the frequencies
+- Dual tones mostly
+- Some drum effects "identified" and simulated
+- Reads plain WAV files generates AY: register output lines
+- Generates the `match_preview.wav` files that is a decent simulation of the AY chip.
+
+Surprising for the latter, the code is maybe less than 100 lines or so extra.
+
+YM3-files are the standard for computer 6502 generated music
+files and effects. They are 50 Hz AY chip register dumps of
+games playing. Not the most efficient way of storing it but
+quiet accurate to recreate exactly what you hear!
+
+At 50 Hz, 50*14 registers gives about 700 bytes/second!
+That is pretty massive. However, YM3 files have (optional
+LZ compressions; each register is saved as a "column store"
+sequnce. Since each register by it-self changes infrequently
+each column compresses quite efficiently.
+
+The example `war.ym3`, 69066 bytes, when played (converted to wav)
+becomes `war.wav`, 37,046,316 bytes! But, to contrast it with the
+code that probably generated `war.ym3` that is probably just 2KB
+data plus maybe 2KB player code interpreting the "notes".
+
+
+
+You need to install and/or compile some tools.
+
+- ffmpeg
+- STYMulator-0.21a/ym2wav.c - compile it!
+- 
+
+To test the current "crappy" prototype:
+
+
+```
+# convert to wav using one of the commands
+./STYMulator-0.21a/ym2wav foo.ym3
+./towav foo.mp3
+
+# finaly run:
+#
+# 1. it reads the wav file
+# 2. tries to identify dominant 3 freqs
+# 3. analyze noise by bucket -> drums
+# 4. output "AY:" register lines
+# 5. simulate AY chip and generate:
+#   match_preview.wav from the AY register
+# 6. It'll ./play match_preview.wav for you
+
+./ay foo.wav
+
+
+```
